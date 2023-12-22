@@ -21,6 +21,17 @@ from fuzzysearch import find_near_matches
 from pprint import pprint
 from shlex import quote
 import time as ttime
+        
+def getVideoInfo(videoFile:str):
+    probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
+                                  '-print_format', 'json=c=1',
+                                  '-show_format', '-show_streams',
+                                  videoFile], capture_output=True)
+    #print(probeResult)
+    if probeResult.returncode != 0:
+        return None
+    info = json.loads(probeResult.stdout.decode())
+    return info
 
 class SourceFile:
     def __init__(self, streamer, videoId, *, videoFile=None, infoFile=None, chatFile=None):
@@ -65,13 +76,7 @@ class SourceFile:
         self.chatFile = chatFile
     def getVideoFileInfo(self):
         if self.videoInfo is None:
-            probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
-                                      '-print_format', 'json=c=1',
-                                      '-show_format', '-show_streams',
-                                      self.videoFile], capture_output=True)
-            if probeResult.returncode != 0:
-                return None
-            self.videoInfo = json.loads(probeResult.stdout.decode())
+            self.videoInfo = getVideoInfo(self.videoFile if self.localVideoFile is None else self.localVideoFile)
         return self.videoInfo
 
 class ParsedChat:
@@ -475,17 +480,7 @@ def pretty_print(clas, indent=0):
 
 def toFfmpegTimestamp(ts:int|float):
     return f"{ts//3600:02d}:{(ts//60)%60:02d}:{ts%60:02d}"
-        
-def getVideoInfo(videoFile:str):
-    probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
-                                  '-print_format', 'json=c=1',
-                                  '-show_format', '-show_streams',
-                                  videoFile], capture_output=True)
-    #print(probeResult)
-    if probeResult.returncode != 0:
-        return None
-    info = json.loads(probeResult.stdout.decode())
-    return info
+
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                                       outputFile=None, *,
@@ -1148,6 +1143,20 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 print("\n\nStep 13a: ", segIndex, segmentStartTime, segmentEndTime, numTiles, tileResolution, segmentResolution)
             rowVideoSegmentNames = []
             rowInputFileCount = 0
+            rowFiles = [file for file in segmentFileMatrix[segIndex] if file is not None]
+            neededNullSampleRates = set()
+            numFilesInRow = len(rowFiles)
+            for streamerIndex in range(len(allInputStreamers)):
+                if segmentFileMatrix[segIndex][streamerIndex] is None:
+                    neededNullSampleRates.add(streamerAudioSampleRates[streamerIndex])
+            rowNullAudioStreamsBySamplerates = {}
+            nullAudioInputOptions = []
+            for samplerate in neededNullSampleRates:
+                rateStr = str(samplerate)
+                audioInputIndex = numFilesInRow + len(rowNullAudioStreamsBySamplerates)
+                nullAudioInputOptions.extend(('-f',  'lavfi', '-i', f'anullsrc=r={rateStr}'))
+                rowNullAudioStreamsBySamplerates[rateStr] = audioInputIndex
+            
             rowInputOptions = []
             for streamerIndex in range(len(allInputStreamers)):
                 file = segmentFileMatrix[segIndex][streamerIndex]
@@ -1185,10 +1194,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     useHwFilterAccel = useHardwareAcceleration & 2 == 2 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
                     #print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     if not useHwFilterAccel:
-                        if outputResolution[0] > width: #upscaling
-                            scaleAlgo = ':sws_flags=lanczos'
-                        elif outputResolution[0] < width:
-                            scaleAlgo = '' #':sws_flags=area'
+                        tileWidth = int(tileResolution.split(':')[0])
+                        print(f"tileWidth={tileWidth}, video width={width}")
+                        if tileWidth > width: #upscaling
+                            scaleAlgo = ':flags=lanczos'
+                        elif tileWidth < width:
+                            scaleAlgo = '' #':flags=area'
                         else:
                             scaleAlgo = ''
                     else:
@@ -1221,7 +1232,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                         print("\n\nStep 13b: ", segIndex, streamerIndex, file, startOffset, endOffset, inputIndex, streamerIndex, videoSegmentName, audioSegmentName)
                 else:
                     audioRate = streamerAudioSampleRates[streamerIndex]
-                    nullAudioIndex = nullAudioStreamsBySamplerates[str(audioRate)]
+                    nullAudioIndex = rowNullAudioStreamsBySamplerates[str(audioRate)]
                     emptyAudioFiltergraph = f"[{nullAudioIndex}] atrim=duration={segmentDuration} [{audioSegmentName}]"
                     filtergraphParts.append(emptyAudioFiltergraph)
                     #audioFiltergraphParts.append(emptyAudioFiltergraph)
@@ -1229,7 +1240,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                         print("\n\nStep 13b: ", segIndex, streamerIndex)
             #13c. Build xstack intermediate video segments
             numRowSegments = len(rowVideoSegmentNames)
+            assert numFilesInRow == numRowSegments
             assert numRowSegments > 0 #should have at least one source file for each segment, otherwise we have a gap we need to account for
+            rowInputOptions.extend(nullAudioInputOptions)
             if numRowSegments > 1:
                 rowTileWidth = calcTileWidth(numRowSegments)
                 segmentRes = [int(x) for x in segmentResolution.split(':')]
@@ -1387,10 +1400,10 @@ print("Initialization complete!")
 testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
                                                 endTimeMode='allOverlapEnd',
                                                 logLevel=0,
-                                                useHardwareAcceleration=1,#|2,
-                                                #maxHwaccelFiles=4,
+                                                useHardwareAcceleration=0,#1,#|2,
+                                                maxHwaccelFiles=18,
                                                 cutMode='chunked',
-                                                outputCodec='libx265',
+                                                outputCodec='libx264',
                                                 encodingSpeedPreset='medium',
                                                 ffmpegPath='/home/ubuntu/ffmpeg-cuda/ffmpeg/')
 
@@ -1417,8 +1430,20 @@ def writeCommandStrings(commandList, testNum=None):
     with open(path, 'w') as file:
         file.write('\n'.join(testCommandStrings))
         file.write('\necho "Render complete!!"')
+def writeCommandScript(commandList, testNum=None):
+    if testNum is None:
+        for i in range(2,1000):
+            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+            if not os.path.isfile(path):
+                testNum = i
+    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
+    print(path)
+    with open(path, 'w') as file:
+        file.write(' && \\\n'.join(testCommandStrings))
+        file.write(' && \\\necho "Render complete!!"')
 
-writeCommandStrings(testCommandStrings, 10)
+#writeCommandStrings(testCommandStrings, 10)
+writeCommandScript(testCommandStrings, 10)
 
 # %%
 
@@ -1566,8 +1591,8 @@ def copyWorker():
             #add copied file to filesBySourceVideoPath
             filesBySourceVideoPath[localPath] = file
             #replace file path in renderCommand
-            for command in task.commandArray
-            renderCommand[renderCommand.index(remotePath)] = localPath
+            for command in task.commandArray:
+                renderCommand[renderCommand.index(remotePath)] = localPath
         renderQueue.put(QueueItem(renderCommand, task.mainStreamer, task.fileDate))
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
 
@@ -1724,7 +1749,7 @@ if __name__=='__main__':
                                                                   })
     #sessionThread.start()
 
-    sessionWorker(maxLookback=timedelta(days=14,hours=18), logLevel=2)
+    #sessionWorker(maxLookback=timedelta(days=14,hours=18), logLevel=2)
     #copyWorker()
     #print(getAllStreamingDaysByStreamer()['ChilledChaos'])
     allGames = calcGameCounts()
