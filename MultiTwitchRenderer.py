@@ -32,6 +32,7 @@ class SourceFile:
         if videoFile is not None:
             self.setVideoFile(videoFile)
         self.localVideoFile = None
+        self.videoInfo = None
         self.infoFile = None
         if infoFile is not None:
             self.setInfoFile(infoFile)
@@ -62,6 +63,16 @@ class SourceFile:
         assert self.chatFile is None
         assert chatFile.endswith(chatExt) and os.path.isfile(chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
+    def getVideoFileInfo(self):
+        if self.videoInfo is None:
+            probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
+                                      '-print_format', 'json=c=1',
+                                      '-show_format', '-show_streams',
+                                      self.videoFile], capture_output=True)
+            if probeResult.returncode != 0:
+                return None
+            self.videoInfo = json.loads(probeResult.stdout.decode())
+        return self.videoInfo
 
 class ParsedChat:
     def __init__(self, chatFile:str):
@@ -288,9 +299,10 @@ def scanSessionsFromFile(file:SourceFile):
 def scanFiles():
     newFiles = set()
     for streamer in globalAllStreamers:
-        print(f"Scanning streamer {streamer}")
+        print(f"Scanning streamer {streamer} ", end='')
         streamerFiles = []
         streamerBasePath = os.path.join(basepath, streamer, 'S1')
+        count = 0
         for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExt, infoExt, chatExt)))):
             filepath = os.path.join(streamerBasePath, filename)
             if filepath in allScannedFiles:
@@ -302,6 +314,8 @@ def scanFiles():
             assert len(filenameSegments) >= 3
             videoId = filenameSegments[-2]
             #print(videoId, filepath, sep=' '*8)
+            if count % 10 == 0:
+                print('.', end='')
             file = None
             if videoId not in allFilesByVideoId.keys():
                 if filename.endswith(videoExt):
@@ -329,11 +343,17 @@ def scanFiles():
                 if file.isComplete():
                     newFiles.add(file)
             allScannedFiles.add(filepath)
+            count += 1
+        count = 0
+        print('*', end='')
         for i in reversed(range(len(streamerFiles))):
             file = streamerFiles[i]
             if file.isComplete():
                 if file.chatFile is not None and streamer in streamersParseChatList:
                     file.parsedChat = ParsedChat(file.chatFile)
+                    if count % 10 == 0:
+                        print('.', end='')
+                    count += 1
                 else:
                     file.parsedChat = None
                 #filesBySourceVideoPath[file.videoPath] = file
@@ -343,7 +363,7 @@ def scanFiles():
                     del filesBySourceVideoPath[file.videoFile]
                 del allFilesByVideoId[file.videoId]
                 del streamerFiles[i]
-        print(f"Scanned streamer {streamer} with {len(streamerFiles)} files")
+        print(f"\nScanned streamer {streamer} with {len(streamerFiles)} files")
         if len(streamerFiles) > 0:
             if streamer not in allStreamersWithVideos: 
                 allStreamersWithVideos.append(streamer)
@@ -752,11 +772,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
         inputOptions.append('-i')
         if file.localVideoFile is not None:
             inputOptions.append(file.localVideoFile)
-            inputVideoInfo.append(getVideoInfo(file.localVideoFile))
+            #inputVideoInfo.append(getVideoInfo(file.localVideoFile))
+            inputVideoInfo.append(file.getVideoFileInfo())
             print(file.localVideoFile)
         else:
             inputOptions.append(file.videoFile)
-            inputVideoInfo.append(getVideoInfo(file.videoFile))
+            #inputVideoInfo.append(getVideoInfo(file.videoFile))
+            inputVideoInfo.append(file.getVideoFileInfo())
             print(file.videoFile)
     nullAudioIndex = len(inputFilesSorted)
     inputOptions.extend(('-f',  'lavfi', '-i', 'anullsrc'))
@@ -764,14 +786,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
         print("\n\n\nStep 12: ", inputOptions)
     forceKeyframeTimes = [toFfmpegTimestamp(uniqueTimestampsSorted[i]-allSessionsStartTime) for i in range(1, numSegments)]
     keyframeOptions = ['-force_key_frames', ','.join(forceKeyframeTimes)]
-    streamerAudioBitrates = [None for i in range(len(allInputStreamers))]
+    streamerAudioSampleRates = [None for i in range(len(allInputStreamers))]
     for i in range(len(inputFilesSorted)):
         file = inputFilesSorted[i]
         fileInfo = inputVideoInfo[i]
         streamerIndex = allInputStreamersSortKey[file.streamer]
         audioStreamInfo = [stream for stream in fileInfo['streams'] if stream['codec_type'] == 'audio'][0]
         audioRate = audioStreamInfo['sample_rate']
-        streamerAudioBitrates[streamerIndex] = audioRate
+        streamerAudioSampleRates[streamerIndex] = audioRate
         print(file.streamer, audioRate)
     
     #13. Use #5 and #12 to build output stream mapping orders and build final command along with #12 and #11
@@ -1025,9 +1047,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                             filtergraphBody = f"{fpsFilter}{trimFilter}setpts={vpts}, {scaleFilter}{padFilter}{labelFilter}"
                         elif useHardwareAcceleration >= 4:
                             raise Exception("Not implemented yet")
-        #                else:
-        #                    #return f"[{self.inputIndex}:v] trim={self.startOffset}:{self.endOffset}, setpts={vpts}, scale={targetResolution}:force_original_aspect_ratio=decrease:eval=frame, pad={targetResolution}:-1:-1:color=black, fps=fps=60{labelFilter} [{self.videoSegmentName}]"
-        #            else:
                     if filtergraphBody is None:
                         filtergraphBody = f"{trimFilter}setpts={vpts}, {fpsFilter}{scaleFilter}{padFilter}{labelFilter}"
                     videoFiltergraph = f"[{inputIndex}:v] {filtergraphBody.strip(', ')} [{videoSegmentName}]"
@@ -1152,9 +1171,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                             filtergraphBody = f"{fpsFilter}{trimFilter}setpts={vpts}, {scaleFilter}{padFilter}{labelFilter}"
                         elif useHardwareAcceleration >= 4:
                             raise Exception("Not implemented yet")
-        #                else:
-        #                    #filtergraphBody = f"[{self.inputIndex}:v] trim={self.startOffset}:{self.endOffset}, setpts={vpts}, scale={targetResolution}:force_original_aspect_ratio=decrease:eval=frame, pad={targetResolution}:-1:-1:color=black, fps=fps=60{labelFilter} [{self.videoSegmentName}]"
-        #            else:
                     if filtergraphBody is None:
                         filtergraphBody = f"{trimFilter}setpts={vpts}, {fpsFilter}{scaleFilter}{padFilter}{labelFilter}"
                     videoFiltergraph = f"[{inputIndex}:v] {filtergraphBody.strip(', ')} [{videoSegmentName}]"
@@ -1165,6 +1181,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     if logLevel >= 4:
                         print("\n\nStep 13b: ", segIndex, streamerIndex, file, startOffset, endOffset, inputIndex, streamerIndex, videoSegmentName, audioSegmentName)
                 else:
+                    audioRate = streamerAudioSampleRates[streamerIndex]
                     emptyAudioFiltergraph = f"[{nullAudioIndex}] atrim=duration={segmentDuration} [{audioSegmentName}]"
                     filtergraphParts.append(emptyAudioFiltergraph)
                     if logLevel >= 4:
@@ -1195,6 +1212,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             #    outputMetadataOptions,
             #    codecOptions,
             #    ["-movflags", "faststart", outputFile]]))
+            return commandList
         #15. Build concat statement of intermediate video and audio segments
         #concat=n=17:v=1:a={len(allInputStreamers)}
         videoConcatFiltergraph = f"[{']['.join(('vseg'+str(n) for n in range(numSegments)))}] concat=n={numSegments}:v=1:a=0 [vout]"
@@ -1214,9 +1232,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
         completeFiltergraph = " ; ".join(filtergraphParts)
         return 
     
-    print("####################################################\n\n\n\n")
+    print("\n\n\n\n###################################################\n\n\n\n")
     filtergraphChunkedVersion()
-    print("####################################################")
+    print("\n\n\n\n###################################################\n\n\n\n")
 
     if cutMode == 'segment':
         return filtergraphSegmentVersion()
@@ -1313,6 +1331,7 @@ def reloadSave():
     scanFiles()
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
+#reloadSave()
 initialize()
 print("Initialization complete!")
 
@@ -1359,11 +1378,10 @@ def writeCommandStrings(commandList, testNum=None):
     print(path)
     with open(path, 'w') as file:
         file.write('\n'.join(testCommandStrings))
-        
+
 writeCommandStrings(testCommandStrings, 9)
 
 # %%
-#import sqlite
 
 # %%
 # Threading time!
