@@ -172,8 +172,6 @@ class Session:
 print("Starting")
 
 # %%
-import random
-
 basepath = '/mnt/pool2/media/Twitch Downloads/'
 localBasepath = '/mnt/scratch1/'
 outputDirectory = "Rendered Multiviews"
@@ -835,7 +833,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     threadOptions = ['-threads', str(threadCount),
                  '-filter_threads', str(threadCount),
                  '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
-    uploadFilter, downloadFilter = (f"hwupload_cuda, ", f"hwdownload,format=pix_fmts=yuv420p, ")
+    uploadFilter, downloadFilter = (f"hwupload_cuda", f"hwdownload,format=pix_fmts=yuv420p")
     
     #14. For each row of #8:
     filtergraphStringSegments = []
@@ -959,7 +957,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 filtergraphParts.append(filtergraphString)
                 if logLevel >= 3:
                     print("\n\n\nStep 13c: ", filtergraphString, segmentResolution, outputResolutionStr, numRowSegments)
-        
+
         #15. Build concat statement of intermediate video and audio segments
         videoConcatFiltergraph = f"[{']['.join(('vseg'+str(n) for n in range(numSegments)))}] concat=n={numSegments}:v=1:a=0 [vout]"
         filtergraphParts.append(videoConcatFiltergraph)
@@ -995,7 +993,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 ["-movflags", "faststart", outputFile]])]
 
     print("\n\n\nStep 13.v1: ", segmentTileCounts, maxSegmentTiles, outputResolution)
-    
+
     # v1
     def filtergraphTrimVersion():
         filtergraphParts = []
@@ -1118,8 +1116,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 outputMetadataOptions,
                 codecOptions,
                 ["-movflags", "faststart", outputFile]])]
-    
-    
+
     ####################
     ##  V3 - Chunked  ##
     ####################
@@ -1166,16 +1163,17 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 if file is not None:
                     startOffset = segmentStartTime - file.startTimestamp
                     endOffset = segmentEndTime - file.startTimestamp
-                    inputIndex = rowInputFileCount #inputFileIndexes[file]
-                    audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
-                    fileInfo = inputVideoInfo[inputIndex]
+                    inputIndex = rowInputFileCount 
+                    fileIndex = inputFileIndexes[file]
+                    #audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
+                    fileInfo = inputVideoInfo[fileIndex]
                     videoStreamInfo = [stream for stream in fileInfo['streams'] if stream['codec_type']=='video'][0]
                     height = videoStreamInfo['height']
                     width = videoStreamInfo['width']
                     isSixteenByNine = (height / 9.0) == (width / 16.0)
                     originalResolution = f"{width}:{height}"
                     needToScale = originalResolution != tileResolution
-                    #print(inputFilesSorted[fileIndex].videoFile, fileIndex, originalResolution, originalResolution == tileResolution)
+                    print(inputFilesSorted[fileIndex].videoFile, inputIndex, originalResolution, tileResolution, originalResolution == tileResolution)
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     if useHardwareAcceleration&1 == 1:
@@ -1186,6 +1184,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                                 rowInputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
                         else:
                             rowInputOptions.extend(('-threads', str(threadCount//2)))
+                    if startOffset != 0:
+                        rowInputOptions.extend(('-ss', str(startOffset)))
                     rowInputOptions.append('-i')
                     if file.localVideoFile is not None:
                         rowInputOptions.append(file.localVideoFile)
@@ -1208,7 +1208,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
                     labelFilter = f"drawtext=text='{str(streamerIndex)} {file.streamer}':fontsize=20:fontcolor=white:x=10:y=10:shadowx=2:shadowy=2" if drawLabels else ''
-                    trimFilter = f"trim={startOffset}:{endOffset}"
+                    #trimFilter = f"trim={startOffset}:{endOffset}"
+                    trimFilter = f"trim=duration={str(segmentDuration)}"
                     timeFilter = f"setpts={vpts}"
                     filtergraphBody = None
                     if needToScale or not isSixteenByNine:
@@ -1223,7 +1224,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     if filtergraphBody is None:
                         filtergraphBody = [trimFilter,timeFilter,fpsFilter,scaleFilter,padFilter,labelFilter]
                     videoFiltergraph = f"[{inputIndex}:v] {', '.join([segment for segment in filtergraphBody if segment != ''])} [{videoSegmentName}]"
-
+                    #audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
+                    audioFiltergraph = f"[{inputIndex}:a] a{trimFilter}, a{timeFilter} [{audioSegmentName}]"
+                    
                     filtergraphParts.append(videoFiltergraph)
                     filtergraphParts.append(audioFiltergraph)
                     rowVideoSegmentNames.append(videoSegmentName)
@@ -1289,8 +1292,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
         commandList.append(reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                 ['-f', 'concat',
                  '-safe', '0',
-                 '-i', LazyConcatFile('\n'.join(intermediateFilepaths)),
-                 '-c', 'copy'],
+                 '-i', LazyConcatFile("file '" + "'\nfile '".join(intermediateFilepaths)+"'"),
+                 '-c', 'copy',
+                 '-map', '0'],
                 outputMetadataOptions,
                 ["-movflags", "faststart", outputFile]]))
         for command in commandList:
@@ -1400,7 +1404,7 @@ print("Initialization complete!")
 testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
                                                 endTimeMode='allOverlapEnd',
                                                 logLevel=0,
-                                                useHardwareAcceleration=0,#1,#|2,
+                                                useHardwareAcceleration=1,#|2,
                                                 maxHwaccelFiles=18,
                                                 cutMode='chunked',
                                                 outputCodec='libx264',
@@ -1495,7 +1499,8 @@ if os.path.isfile(statusFilePath):
 renderStatuses = {}
 renderStatusLock = threading.Lock()
 renderQueue = queue.PriorityQueue()
-copyQueue = queue.PriorityQueue()
+if COPY_FILES:
+    copyQueue = queue.PriorityQueue()
 localFileReferenceCounts = {}
 localFileRefCountLock = threading.Lock()
 
@@ -1626,7 +1631,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                     hasError = True
                     setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
                     with open(errorFilePath, 'a') as errorFile:
-                        errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands))
+                        errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands)))
                     break
                 #result = types.SimpleNamespace()
                 #result.returncode = 0
@@ -1681,6 +1686,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                   endTimeMode='mainSessionEnd',
                   logLevel=1, #max logLevel = 4
                   sessionTrimLookback=1,
+                  cutMode='chunked',
                   encodingSpeedPreset='medium',
                   minimumTimeInVideo=450):
     if len(allFilesByVideoId) == 0:
@@ -1717,6 +1723,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                                                                 startTimeMode=startTimeMode,
                                                                 endTimeMode=endTimeMode,
                                                                 logLevel=logLevel,
+                                                                cutMode=cutMode,
                                                                 sessionTrimLookback=sessionTrimLookback,
                                                                 encodingSpeedPreset=encodingSpeedPreset,
                                                                 minimumTimeInVideo=minimumTimeInVideo)
@@ -1733,6 +1740,13 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
     else:
         print("Files are too new, waiting longer...")
         #ttime.sleep(60*60)#*24)
+
+def commandWorker():
+    raise Exception("Not implemented yet")
+    while True:
+        print("\n\n\n\n\n\n1. ")
+        userInput = input()
+                                        
 
 if __name__=='__main__': 
     if COPY_FILES:
