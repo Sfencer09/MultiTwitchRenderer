@@ -448,12 +448,7 @@ def scanFiles():
 #    game:str
 #    startTimestamp:int
 #    endTimestamp:int
-#class Segment:
-#    def __init__(self, file:SourceFile, startTimestamp:int|float, endTimestamp:int|float)
-#    file:SourceFile
-#    startOffset:int|float
-#    endffset:int|float
-#    def toInputFiltergraph(self, targetResolution:str, segmentNumber:int)
+#    hasOverlap(self, cmp:Session, useChat:bool=True):bool
 #allFilesByVideoId:{str:SourceFile}
 #allFilesByStreamer:{str:SourceFile[]}
 #allStreamersWithVideos:str[]
@@ -512,12 +507,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                                       endTimeMode='mainSessionEnd',
                                       logLevel=2, #max logLevel = 4
                                       sessionTrimLookback=1,
+                                      #sessionTrimLookahead=-1,
                                       outputCodec='libx264',
                                       encodingSpeedPreset='medium',
                                       useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale, bit 3(4)=(unsupported) encode
                                       maxHwaccelFiles=None,
                                       minimumTimeInVideo=900,
-                                      cutMode='trim',
+                                      cutMode='chunked',
                                       useChat=True,
                                       ffmpegPath=''):
     assert startTimeMode in ('mainSessionStart', 'allOverlapStart'), f"Unknown startTimeMode value: {str(startTimeMode)}"
@@ -554,7 +550,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     for streamer in otherStreamers:
         secondarySessionsByStreamer[streamer] = []
         for session in allStreamerSessions[streamer]:
-            if any((session.hasOverlap(x) for x in mainSessionsOnTargetDate)):
+            if any((session.hasOverlap(x, useChat) for x in mainSessionsOnTargetDate)):
                 secondarySessionsArray.append(session)
                 secondarySessionsByStreamer[streamer].append(session)
         secondarySessionsByStreamer[streamer].sort(key=lambda x: x.startTimestamp)
@@ -676,7 +672,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
               str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
 
     excludeTrimStreamerIndices = []
-    mainStreamerGames = set((session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0]))
+    mainStreamerGames = set((session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in ('Just Chatting',)))
     for streamerIndex in range(1, len(allInputStreamers)):
         if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
             excludeTrimStreamerIndices.append(streamerIndex)
@@ -684,29 +680,30 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             # trimming because they probably just have a different game name listed
     print(excludeTrimStreamerIndices)
 
-    # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
-    for i in range(1, len(segmentFileMatrix)):
-        print(len(segmentSessionMatrix[i-1:]))
-        acceptedGames = set((session.game for row in segmentSessionMatrix[i-sessionTrimLookback:] if row[0] is not None for session in row[0]))
-        print(acceptedGames, end=' ')
-        if len(acceptedGames)==0: #main streamer has no sessions for segment, extend from previous segment with sessions
-            for j in range(i-(sessionTrimLookback+1), 0, -1):
-                if segmentSessionMatrix[j][0] is None:
+    if sessionTrimLookback >= 0:
+        # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
+        for i in range(sessionTrimLookback, len(segmentFileMatrix)):
+            print(len(segmentSessionMatrix[i-1:]))
+            acceptedGames = set((session.game for row in segmentSessionMatrix[i-sessionTrimLookback:] if row[0] is not None for session in row[0] if session.game not in ('Just Chatting',)))
+            print(acceptedGames, end=' ')
+            if len(acceptedGames)==0: #main streamer has no sessions for segment, extend from previous segment with sessions
+                for j in range(i-(sessionTrimLookback+1), 0, -1):
+                    if segmentSessionMatrix[j][0] is None:
+                        continue
+                    tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0] if session.game not in ('Just Chatting',)))
+                    if len(tempAcceptedGames) > 0:
+                        acceptedGames = tempAcceptedGames
+                        break
+            print(acceptedGames)
+            for streamerIndex in range(1, len(allInputStreamers)):
+                if streamerIndex in excludeTrimStreamerIndices:
                     continue
-                tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0]))
-                if len(tempAcceptedGames) > 0:
-                    acceptedGames = tempAcceptedGames
-                    break
-        print(acceptedGames)
-        for streamerIndex in range(1, len(allInputStreamers)):
-            if streamerIndex in excludeTrimStreamerIndices:
-                continue
-            sessionList = segmentSessionMatrix[i][streamerIndex]
-            if sessionList is None:
-                continue
-            if not any((session.game in acceptedGames for session in sessionList)):
-                segmentSessionMatrix[i][streamerIndex] = None
-                segmentFileMatrix[i][streamerIndex] = None
+                sessionList = segmentSessionMatrix[i][streamerIndex]
+                if sessionList is None:
+                    continue
+                if not any((session.game in acceptedGames for session in sessionList)):
+                    segmentSessionMatrix[i][streamerIndex] = None
+                    segmentFileMatrix[i][streamerIndex] = None
     
     for i in range(len(segmentSessionMatrix)):
         print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
@@ -742,8 +739,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     print(allInputStreamers, allInputStreamersSortKey)
     
     for i in range(len(segmentSessionMatrix)):
-        print(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]], 
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
+    for i in range(len(segmentSessionMatrix)):
+        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
 
     #11. Combine adjacent segments that now have the same set of streamers
@@ -1223,11 +1221,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     useHwFilterAccel = useHardwareAcceleration & 2 == 2 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
                     #print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     if not useHwFilterAccel:
-                        tileWidth = int(tileResolution.split(':')[0])
-                        print(f"tileWidth={tileWidth}, video width={width}")
-                        if tileWidth > width: #upscaling
+                        tileHeight = int(tileResolution.split(':')[1])
+                        print(f"tileHeight={tileHeight}, video height={height}")
+                        if tileHeight > height: #upscaling
                             scaleAlgo = ':flags=lanczos'
-                        elif tileWidth < width:
+                        elif tileHeight < height:
                             scaleAlgo = '' #':flags=area'
                         else:
                             scaleAlgo = ''
@@ -1236,7 +1234,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     scaleFilter = f"scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                     padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
-                    labelFilter = f"drawtext=text='{str(streamerIndex)} {file.streamer}':fontsize=20:fontcolor=white:x=10:y=10:shadowx=2:shadowy=2" if drawLabels else ''
+                    labelFilter = f"drawtext=text='{str(streamerIndex)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=2:shadowy=2" if drawLabels else ''
                     #trimFilter = f"trim={startOffset}:{endOffset}"
                     trimFilter = f"trim=duration={str(segmentDuration)}"
                     timeFilter = f"setpts={vpts}"
@@ -1432,12 +1430,14 @@ print("Initialization complete!")
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
-                                                endTimeMode='allOverlapEnd',
-                                                logLevel=0,
-                                                useHardwareAcceleration=1,#|2,
-                                                sessionTrimLookback=3,
-                                                maxHwaccelFiles=18,
-                                                ffmpegPath='/home/ubuntu/ffmpeg-cuda/ffmpeg/')
+                                                 #endTimeMode='allOverlapEnd',
+                                                 logLevel=0,
+                                                 useHardwareAcceleration=1,#|2,
+                                                 sessionTrimLookback=3,
+                                                 maxHwaccelFiles=20,
+                                                 #useChat=False,
+                                                 drawLabels=True,
+                                                 ffmpegPath='/home/ubuntu/ffmpeg-cuda/ffmpeg/')
 
 
 print([extractInputFiles(testCommand) for testCommand in testCommands])
@@ -1504,6 +1504,7 @@ class QueueItem:
         print(commandArray)
         allOutputFiles = set([command[-1] for command in commandArray])
         self.sourceFiles = [filesBySourceVideoPath[filepath] for filepath in allInputFiles if filepath not in allOutputFiles]
+        self.intermediateFiles = set([command[-1] for command in commandArray[:-1]])
     def __lt__(self, cmp):
         return self.fileDate > cmp.fileDate
     def __gt__(self, cmp):
@@ -1693,6 +1694,10 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                     if remainingRefs == 0:
                         print(f"Removing local file {file}")
                         os.remove(file)
+            for file in task.intermediateFiles:
+                print(f"Removing intermediate file {file}")
+                assert basepath not in file
+                #os.remove(file)
 
 def getAllStreamingDaysByStreamer():
     daysByStreamer = {}
@@ -1786,6 +1791,15 @@ class Command:
         self.targetFunc = targetFunc
         self.description = description
 
+def endRendersAndExit():
+    print('Shutting down...')
+    if activeRenderSubprocess is not None:
+        activeRenderSubprocess.terminate()
+        activeRenderSubprocess.wait(3)
+        if activeRenderSubprocess.poll is None:
+            activeRenderSubprocess.kill()
+            activeRenderSubprocess.wait()
+    sys.exit(0)
 commandArray.append(Command(sys.exit, 'Exit program'))
 def printActiveJobs():
     print(f"Active render job:", "None" if activeRenderTask is None else f"{str(activeRenderTask)}")
