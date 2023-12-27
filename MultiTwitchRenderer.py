@@ -14,14 +14,14 @@
 # ---
 
 # %%
-import os, subprocess, json, time, math, pickle, re, queue, threading, shutil, random
+import os, subprocess, json, time, math, pickle, re, queue, threading, shutil, random, sys
 from functools import reduce
 from datetime import datetime, timezone, time, timedelta
 from fuzzysearch import find_near_matches
 from pprint import pprint
 from shlex import quote
 import time as ttime
-        
+
 def getVideoInfo(videoFile:str):
     probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
                                   '-print_format', 'json=c=1',
@@ -106,6 +106,7 @@ class ParsedChat:
                     #print(fullMessage)
                     #print(group)
                     convertedTime = datetime.fromisoformat(timestamp)
+                    #if len(groups) == 0 or set(group) != set(groups[-1].group):
                     groups.append({'group':group, 'time':convertedTime})
                 lastCommandComment = None
             else:
@@ -154,18 +155,19 @@ class Session:
         self.endTimestamp = endTimestamp
         self.file = file
         self.game = game
-    def hasOverlap(self:SourceFile, cmp:SourceFile):
+    def hasOverlap(self:SourceFile, cmp:SourceFile, useChat=True):
         if self.startTimestamp > cmp.endTimestamp or self.endTimestamp < cmp.startTimestamp:
             return False
-        if self.file.parsedChat is not None:
-            selfPlayers = self.file.parsedChat.getAllPlayersOverRange(self.startTimestamp-15, self.endTimestamp)
-            if cmp.file.streamer in selfPlayers:
-                return True
-        if cmp.file.parsedChat is not None:
-            cmpPlayers = cmp.file.parsedChat.getAllPlayersOverRange(cmp.startTimestamp-15, self.endTimestamp)
-            if self.file.streamer in cmpPlayers:
-                return True
-        return self.game == cmp.game and self.file.parsedChat is None and cmp.file.parsedChat is None
+        if useChat:
+            if self.file.parsedChat is not None:
+                selfPlayers = self.file.parsedChat.getAllPlayersOverRange(self.startTimestamp-15, self.endTimestamp)
+                if cmp.file.streamer in selfPlayers:
+                    return True
+            if cmp.file.parsedChat is not None:
+                cmpPlayers = cmp.file.parsedChat.getAllPlayersOverRange(cmp.startTimestamp-15, self.endTimestamp)
+                if self.file.streamer in cmpPlayers:
+                    return True
+        return self.game == cmp.game and (not useChat or (self.file.parsedChat is None and cmp.file.parsedChat is None))
     def __repr__(self):
         return f"Session(game=\"{self.game}\", startTimestamp={self.startTimestamp}, endTimestamp={self.endTimestamp}, file=\"{self.file}\")"
 
@@ -182,13 +184,36 @@ globalAllStreamers = [name for name in os.listdir(basepath) if
                        os.path.isdir(os.path.join(basepath, name)))]
 secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
 
-streamerAliases = {'Your__Narrator': ['YourNarrator'], 
-                   'Junkyard129':['Junkyard', 'Junk'], 
+streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'APlatypus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'ArtificialActr':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'BonsaiBroz':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
+                                'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   #'BryceMcQuaid':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Courtilly':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'CrashVS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'DooleyNotedGaming':['Jeremy'], 
-                   'MG4R':['Greg'],
-                   'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm'], #hacky override for Twitch Rivals 12/7/23
-                   'BonsaiBroz':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm'], #hacky override for Twitch Rivals 12/7/23
-                   'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm'], #hacky override for Twitch Rivals 12/7/23
+                   'ElainaExe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'emerome':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'FlanelJoe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'HeckMuffins':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Junkyard129':['Junkyard', 'Junk', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Kn0vis':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
+                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'MG4R':['Greg', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'MicheleBoyd':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm', #hacky override for Twitch Rivals 12/7/23
+                                      'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'ToastyFPS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'VikramAFC':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Your__Narrator': ['YourNarrator'],
                   }
 
 
@@ -477,7 +502,7 @@ def pretty_print(clas, indent=0):
             output += ' ' * indent +  k + ': ' + str(v) + '\n'
 
 def toFfmpegTimestamp(ts:int|float):
-    return f"{ts//3600:02d}:{(ts//60)%60:02d}:{ts%60:02d}"
+    return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate,
@@ -493,6 +518,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                                       maxHwaccelFiles=None,
                                       minimumTimeInVideo=900,
                                       cutMode='trim',
+                                      useChat=True,
                                       ffmpegPath=''):
     assert startTimeMode in ('mainSessionStart', 'allOverlapStart'), f"Unknown startTimeMode value: {str(startTimeMode)}"
     assert endTimeMode in ('mainSessionEnd', 'allOverlapEnd'), f"Unknown endTimeMode value: {str(endTimeMode)}"
@@ -636,8 +662,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     #9. Remove segments of secondary streamers still in games that main streamer has left
     print("\n\nStep 9:")
     for i in range(len(segmentSessionMatrix)):
-        print(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]], 
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
+    for i in range(len(segmentSessionMatrix)):
+        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
     for i in range(len(segmentFileMatrix)):
         if segmentSessionMatrix[i][0] is None:
@@ -682,8 +709,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 segmentFileMatrix[i][streamerIndex] = None
     
     for i in range(len(segmentSessionMatrix)):
-        print(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]], 
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
+    for i in range(len(segmentSessionMatrix)):
+        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
     
     print("\n\nStep 10:")
@@ -732,8 +760,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             numSegments -= 1
 
     for i in range(len(segmentSessionMatrix)):
-        print(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]], 
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
+    for i in range(len(segmentSessionMatrix)):
+        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
     for i in range(len(segmentSessionMatrix)):
         if segmentSessionMatrix[i][0] is None:
@@ -1386,7 +1415,7 @@ def reinitialize():
     initialize()
 
 
-def reloadSave():
+def reloadAndSave():
     global allFilesByVideoId; allFilesByVideoId = {} #string:SourceFile
     global allFilesByStreamer; allFilesByStreamer = {} #string:[SourceFile]
     global allStreamersWithVideos; allStreamersWithVideos = []
@@ -1396,19 +1425,18 @@ def reloadSave():
     scanFiles()
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
-#reloadSave()
-#initialize()
+#reloadAndSave()
+initialize()
 print("Initialization complete!")
 
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
-testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
+#testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
                                                 endTimeMode='allOverlapEnd',
                                                 logLevel=0,
                                                 useHardwareAcceleration=1,#|2,
+                                                sessionTrimLookback=3,
                                                 maxHwaccelFiles=18,
-                                                cutMode='chunked',
-                                                outputCodec='libx264',
-                                                encodingSpeedPreset='medium',
                                                 ffmpegPath='/home/ubuntu/ffmpeg-cuda/ffmpeg/')
 
 
@@ -1447,13 +1475,14 @@ def writeCommandScript(commandList, testNum=None):
         file.write(' && \\\necho "Render complete!!"')
 
 #writeCommandStrings(testCommandStrings, 10)
-writeCommandScript(testCommandStrings, 10)
+writeCommandScript(testCommandStrings, 11)
 
 # %%
 
 # %%
 # Threading time!
 #import types
+import atexit
 
 errorFilePath = r'./erroredCommands.log'
 statusFilePath = r'./renderStatuses.pickle'
@@ -1471,7 +1500,8 @@ class QueueItem:
         self.mainStreamer = mainStreamer
         self.commandArray = commandArray
         self.outputPath = commandArray[-1][-1]
-        allInputFiles = [filepath for command in commandArray for filepath in extractInputFiles(command)]
+        allInputFiles = [filepath for command in commandArray for filepath in extractInputFiles(command) if type(filepath)==str and 'anullsrc' not in filepath]
+        print(commandArray)
         allOutputFiles = set([command[-1] for command in commandArray])
         self.sourceFiles = [filesBySourceVideoPath[filepath] for filepath in allInputFiles if filepath not in allOutputFiles]
     def __lt__(self, cmp):
@@ -1482,6 +1512,8 @@ class QueueItem:
         return self.fileDate >= cmp.fileDate
     def __gte__(self, cmp):
         return self.fileDate <= cmp.fileDate
+    def __str__(self):
+        return f"{self.mainStreamer} {self.fileDate}"
     def __repr__(self):
         return f"QueueItem(mainStreamer={self.mainStreamer}, fileDate={self.fileDate})"
 
@@ -1568,6 +1600,8 @@ def scanForExistingVideos():
         else:
             print(f"Streamer {streamer} not known")
 
+if COPY_FILES:
+    activeCopyTask = None
 def copyWorker():
     while True:
         if copyQueue.empty():
@@ -1577,6 +1611,7 @@ def copyWorker():
             #return
         task = copyQueue.get(block=False)
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'COPY_QUEUE'
+        activeCopyTask = task
         setRenderStatus(task.mainStreamer, task.fileDate, 'COPYING')
         #renderCommand = list(task.commandArray)
         for file in task.sourceFiles:
@@ -1601,6 +1636,8 @@ def copyWorker():
         renderQueue.put(QueueItem(renderCommand, task.mainStreamer, task.fileDate))
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
 
+activeRenderTask = None
+activeRenderSubprocess = None
 def renderWorker(stats_period=30): #30 seconds between encoding stats printing
     while True:
         if renderQueue.empty():
@@ -1610,6 +1647,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
         task = renderQueue.get(block=False)
         print(task.commandArray)
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
+        activeRenderTask = task
         renderCommands = list(task.commandArray)
         outpath = renderCommands[-1][-1]
         #pathSplitIndex = outpath.rindex('.')
@@ -1627,6 +1665,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommand)==1 else f'_{i}'}.log",'a')) as logFile:
                 print(f"Running render to file {outpath}")
                 result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
+                process = subprocess.Popen(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
                 if result.returncode != 0:
                     hasError = True
                     setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
@@ -1653,7 +1692,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                     remainingRefs = decrFileRefCount(file.localVideoPath)
                     if remainingRefs == 0:
                         print(f"Removing local file {file}")
-                        #os.remove(file)
+                        os.remove(file)
 
 def getAllStreamingDaysByStreamer():
     daysByStreamer = {}
@@ -1729,7 +1768,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                                                                 minimumTimeInVideo=minimumTimeInVideo)
                     if command is None: #command cannot be made, maybe solo stream or only one 
                         continue
-                    item = QueueItem([command], streamer, day)
+                    item = QueueItem(command, streamer, day)
                     print(f"Adding render for streamer {streamer} from {day}")
                     (copyQueue if COPY_FILES else renderQueue).put(item)
                     setRenderStatus(streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
@@ -1741,12 +1780,53 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
         print("Files are too new, waiting longer...")
         #ttime.sleep(60*60)#*24)
 
+commandArray = []
+class Command:
+    def __init__(self, targetFunc, description):
+        self.targetFunc = targetFunc
+        self.description = description
+
+commandArray.append(Command(sys.exit, 'Exit program'))
+def printActiveJobs():
+    print(f"Active render job:", "None" if activeRenderTask is None else f"{str(activeRenderTask)}")
+    if COPY_FILES:
+        print(f"Active copy job:", "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
+commandArray.append(Command(printActiveJobs, 'Print active jobs'))
+def printQueuedJobs():
+    if len(renderQueue.queue) == 0:
+        print("Render queue: empty")
+    else:
+        for queueItem in sorted(renderQueue.queue):
+            print(queueItem)
+    if COPY_FILES:
+        if len(copyQueue.queue) == 0:
+            print("Copy queue: empty")
+        else:
+            for queueItem in sorted(copyQueue.queue):
+                print(queueItem)
+
+commandArray.append(Command(printQueuedJobs, 'Print queued jobs'))
+
 def commandWorker():
-    raise Exception("Not implemented yet")
     while True:
-        print("\n\n\n\n\n\n1. ")
-        userInput = input()
-                                        
+        for _ in range(5):
+            print()
+        for i in range(len(commandArray)):
+            command = commandArray[i]
+            print(f"{str(i)}. {command.description}")
+        #print("\n\n\n\n\n\n0. Exit program\n1. Print active jobs\n2. Print queued jobs\n3. Manually add job\n4. Modify/rerun job\n")
+        userInput = input(" >> ")
+        if not userInput.isdigit():
+            print(f"Invalid input: '{userInput}'")
+            print("Please try again")
+            continue
+        optionNum = int(userInput)
+        if optionNum < 0 or optionNum > len(commandArray):
+            print(f"Invalid option number: {userInput}")
+            print("Please try again")
+        commandArray[optionNum].targetFunc()
+        raise Exception("Not implemented yet")
+        
 
 if __name__=='__main__': 
     if COPY_FILES:
@@ -1763,9 +1843,10 @@ if __name__=='__main__':
                                                                   })
     #sessionThread.start()
 
-    #sessionWorker(maxLookback=timedelta(days=14,hours=18), logLevel=2)
+    #sessionWorker(maxLookback=timedelta(days=7,hours=18), logLevel=2)
     #copyWorker()
     #print(getAllStreamingDaysByStreamer()['ChilledChaos'])
+    commandWorker()
     allGames = calcGameCounts()
     for game in sorted(allGames.keys(), key=lambda x: (allGames[x], x)):
         print(game, allGames[game])
@@ -1800,6 +1881,20 @@ def normalizeAllGames():
         lowercaseGames[game.lower()] = game
     for game in gameCounts.keys():
         #if gameCounts[game] == 1:
+        #    continue
+        trueGame = None
+        for key in knownReplacements.keys():
+            if any((game == alias for alias in knownReplacements[key])):
+                trueGame = key
+                break
+        if trueGame is None:
+            trueGame = game
+        else:
+            print(game, trueGame)
+            continue
+            
+        #if any((any((game == alias for alias in knownReplacements[key])) for key in knownReplacements.keys())):
+            #game is already a known alias
         #    continue
         lowergame = game.lower()
         if lowergame in lowercaseGames.keys():
@@ -1871,7 +1966,7 @@ def normalizeAllGames():
     for streamer, sessions in allStreamerSessions.items():
         print(f"Normalizing games for streamer {streamer}")
         for session in sessions:
-            
+            ...
 
 normalizeAllGames()
 
