@@ -216,6 +216,8 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
                    'Your__Narrator': ['YourNarrator'],
                   }
 
+nongroupGames = ('Just Chatting', "I'm Only Sleeping")
+
 
 characterReplacements = {'?':'？', '/':'', '\\':''}
 
@@ -658,10 +660,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     #9. Remove segments of secondary streamers still in games that main streamer has left
     print("\n\nStep 9:")
     for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
-    for i in range(len(segmentSessionMatrix)):
-        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
     for i in range(len(segmentFileMatrix)):
         if segmentSessionMatrix[i][0] is None:
             print([])
@@ -672,7 +673,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
               str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
 
     excludeTrimStreamerIndices = []
-    mainStreamerGames = set((session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in ('Just Chatting',)))
+    mainStreamerGames = set((session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in nongroupGames))
     for streamerIndex in range(1, len(allInputStreamers)):
         if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
             excludeTrimStreamerIndices.append(streamerIndex)
@@ -684,13 +685,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
         # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
         for i in range(sessionTrimLookback, len(segmentFileMatrix)):
             print(len(segmentSessionMatrix[i-1:]))
-            acceptedGames = set((session.game for row in segmentSessionMatrix[i-sessionTrimLookback:] if row[0] is not None for session in row[0] if session.game not in ('Just Chatting',)))
+            acceptedGames = set((session.game for row in segmentSessionMatrix[i-sessionTrimLookback:] if row[0] is not None for session in row[0] if session.game not in nongroupGames))
             print(acceptedGames, end=' ')
             if len(acceptedGames)==0: #main streamer has no sessions for segment, extend from previous segment with sessions
                 for j in range(i-(sessionTrimLookback+1), 0, -1):
                     if segmentSessionMatrix[j][0] is None:
                         continue
-                    tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0] if session.game not in ('Just Chatting',)))
+                    tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0] if session.game not in nongroupGames))
                     if len(tempAcceptedGames) > 0:
                         acceptedGames = tempAcceptedGames
                         break
@@ -705,11 +706,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     segmentSessionMatrix[i][streamerIndex] = None
                     segmentFileMatrix[i][streamerIndex] = None
     
+    # TODO: fill in short gaps (<5 min?) in secondary streamers
+    
     for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
-    for i in range(len(segmentSessionMatrix)):
-        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
     
     print("\n\nStep 10:")
     #10. Remove streamers who have less than a minimum amount of time in the video
@@ -739,10 +741,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     print(allInputStreamers, allInputStreamersSortKey)
     
     for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
-    for i in range(len(segmentSessionMatrix)):
-        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
 
     #11. Combine adjacent segments that now have the same set of streamers
     print("\n\nStep 11:")
@@ -758,10 +759,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             numSegments -= 1
 
     for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]")
-    for i in range(len(segmentSessionMatrix)):
-        print(convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-             convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
     for i in range(len(segmentSessionMatrix)):
         if segmentSessionMatrix[i][0] is None:
             print([])
@@ -838,20 +838,20 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
         outputMetadataOptions.extend((f"-metadata:s:a:{streamerIndex}", f"title=\"{streamerName}\"",
                                       f"-metadata:s:a:{streamerIndex}", "language=eng"))
     codecOptions = ["-c:a","aac",
-         "-c:v",outputCodec,
-         "-s",outputResolutionStr]
+         "-c:v", outputCodec,
+         "-s", outputResolutionStr]
     if outputCodec in ('libx264', 'h264_nvenc'):
         codecOptions.extend(("-profile:v","high",
          #"-maxrate",outputBitrates[maxTileWidth],
          #"-bufsize","4M",
-         "-preset",encodingSpeedPreset,
-         "-crf","22",
+         "-preset", encodingSpeedPreset,
+         "-crf", "22",
         ))
         if REDUCED_MEMORY:
             codecOptions.extend('-rc-lookahead', '20', '-g', '60')
     elif outputCodec in ('libx265', 'hevc_nvenc'):
         codecOptions.extend((
-         "-preset",encodingSpeedPreset,
+         "-preset", encodingSpeedPreset,
          "-crf", "26",
          "-tag:v", "hvc1"
         ))
@@ -947,7 +947,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     print(inputFilesSorted[fileIndex].videoFile, fileIndex, originalResolution, originalResolution == tileResolution)
                     inputVSegName = f"file{fileIndex}V{fileSegNum}"
                     outputVSegName = f"seg{segIndex}V{streamerIndex}"
-                    labelFilter = f", drawtext=text='{str(streamerIndex)} {allInputStreamers[streamerIndex]}':fontsize=20:fontcolor=white:x=10:y=10:shadowx=2:shadowy=2" if drawLabels else ''
+                    labelFilter = f", drawtext=text='{str(streamerIndex+1)} {allInputStreamers[streamerIndex]}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     useHwFilterAccel = useHardwareAcceleration & 2 == 2 and (maxHwaccelFiles is None or fileIndex < maxHwaccelFiles)
                     uploadFilter, downloadFilter = (f", hwupload_cuda", f", hwdownload,format=pix_fmts=yuv420p") if useHwFilterAccel and (needToScale or not isSixteenByNine) else ('', '')
                     scaleFilter = f", scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame" if needToScale else ''
@@ -1071,7 +1071,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     scaleFilter = f"scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                     padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
-                    labelFilter = f"drawtext=text='{str(streamerIndex)} {file.streamer}':fontsize=20:fontcolor=white:x=10:y=10:shadowx=2:shadowy=2" if drawLabels else ''
+                    labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     trimFilter = f"trim={startOffset}:{endOffset}"
                     timeFilter = f"setpts={vpts}"
                     filtergraphBody = None
@@ -1234,7 +1234,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     scaleFilter = f"scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                     padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
-                    labelFilter = f"drawtext=text='{str(streamerIndex)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=2:shadowy=2" if drawLabels else ''
+                    labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     #trimFilter = f"trim={startOffset}:{endOffset}"
                     trimFilter = f"trim=duration={str(segmentDuration)}"
                     timeFilter = f"setpts={vpts}"
