@@ -370,8 +370,8 @@ def scanFiles():
                 else:
                     assert filename.endswith(chatExt)
                     file.setChatFile(filepath)
-                    if streamer in streamersParseChatList:
-                        file.parsedChat = ParsedChat(filepath)
+                    #if streamer in streamersParseChatList:
+                    #    file.parsedChat = ParsedChat(filepath)
                 if file.isComplete():
                     newFiles.add(file)
             allScannedFiles.add(filepath)
@@ -501,6 +501,10 @@ def pretty_print(clas, indent=0):
 def toFfmpegTimestamp(ts:int|float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
+HW_DECODE=1
+HW_INPUT_SCALE=2
+HW_OUTPUT_SCALE=4
+HW_ENCODE=8
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                                       outputFile=None, *,
@@ -508,11 +512,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                                       startTimeMode='mainSessionStart',
                                       endTimeMode='mainSessionEnd',
                                       logLevel=2, #max logLevel = 4
-                                      sessionTrimLookback=1,
-                                      #sessionTrimLookahead=-1,
+                                      sessionTrimLookback=0, #TODO: convert from number of segments to number of seconds. Same for lookahead
+                                      sessionTrimLookahead=5,
+                                      minGapSize=0,
                                       outputCodec='libx264',
                                       encodingSpeedPreset='medium',
-                                      useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale, bit 3(4)=(unsupported) encode
+                                      useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
                                       maxHwaccelFiles=None,
                                       minimumTimeInVideo=900,
                                       cutMode='chunked',
@@ -521,11 +526,19 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     assert startTimeMode in ('mainSessionStart', 'allOverlapStart'), f"Unknown startTimeMode value: {str(startTimeMode)}"
     assert endTimeMode in ('mainSessionEnd', 'allOverlapEnd'), f"Unknown endTimeMode value: {str(endTimeMode)}"
     assert outputCodec in ('libx264', 'libx265', 'h264_nvenc'), f"Unknown output codec: {str(outputCodec)}"
-    assert encodingSpeedPreset in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'), f"Unknown encoding speed preset: {str(encodingSpeedPreset)}"
-    assert useHardwareAcceleration in tuple(range(4)), f"Unknown useHardwareAcceleration value: {str(useHardwareAcceleration)}"
+    assert encodingSpeedPreset in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow') or encodingSpeedPreset in [f'p{i}' for i in range(1, 8)], f"Unknown encoding speed preset: {str(encodingSpeedPreset)}"
+    assert useHardwareAcceleration & (HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE) == useHardwareAcceleration, f"Unknown useHardwareAcceleration value: {str(useHardwareAcceleration)}"
     assert cutMode in ('trim', 'segment', 'chunked'), f"Unknown cutMode value: {str(cutMode)}"
     if outputCodec in ('h264_nvenc', 'hevc_nvenc'):
-        assert useHardwareAcceleration&4==4, f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {outputCodec}"
+        assert useHardwareAcceleration & HW_ENCODE != 0, f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {outputCodec}"
+        assert encodingSpeedPreset in [f'p{i}' for i in range(1, 8)], "Must use p1-p7 presets with hardware codecs"
+    else:
+        assert encodingSpeedPreset in encodingSpeedPreset in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'), "Can only use p1-p7 presets with hardware codecs"
+    if useHardwareAcceleration & HW_OUTPUT_SCALE != 0:
+        assert useHardwareAcceleration & HW_ENCODE != 0, f"Hardware-accelerated output scaling must currently be used with hardware encoding"
+        
+    if useHardwareAcceleration & HW_ENCODE != 0:
+        assert outputCodec in ('h264_nvenc', 'hevc_nvenc'), f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled"
     otherStreamers = [name for name in allStreamersWithVideos if name is not mainStreamer]
 
     #2. For a given day, target a streamer and find the start and end times of their sessions for the day
@@ -659,18 +672,23 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
 
     #9. Remove segments of secondary streamers still in games that main streamer has left
     print("\n\nStep 9:")
-    for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
-    for i in range(len(segmentFileMatrix)):
-        if segmentSessionMatrix[i][0] is None:
-            print([])
-            continue
-        tempMainGames = set((session.game for session in segmentSessionMatrix[i][0]))
-        tempGames = set((session.game for item in segmentSessionMatrix[i][1:] if item is not None for session in item))
-        print(tempMainGames, tempGames, str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
-              str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
+    def printSegmentMatrix(showGameChanges=True):
+        for i in range(len(segmentSessionMatrix)):
+            if showGameChanges and i > 0:
+                if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
+                    print('--'*(1+len(allInputStreamers)))
+            print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+                  convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+                  convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+    printSegmentMatrix(showGameChanges=True)
+    #for i in range(len(segmentFileMatrix)):
+    #    if segmentSessionMatrix[i][0] is None:
+    #        tempMainGames = set()
+    #    else:
+    #        tempMainGames = set((session.game for session in segmentSessionMatrix[i][0]))
+    #    tempGames = set((session.game for item in segmentSessionMatrix[i][1:] if item is not None for session in item))
+    #    print(tempMainGames, tempGames, str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
+    #          str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
 
     excludeTrimStreamerIndices = []
     mainStreamerGames = set((session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in nongroupGames))
@@ -679,23 +697,37 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             excludeTrimStreamerIndices.append(streamerIndex)
             #If the trimming process would remove /all/ segments for the given streamer, exclude the streamer from
             # trimming because they probably just have a different game name listed
-    print(excludeTrimStreamerIndices)
+    print('excluding from trimming:', excludeTrimStreamerIndices)
 
+    print("\n\nStep 9.1:")
     if sessionTrimLookback >= 0:
         # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
-        for i in range(sessionTrimLookback, len(segmentFileMatrix)):
-            print(len(segmentSessionMatrix[i-1:]))
-            acceptedGames = set((session.game for row in segmentSessionMatrix[i-sessionTrimLookback:] if row[0] is not None for session in row[0] if session.game not in nongroupGames))
-            print(acceptedGames, end=' ')
-            if len(acceptedGames)==0: #main streamer has no sessions for segment, extend from previous segment with sessions
-                for j in range(i-(sessionTrimLookback+1), 0, -1):
-                    if segmentSessionMatrix[j][0] is None:
-                        continue
-                    tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0] if session.game not in nongroupGames))
-                    if len(tempAcceptedGames) > 0:
-                        acceptedGames = tempAcceptedGames
-                        break
-            print(acceptedGames)
+        for i in range(0, len(segmentFileMatrix)):
+            #print(len(segmentSessionMatrix[i-sessionTrimLookback:]))
+            includeRowStart = max(0, i-sessionTrimLookback)
+            includeRowEnd = min(len(segmentFileMatrix)-1, i+sessionTrimLookahead+1)
+            print(includeRowStart, sessionTrimLookback, i)
+            print(includeRowEnd, sessionTrimLookahead, i)
+            rowGames = set((session.game for session in segmentSessionMatrix[i][0] if segmentSessionMatrix[i][0] is not None))
+            print('rowGames', rowGames)
+            #print(segmentSessionMatrix[i-sessionTrimLookback])
+            acceptedGames = set((session.game for row in segmentSessionMatrix[includeRowStart:includeRowEnd] if row[0] is not None for session in row[0] if session.game not in nongroupGames))
+            print('acceptedGames', acceptedGames)#, end=' ')
+            if len(acceptedGames)==0 and (startTimeMode == 'allOverlapStart' or endTimeMode == 'allOverlapEnd'): #main streamer has no sessions for segment, extend from previous segment with sessions
+                #expandedIncludeStart = 
+                raise Exception("Needs updating")
+                if endTimeMode == 'allOverlapEnd':
+                    for j in range(i-(sessionTrimLookback+1), 0, -1):
+                        print(f"j={j}")
+                        if segmentSessionMatrix[j][0] is None:
+                            continue
+                        tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0] if session.game not in nongroupGames))
+                        if len(tempAcceptedGames) > 0:
+                            acceptedGames = tempAcceptedGames
+                            break
+            print(acceptedGames, reduce(set.union,
+                  (set((session.game for session in sessionList)) for sessionList in segmentSessionMatrix[i] if sessionList is not None),
+                  set()))
             for streamerIndex in range(1, len(allInputStreamers)):
                 if streamerIndex in excludeTrimStreamerIndices:
                     continue
@@ -705,13 +737,60 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                 if not any((session.game in acceptedGames for session in sessionList)):
                     segmentSessionMatrix[i][streamerIndex] = None
                     segmentFileMatrix[i][streamerIndex] = None
+        printSegmentMatrix(showGameChanges=True)
     
-    # TODO: fill in short gaps (<5 min?) in secondary streamers
+    def splitRow(rowNum, timestamp):
+        assert uniqueTimestampsSorted[rowNum] < timestamp < uniqueTimestampsSorted[rowNum+1]
+        fileRowCopy = segmentFileMatrix[rowNum].copy()
+        segmentFileMatrix.insert(rowNum, fileRowCopy)
+        segmentRowCopy = [(None if sessions is None else sessions.copy()) for sessions in segmentSessionMatrix[rowNum]]
+        segmentSessionMatrix.insert(rowNum, segmentRowCopy)
+        uniqueTimestampsSorted.insert(rowNum+1, timestamp)
+        numSegments += 1
     
-    for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+    # TODO: fill in short gaps (<5 min?) in secondary streamers if possible
+    if minGapSize > 0:
+        print("\n\nStep 9.2:")
+        for streamerIndex in range(1, len(allInputStreamers)):
+            streamer = allInputStreamers[streamerIndex]
+            gapLength = 0
+            gapStart = -1
+            lastState = (segmentFileMatrix[0][streamerIndex] is not None)
+            for i in range(1, len(segmentFileMatrix)):
+                curState = (segmentFileMatrix[i][streamerIndex] is not None)
+                segmentDuration = uniqueTimestampsSorted[i+1] - uniqueTimestampsSorted[i]
+                if curState != lastState:
+                    if curState:
+                        #gap ending
+                        if gapLength < minGapSize and gapStart != -1:
+                            #assert gapStart > 0, f"i={i}, gapStart={str(gapStart)}, curState={curState}"
+                            gapStartFile = segmentFileMatrix[gapStart-1][streamerIndex]
+                            gapEndFile = segmentFileMatrix[i][streamerIndex]
+                            #if gapStartFile is gapEndFile:   
+                                #assert gapEndTime - gapStartTime == gapLength #TODO: replace gapLength with the subtraction everywhere
+                                #gap starts and ends with the same file, can fill in gap easily
+                            for j in range(gapStart, i):
+                                segmentStartTime = uniqueTimestampsSorted[j]
+                                segmentEndTime = uniqueTimestampsSorted[j]
+                                missingSessions = [session for session in allStreamerSessions[streamer] if session.startTimestamp <= segmentEndTime and session.endTimestamp >= segmentStartTime]
+                                assert len(missingSessions) <= 1
+                                if len(missingSessions) == 1:
+                                    segmentSessionMatrix[j][streamerIndex] = missingSessions
+                                    segmentFileMatrix[j][streamerIndex] = missingSessions[0].file
+                                else:
+                                    assert len(missingSessions) == 0 and gapStartFile is not gapEndFile
+                        gapStart = -1
+                        gapLength = 0
+                    else:
+                        #gap starting
+                        gapStart = i
+                        gapLenth = segmentDuration
+                if not curState:
+                    gapLength += segmentDuration
+                lastState = curState
+        
+    
+    printSegmentMatrix()
     
     print("\n\nStep 10:")
     #10. Remove streamers who have less than a minimum amount of time in the video
@@ -740,28 +819,26 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             del secondarySessionsByStreamer[streamer]
     print(allInputStreamers, allInputStreamersSortKey)
     
-    for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+    printSegmentMatrix()
 
     #11. Combine adjacent segments that now have the same set of streamers
     print("\n\nStep 11:")
+    #def compressRows():
     for i in range(numSegments-1, 0, -1):
         print(i)
         if all(((segmentFileMatrix[i][stIndex] is None) == (segmentFileMatrix[i-1][stIndex] is None) for stIndex in range(len(allInputStreamers)))):
             del segmentFileMatrix[i]
+            sessionMergeRow = [None if segmentSessionMatrix[i][si] is None else set(segmentSessionMatrix[i-1][si]).union(set(segmentSessionMatrix[i][si])) for si in range(len(allInputStreamers))]
+            segmentSessionMatrix[i-1] = [None if sessionMerge is None else sorted(sessionMerge, key=lambda x: x.startTimestamp) for sessionMerge in sessionMergeRow]
             del segmentSessionMatrix[i]
             tempTs = uniqueTimestampsSorted[i]
             print(f"Combining segments {str(i)} and {str(i-1)}, dropping timestamp {str(tempTs)}")
             del uniqueTimestampsSorted[i]
             uniqueTimestamps.remove(tempTs)
             numSegments -= 1
+    #compressRows()
 
-    for i in range(len(segmentSessionMatrix)):
-        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-              convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]))
+    printSegmentMatrix()
     for i in range(len(segmentSessionMatrix)):
         if segmentSessionMatrix[i][0] is None:
             print([])
@@ -783,11 +860,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     inputVideoInfo = []
     for i in range(len(inputFilesSorted)):
         file = inputFilesSorted[i]
-        if useHardwareAcceleration&1 == 1:
+        if useHardwareAcceleration&HW_DECODE != 0:
             if maxHwaccelFiles is None or i < maxHwaccelFiles:
                 inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
                 #inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-                if useHardwareAcceleration&2 == 2 and cutMode == 'trim':
+                if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
                     inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
             else:
                 inputOptions.extend(('-threads', str(threadCount//2)))
@@ -860,11 +937,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     threadOptions = ['-threads', str(threadCount),
                  '-filter_threads', str(threadCount),
                  '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
-    uploadFilter, downloadFilter = (f"hwupload_cuda", f"hwdownload,format=pix_fmts=yuv420p")
+    uploadFilter = "hwupload_cuda"
+    downloadFilter= "hwdownload,format=pix_fmts=yuv420p"
+    timeFilter = f"setpts={vpts}"
     
     #14. For each row of #8:
-    filtergraphStringSegments = []
-    filtergraphStringSegmentsV2 = []
+    #filtergraphStringSegments = []
+    #filtergraphStringSegmentsV2 = []
     print("\n\n\nStep 13.v2: ", segmentTileCounts, maxSegmentTiles, outputResolution)
     #v2()
     def filtergraphSegmentVersion():
@@ -948,7 +1027,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     inputVSegName = f"file{fileIndex}V{fileSegNum}"
                     outputVSegName = f"seg{segIndex}V{streamerIndex}"
                     labelFilter = f", drawtext=text='{str(streamerIndex+1)} {allInputStreamers[streamerIndex]}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
-                    useHwFilterAccel = useHardwareAcceleration & 2 == 2 and (maxHwaccelFiles is None or fileIndex < maxHwaccelFiles)
+                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or fileIndex < maxHwaccelFiles)
                     uploadFilter, downloadFilter = (f", hwupload_cuda", f", hwdownload,format=pix_fmts=yuv420p") if useHwFilterAccel and (needToScale or not isSixteenByNine) else ('', '')
                     scaleFilter = f", scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame" if needToScale else ''
                     padFilter = f", pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
@@ -1022,7 +1101,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
     print("\n\n\nStep 13.v1: ", segmentTileCounts, maxSegmentTiles, outputResolution)
 
     # v1
-    def filtergraphTrimVersion():
+    def filtergraphTrimVersion():#uniqueTimestampsSorted, allInputStreamers, segmentFileMatrix, segmentSessionMatrix
         filtergraphParts = []
         for segIndex in range(numSegments):
             segmentStartTime = uniqueTimestampsSorted[segIndex]
@@ -1058,7 +1137,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     #print(inputFile.videoFile, fpsRaw, fpsActual, fpsActual==60)
-                    useHwFilterAccel = useHardwareAcceleration & 2 == 2 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
+                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
                     if not useHwFilterAccel:
                         if outputResolution[0] > width: #upscaling
                             scaleAlgo = ':sws_flags=lanczos'
@@ -1073,7 +1152,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
                     labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     trimFilter = f"trim={startOffset}:{endOffset}"
-                    timeFilter = f"setpts={vpts}"
+                    #timeFilter = f"setpts={vpts}"
                     filtergraphBody = None
                     if needToScale or not isSixteenByNine:
                         if useHardwareAcceleration == 3 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
@@ -1130,9 +1209,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             filtergraphParts.append(audioConcatFiltergraph)
             if logLevel >= 3:
                 print("\n\n\nStep 15: ", streamerIndex, audioConcatFiltergraph)
-        if logLevel >= 3:
-            for fss in filtergraphStringSegments:
-                print(fss)
+        #if logLevel >= 3:
+        #    for fss in filtergraphStringSegments:
+        #        print(fss)
         completeFiltergraph = " ; ".join(filtergraphParts)
         return [reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                 inputOptions,
@@ -1203,11 +1282,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                     print(inputFilesSorted[fileIndex].videoFile, inputIndex, originalResolution, tileResolution, originalResolution == tileResolution)
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
-                    if useHardwareAcceleration&1 == 1:
+                    if useHardwareAcceleration&HW_DECODE != 0:
                         if maxHwaccelFiles is None or inputIndex < maxHwaccelFiles:
                             rowInputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
                             #rowInputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-                            if useHardwareAcceleration&2 == 2 and cutMode == 'trim':
+                            if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
                                 rowInputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
                         else:
                             rowInputOptions.extend(('-threads', str(threadCount//2)))
@@ -1218,36 +1297,33 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
                         rowInputOptions.append(file.localVideoFile)
                     else:
                         rowInputOptions.append(file.videoFile)
-                    useHwFilterAccel = useHardwareAcceleration & 2 == 2 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
+                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
                     #print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
-                    if not useHwFilterAccel:
-                        tileHeight = int(tileResolution.split(':')[1])
-                        print(f"tileHeight={tileHeight}, video height={height}")
-                        if tileHeight > height: #upscaling
-                            scaleAlgo = ':flags=lanczos'
-                        elif tileHeight < height:
-                            scaleAlgo = '' #':flags=area'
-                        else:
-                            scaleAlgo = ''
+                    tileHeight = int(tileResolution.split(':')[1])
+                    print(f"tileHeight={tileHeight}, video height={height}")
+                    if tileHeight > height: #upscaling
+                        scaleAlgo = '' if useHwFilterAccel else ':flags=lanczos'
+                    elif tileHeight < height:
+                        scaleAlgo = ':interp_algo=super' if useHwFilterAccel else '' #':flags=area'
                     else:
-                        scaleAlgo = '' #don't specify for HW-accelerated scaling
+                        scaleAlgo = ''
                     scaleFilter = f"scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                     padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
                     labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     #trimFilter = f"trim={startOffset}:{endOffset}"
                     trimFilter = f"trim=duration={str(segmentDuration)}"
-                    timeFilter = f"setpts={vpts}"
                     filtergraphBody = None
                     if needToScale or not isSixteenByNine:
-                        if useHardwareAcceleration == 3 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
-                            filtergraphBody = [scaleFilter,padFilter,downloadFilter,fpsFilter,trimFilter,timeFilter,labelFilter]
-                        elif useHardwareAcceleration == 2 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
-                            filtergraphBody = [fpsFilter,trimFilter,timeFilter,uploadFilter,scaleFilter,padFilter,downloadFilter,labelFilter]
-                        elif useHardwareAcceleration == 1 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        mask = HW_DECODE|HW_INPUT_SCALE
+                        if useHardwareAcceleration&mask == HW_DECODE and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [fpsFilter,trimFilter,timeFilter,scaleFilter,padFilter,labelFilter]
-                        elif useHardwareAcceleration >= 4:
-                            raise Exception("Not implemented yet")
+                        elif useHardwareAcceleration&mask == HW_INPUT_SCALE and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                            filtergraphBody = [fpsFilter,trimFilter,timeFilter,uploadFilter,scaleFilter,padFilter,downloadFilter,labelFilter]
+                        elif useHardwareAcceleration&mask == (HW_DECODE|HW_INPUT_SCALE) and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                            filtergraphBody = [scaleFilter,padFilter,downloadFilter,fpsFilter,trimFilter,timeFilter,labelFilter]
+                        #elif useHardwareAcceleration >= 4:
+                        #    raise Exception("Not implemented yet")
                     if filtergraphBody is None:
                         filtergraphBody = [trimFilter,timeFilter,fpsFilter,scaleFilter,padFilter,labelFilter]
                     videoFiltergraph = f"[{inputIndex}:v] {', '.join([segment for segment in filtergraphBody if segment != ''])} [{videoSegmentName}]"
@@ -1276,9 +1352,19 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             if numRowSegments > 1:
                 rowTileWidth = calcTileWidth(numRowSegments)
                 segmentRes = [int(x) for x in segmentResolution.split(':')]
-                scaleToFitFilter = f", scale={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
-                padFilter = f", pad={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(rowTileWidth-1) else ''
-                xstackString = f"[{']['.join(rowVideoSegmentNames)}] xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter} [vseg{segIndex}]"
+                useHwOutscaleAccel = useHardwareAcceleration & HW_OUTPUT_SCALE != 0
+                scaleToFitFilter = f"scale{'_npp' if useHwOutscaleAccel else ''}={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
+                padFilter = f"pad{'_opencl' if useHwOutscaleAccel else ''}={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(rowTileWidth-1) else ''
+                xstackFilter = f"xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}"
+                #xstackString = f"[{']['.join(rowVideoSegmentNames)}] xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter}{uploadFilter if useHardwareAcceleration&HW_ENCODE!=0 else ''} [vseg{segIndex}]"
+                if useHardwareAcceleration&HW_ENCODE!=0:
+                    if useHwOutscaleAccel:
+                        xstackBody = [xstackFilter, uploadFilter, scaleToFitFilter, padFilter]
+                    else:
+                        xstackBody = [xstackFilter, scaleToFitFilter, padFilter, uploadFilter]
+                else:
+                    xstackBody = [xstackFilter, scaleToFitFilter, padFilter]
+                xstackString = f"[{']['.join(rowVideoSegmentNames)}] {', '.join([x for x in xstackBody if x != ''])} [vseg{segIndex}]"
                 filtergraphParts.append(xstackString)
                 if logLevel >= 3:
                     print("\n\n\nStep 13c: ", xstackString, segmentResolution, outputResolutionStr, numRowSegments, rowTileWidth*(rowTileWidth-1), (segmentResolution != outputResolutionStr), (numRowSegments <= rowTileWidth*(rowTileWidth-1)))
@@ -1316,21 +1402,27 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate,
             def __del__(self):
                 if self.filepath is not None:
                     os.remove(self.filepath)
+        lcf = LazyConcatFile("file '" + "'\nfile '".join(intermediateFilepaths)+"'")
         commandList.append(reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                 ['-f', 'concat',
                  '-safe', '0',
-                 '-i', LazyConcatFile("file '" + "'\nfile '".join(intermediateFilepaths)+"'"),
+                 '-i', lcf,
                  '-c', 'copy',
                  '-map', '0'],
                 outputMetadataOptions,
                 ["-movflags", "faststart", outputFile]]))
+        commandList.append(["echo", "Render complete! Starting cleanup"])
+        commandList.append(["rm", lcf])
+        #commandList.extend([["rm", intermediateFile] for intermediateFile in intermediateFilepaths])
         for command in commandList:
             print(command, end='\n')
         return commandList
 
     if cutMode == 'segment':
+        raise Exception("version outdated")
         return filtergraphSegmentVersion()
     elif cutMode == 'trim':
+        raise Exception("version outdated")
         return filtergraphTrimVersion()
     elif cutMode == 'chunked':
         return filtergraphChunkedVersion()
@@ -1412,7 +1504,6 @@ def reinitialize():
     loadFiledata(DEFAULT_DATA_FILEPATH)
     initialize()
 
-
 def reloadAndSave():
     global allFilesByVideoId; allFilesByVideoId = {} #string:SourceFile
     global allFilesByStreamer; allFilesByStreamer = {} #string:[SourceFile]
@@ -1424,7 +1515,7 @@ def reloadAndSave():
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
 #reloadAndSave()
-initialize()
+#initialize()
 print("Initialization complete!")
 
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
@@ -1432,21 +1523,32 @@ print("Initialization complete!")
 testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
                                                  #endTimeMode='allOverlapEnd',
                                                  logLevel=0,
-                                                 useHardwareAcceleration=1,#|2,
-                                                 sessionTrimLookback=3,
+                                                 useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
+                                                 sessionTrimLookback=0,#3,
+                                                 minGapSize=1200,
                                                  maxHwaccelFiles=20,
                                                  #useChat=False,
                                                  drawLabels=True,
+                                                  #sessionTrimLookback=1, #TODO: convert from number of segments to number of seconds. Same for lookahead
+                                                  #sessionTrimLookahead=-1,
+                                                  #outputCodec='libx264',
+                                                  #encodingSpeedPreset='medium',
+                                                  #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+                                                  minimumTimeInVideo=900,
+                                                  #cutMode='chunked',
+                                                  #useChat=True,
                                                  ffmpegPath='/home/ubuntu/ffmpeg-cuda/ffmpeg/')
+
 
 
 print([extractInputFiles(testCommand) for testCommand in testCommands])
 print("\n\n")
 for testCommand in testCommands:
-    testCommand.insert(-1, '-y')
-    testCommand.insert(-1, '-stats_period')
-    testCommand.insert(-1, '30')
-    #testCommand.insert(-1, )
+    if 'ffmpeg' in testCommand[0]:
+        testCommand.insert(-1, '-y')
+        testCommand.insert(-1, '-stats_period')
+        testCommand.insert(-1, '30')
+        #testCommand.insert(-1, )
 #print(testCommands)
 #testCommandString = formatCommand(testCommand)
 testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
@@ -1721,6 +1823,10 @@ minimumSessionWorkerDelay = timedelta(hours=4)
 
 DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
 
+#drawLabels=False, startTimeMode='mainSessionStart', endTimeMode='mainSessionEnd', logLevel=2, #max logLevel = 4
+# sessionTrimLookback=1, #sessionTrimLookahead=-1, minGapSize=0, outputCodec='libx264',
+# encodingSpeedPreset='medium', useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale, bit 3(4)=(unsupported) encode
+# maxHwaccelFiles=None, minimumTimeInVideo=900, cutMode='chunked', useChat=True, ffmpegPath=''
 
 def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS, 
                   maxLookback:timedelta=DEFAULT_MAX_LOOKBACK, 
