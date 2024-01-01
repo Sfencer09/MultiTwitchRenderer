@@ -14,10 +14,11 @@
 # ---
 
 # %%
-import os, subprocess, json, time, math, pickle, re, queue, threading, shutil, random, sys
+import os, subprocess, json, time, math, pickle, re, queue, threading, shutil, random, sys, signal, gc
 from functools import reduce
 from datetime import datetime, timezone, time, timedelta
 from fuzzysearch import find_near_matches
+from thefuzz import process as fuzzproc
 from pprint import pprint
 from shlex import quote
 import time as ttime
@@ -588,17 +589,21 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(datetime.fromisoformat(targetDate), DAY_START_TIME)
     targetDateEndTime = targetDateStartTime + timedelta(days=1)
-    print(targetDate, targetDateStartTime, targetDateEndTime)
+    if logLevel >= 1:
+        print(targetDate, targetDateStartTime, targetDateEndTime)
     mainSessionsOnTargetDate = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(x.startTimestamp, tz=UTC_TIMEZONE) <= targetDateEndTime, allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError("Selected streamer does not have any sessions on the target date")
     mainSessionsOnTargetDate.sort(key=lambda x: x.startTimestamp)
-    print("\n\n\nStep 2: ", targetDateStartTime, targetDateEndTime)
-    pprint(mainSessionsOnTargetDate)
+    if logLevel >= 1:
+        print("\n\n\nStep 2: ", targetDateStartTime, targetDateEndTime)
+        if logLevel >= 2:
+            pprint(mainSessionsOnTargetDate)
     
-    print("\n\nStep 2.1: ")
     groupsFromMainFiles = reduce(list.__add__, (file.parsedChat.groups for file in set((session.file for session in mainSessionsOnTargetDate)) if file.parsedChat is not None), [])
-    pprint(groupsFromMainFiles)
+    if logLevel >= 1:
+        print("\n\nStep 2.1: ")
+        pprint(groupsFromMainFiles)
     
     #3. For all other streamers, build a sorted array of sessions that have matching games & have time overlap (and/or
         # appear in a !who-type command during that time if rechat is found)
@@ -611,14 +616,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 secondarySessionsArray.append(session)
                 secondarySessionsByStreamer[streamer].append(session)
         secondarySessionsByStreamer[streamer].sort(key=lambda x: x.startTimestamp)
-    print("\n\n\nStep 3: ", secondarySessionsArray)
-    if logLevel >= 2:
+    if logLevel >= 3:
+        print("\n\n\nStep 3: ")#, secondarySessionsArray)
         pprint(secondarySessionsByStreamer)
 
     #4. Build a separate array of all sessions from #3, sorted by start time
     secondarySessionsArray.sort(key=lambda x: x.startTimestamp)
-    print("\n\n\nStep 4: ")
-    if logLevel >= 2:
+    if logLevel >= 3:
+        print("\n\n\nStep 4: ")
         pprint(secondarySessionsArray)
     
     #5. Build array of streamers that have sessions in #4, with the target streamer first and the others sorted by
@@ -638,7 +643,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     if len(allInputStreamers)==1:
         print("Only one streamer found, nothing to render!")
         return None
-        
+
     #6. For each streamer in #5, build an array of pairs of start & end timestamps for sessions from #3 while
         # combining those that connect
     inputSessionTimestampsByStreamer = {}
@@ -655,8 +660,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     prevPair[1] = end
                 else:
                     timePairs.append([start, end])
-    print("\n\n\nStep 6: ")
     if logLevel >= 2:
+        print("\n\n\nStep 6: ")
         pprint(inputSessionTimestampsByStreamer)
 
     #7. Build a sorted array of unique timestamps from #6, truncated to those within the target streamer's first and
@@ -702,33 +707,36 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         segmentSessionMatrix[segIndex][streamerIndex] = [session]
                     else:
                         segmentSessionMatrix[segIndex][streamerIndex].append(session)
-                        print(segmentSessionMatrix[segIndex][streamerIndex], overlapStart, overlapEnd, segmentStartTime, segmentEndTime)
+                        if logLevel>=3:
+                            print(segmentSessionMatrix[segIndex][streamerIndex], overlapStart, overlapEnd, segmentStartTime, segmentEndTime)
                         assert segmentFileMatrix[segIndex][streamerIndex] is session.file
         addOverlappingSessions(mainSessionsOnTargetDate, 0)
         for i in range(1, len(allInputStreamers)):
             addOverlappingSessions(secondarySessionsByStreamer[allInputStreamers[i]], i)
-    print("\n\n\nStep 8: ")
-    if logLevel >= 4:
-        pprint(segmentFileMatrix)
-    print(allInputStreamers)
+    if logLevel >= 1:
+        print("\n\n\nStep 8: ")
+        if logLevel >= 4:
+            pprint(segmentFileMatrix)
+        print(allInputStreamers)
 
     #9. Remove segments of secondary streamers still in games that main streamer has left
-    print("\n\nStep 9:")
+    if logLevel >= 1:
+        print("\n\nStep 9:")
     def printSegmentMatrix(showGameChanges=True):
-        print("\n\n")
-        for i in range(len(segmentSessionMatrix)):
-            if showGameChanges and i > 0:
-                prevRowGames = [session.game for session in segmentSessionMatrix[i-1][0]]
-                currRowGames = [session.game for session in segmentSessionMatrix[i][0]]
-                #if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
-                if any((game not in currRowGames for game in prevRowGames)):
-                    print('-'*(2*len(allInputStreamers)+1))
-            print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
-                  convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-                  convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]),
-                  str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
-                  str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6],
-                 sep=',')
+        if logLevel >= 1:
+            print("\n\n")
+            for i in range(len(segmentSessionMatrix)):
+                if showGameChanges and i > 0:
+                    prevRowGames = [session.game for session in segmentSessionMatrix[i-1][0]]
+                    currRowGames = [session.game for session in segmentSessionMatrix[i][0]]
+                    #if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
+                    if any((game not in currRowGames for game in prevRowGames)):
+                        print('-'*(2*len(allInputStreamers)+1))
+                print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+                      convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+                      convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]),
+                      str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
+                      str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6], sep=',')
     printSegmentMatrix(showGameChanges=True)
     #for i in range(len(segmentFileMatrix)):
     #    if segmentSessionMatrix[i][0] is None:
@@ -746,37 +754,44 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             excludeTrimStreamerIndices.append(streamerIndex)
             #If the trimming process would remove /all/ segments for the given streamer, exclude the streamer from
             # trimming because they probably just have a different game name listed
-    print('excluding from trimming:', excludeTrimStreamerIndices)
+    if logLevel >= 2:
+        print('Excluding from trimming:', excludeTrimStreamerIndices, [allInputStreamers[index] for index in excludeTrimStreamerIndices])
 
-    print("\n\nStep 9.1:")
+    if logLevel >= 1:
+        print("\n\nStep 9.1:")
     if sessionTrimLookback >= 0:
         # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
         for i in range(0, len(segmentFileMatrix)):
             #print(len(segmentSessionMatrix[i-sessionTrimLookback:]))
             includeRowStart = max(0, i-sessionTrimLookback)
-            includeRowEnd = min(len(segmentFileMatrix)-1, i+sessionTrimLookahead+1)
-            print(includeRowStart, sessionTrimLookback, i)
-            print(includeRowEnd, sessionTrimLookahead, i)
+            includeRowEnd = min(len(segmentFileMatrix), i+sessionTrimLookahead+1)
+            if logLevel >= 2:
+                print(includeRowStart, sessionTrimLookback, i)
+                print(includeRowEnd, sessionTrimLookahead, i)
             rowGames = set((session.game for session in segmentSessionMatrix[i][0] if segmentSessionMatrix[i][0] is not None))
-            print('rowGames', rowGames)
+            if logLevel >= 2:
+                print('rowGames', rowGames)
             #print(segmentSessionMatrix[i-sessionTrimLookback])
             acceptedGames = set((session.game for row in segmentSessionMatrix[includeRowStart:includeRowEnd] if row[0] is not None for session in row[0] if session.game not in nongroupGames))
-            print('acceptedGames', acceptedGames)#, end=' ')
+            if logLevel >= 2:
+                print('acceptedGames', acceptedGames)#, end=' ')
             if len(acceptedGames)==0 and (startTimeMode == 'allOverlapStart' or endTimeMode == 'allOverlapEnd'): #main streamer has no sessions for segment, extend from previous segment with sessions
                 #expandedIncludeStart = 
                 raise Exception("Needs updating")
                 if endTimeMode == 'allOverlapEnd':
                     for j in range(i-(sessionTrimLookback+1), 0, -1):
-                        print(f"j={j}")
+                        if logLevel >= 2:
+                            print(f"j={j}")
                         if segmentSessionMatrix[j][0] is None:
                             continue
                         tempAcceptedGames = set((session.game for session in segmentSessionMatrix[j][0] if session.game not in nongroupGames))
                         if len(tempAcceptedGames) > 0:
                             acceptedGames = tempAcceptedGames
                             break
-            print(acceptedGames, reduce(set.union,
-                  (set((session.game for session in sessionList)) for sessionList in segmentSessionMatrix[i] if sessionList is not None),
-                  set()))
+            if logLevel >= 2:
+                print(acceptedGames, reduce(set.union,
+                      (set((session.game for session in sessionList)) for sessionList in segmentSessionMatrix[i] if sessionList is not None),
+                      set()))
             for streamerIndex in range(1, len(allInputStreamers)):
                 if streamerIndex in excludeTrimStreamerIndices:
                     continue
@@ -786,7 +801,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 if not any((session.game in acceptedGames for session in sessionList)):
                     segmentSessionMatrix[i][streamerIndex] = None
                     segmentFileMatrix[i][streamerIndex] = None
-        printSegmentMatrix(showGameChanges=True)
+        if logLevel >= 2:
+            printSegmentMatrix(showGameChanges=True)
     
     def splitRow(rowNum, timestamp):
         assert uniqueTimestampsSorted[rowNum] < timestamp < uniqueTimestampsSorted[rowNum+1]
@@ -799,7 +815,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     
     # TODO: fill in short gaps (<5 min?) in secondary streamers if possible
     if minGapSize > 0:
-        print("\n\nStep 9.2:")
+        if logLevel >= 1:
+            print("\n\nStep 9.2:")
         for streamerIndex in range(1, len(allInputStreamers)):
             streamer = allInputStreamers[streamerIndex]
             gapLength = 0
@@ -839,20 +856,25 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 lastState = curState
         
     
-    printSegmentMatrix()
+    if logLevel >= 2:
+        printSegmentMatrix()
     
-    print("\n\nStep 10:")
     #10. Remove streamers who have less than a minimum amount of time in the video
-    print(allInputStreamers, allInputStreamersSortKey)
+    if logLevel >= 1:
+        print("\n\nStep 10:")
+        print(allInputStreamers)
+        print(allInputStreamersSortKey)
     for streamerIndex in range(len(allInputStreamers)-1, 0, -1):
         streamer = allInputStreamers[streamerIndex]
         streamerTotalTime = 0
         for i in range(len(segmentSessionMatrix)):
             if segmentSessionMatrix[i][streamerIndex] is not None:
                 streamerTotalTime += uniqueTimestampsSorted[i+1]-uniqueTimestampsSorted[i]
-        print(streamerIndex, streamer, streamerTotalTime)
+        if logLevel >= 1:
+            print(streamerIndex, streamer, streamerTotalTime)
         if streamerTotalTime < minimumTimeInVideo:
-            print("Removing streamer", streamer)
+            if logLevel >= 1:
+                print("Removing streamer", streamer)
             for i in range(len(segmentSessionMatrix)):
                 del segmentSessionMatrix[i][streamerIndex]
                 del segmentFileMatrix[i][streamerIndex]
@@ -866,22 +888,25 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             for session in secondarySessionsByStreamer[streamer]:
                 secondarySessionsArray.remove(session)
             del secondarySessionsByStreamer[streamer]
-    print(allInputStreamers, allInputStreamersSortKey)
-    
-    printSegmentMatrix()
+    if logLevel >= 1:
+        print(allInputStreamers, allInputStreamersSortKey)
+        if logLevel >= 2:
+            printSegmentMatrix()
 
     #11. Combine adjacent segments that now have the same set of streamers
-    print("\n\nStep 11:")
+        print("\n\nStep 11:")
     #def compressRows():
     for i in range(numSegments-1, 0, -1):
-        print(i)
+        if logLevel >= 1:
+            print(i)
         if all(((segmentFileMatrix[i][stIndex] is None) == (segmentFileMatrix[i-1][stIndex] is None) for stIndex in range(len(allInputStreamers)))):
             del segmentFileMatrix[i]
             sessionMergeRow = [None if segmentSessionMatrix[i][si] is None else set(segmentSessionMatrix[i-1][si]).union(set(segmentSessionMatrix[i][si])) for si in range(len(allInputStreamers))]
             segmentSessionMatrix[i-1] = [None if sessionMerge is None else sorted(sessionMerge, key=lambda x: x.startTimestamp) for sessionMerge in sessionMergeRow]
             del segmentSessionMatrix[i]
             tempTs = uniqueTimestampsSorted[i]
-            print(f"Combining segments {str(i)} and {str(i-1)}, dropping timestamp {str(tempTs)}")
+            if logLevel >= 1:
+                print(f"Combining segments {str(i)} and {str(i-1)}, dropping timestamp {str(tempTs)}")
             del uniqueTimestampsSorted[i]
             uniqueTimestamps.remove(tempTs)
             numSegments -= 1
@@ -890,11 +915,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     printSegmentMatrix()
     for i in range(len(segmentSessionMatrix)):
         if segmentSessionMatrix[i][0] is None:
-            print([])
+            if logLevel >= 1:
+                print([])
             continue
         tempMainGames = set((session.game for session in segmentSessionMatrix[i][0]))
         tempGames = set((session.game for item in segmentSessionMatrix[i][1:] if item is not None for session in item))
-        print(tempMainGames, tempGames, str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
+        if logLevel >= 1:
+            print(tempMainGames, tempGames, str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
               str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
 
     #12. Build a sorted array of unique filepaths from #8 - these will become the input stream indexes
@@ -920,12 +947,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         inputOptions.append('-i')
         if file.localVideoFile is not None:
             inputOptions.append(file.localVideoFile)
+            if logLevel >= 1:
+                print(file.localVideoFile)
             inputVideoInfo.append(file.getVideoFileInfo())
-            print(file.localVideoFile)
         else:
             inputOptions.append(file.videoFile)
+            if logLevel >= 1:
+                print(file.videoFile)
             inputVideoInfo.append(file.getVideoFileInfo())
-            print(file.videoFile)
     #nullAudioIndex = len(inputFilesSorted)
     if logLevel >= 1:
         print("\n\n\nStep 12: ", inputOptions)
@@ -939,7 +968,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         audioStreamInfo = [stream for stream in fileInfo['streams'] if stream['codec_type'] == 'audio'][0]
         audioRate = audioStreamInfo['sample_rate']
         streamerAudioSampleRates[streamerIndex] = audioRate
-        print(file.streamer, audioRate)
+        if logLevel >= 2:
+            print(file.streamer, audioRate)
     nullAudioStreamsBySamplerates = {}
     for samplerate in set(streamerAudioSampleRates):
         rateStr = str(samplerate)
@@ -1002,13 +1032,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             videoStreamInfo = [stream for stream in fileInfo['streams'] if stream['codec_type']=='video'][0]
             fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
             fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
-            print(inputFile.videoFile, fpsRaw, fpsActual, fpsActual==60)
+            if logLevel >= 2:
+                print(inputFile.videoFile, fpsRaw, fpsActual, fpsActual==60)
             fileStartTime = inputFile.startTimestamp
             fileEndTime = inputFile.endTimestamp
             timestamps = []
             segmentIndex = 0
             segmentsPresent = [i for i in range(numSegments) if any((segmentFileMatrix[i][j] is inputFile for j in range(len(allInputStreamers))))]
-            print('\n', inputFile.videoFile, segmentsPresent)
+            if logLevel >= 3:
+                print('\n', inputFile.videoFile, segmentsPresent)
             streamerIndex = allInputStreamersSortKey[inputFile.streamer]
             nullVSinkFiltergraphs = [] #for segments that are not wanted, typically leading or trailing ones
             nullASinkFiltergraphs = [] #for segments that are not wanted, typically leading or trailing ones
@@ -1033,14 +1065,16 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             lastSegmentEndTime = uniqueTimestampsSorted[lastSegment+1]
             endDiff = fileEndTime - lastSegmentEndTime
             if endDiff > 0:
-                print('endDiff', endDiff)
+                if logLevel >= 2:
+                    print('endDiff', endDiff)
                 timestamps.append(lastSegmentEndTime-fileStartTime)
                 nullVSegName = f"file{fileIndex}V{len(timestamps)}"
                 nullVSinkFiltergraphs.append(f"[{nullVSegName}] nullsink")
                 nullASegName = f"file{fileIndex}A{len(timestamps)}"
                 nullASinkFiltergraphs.append(f"[{nullASegName}] anullsink")
             segmentFilter = f"segment=timestamps={'|'.join((str(ts) for ts in timestamps))}"
-            print(segmentFilter)
+            if logLevel >= 2:
+                print(segmentFilter)
             fpsFilter = f"fps=fps=60:round=near, " if fpsActual != 60 else ''
             inputVideoFiltergraph = f"[{fileIndex}:v] {fpsFilter}{segmentFilter} [{']['.join((f'file{fileIndex}V{i}' for i in range(len(timestamps)+1)))}]"
             inputAudioFiltergraph = f"[{fileIndex}:a] a{segmentFilter} [{']['.join((f'file{fileIndex}A{i}' for i in range(len(timestamps)+1)))}]"
@@ -1060,7 +1094,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             rowVideoSegmentNames = []
             for streamerIndex in range(len(allInputStreamers)):
                 temp = inputSegmentNumbers[segIndex][streamerIndex]
-                print(temp)
+                if logLevel >= 2:
+                    print(temp)
                 if temp is not None:
                     fileSegNum, fileIndex = temp
                     fileInfo = inputVideoInfo[fileIndex]
@@ -1070,7 +1105,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     isSixteenByNine = (height / 9.0) == (width / 16.0)
                     originalResolution = f"{width}:{height}"
                     needToScale = originalResolution != tileResolution
-                    print(inputFilesSorted[fileIndex].videoFile, fileIndex, originalResolution, originalResolution == tileResolution)
+                    if logLevel >= 3:
+                        print(inputFilesSorted[fileIndex].videoFile, fileIndex, originalResolution, originalResolution == tileResolution)
                     inputVSegName = f"file{fileIndex}V{fileSegNum}"
                     outputVSegName = f"seg{segIndex}V{streamerIndex}"
                     labelFilter = f", drawtext=text='{str(streamerIndex+1)} {allInputStreamers[streamerIndex]}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
@@ -1091,14 +1127,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     emptyAudioFiltergraph = f"[{nullAudioIndex}] atrim=duration={segmentDuration} [seg{segIndex}A{streamerIndex}]"
                     filtergraphParts.append(emptyAudioFiltergraph)
                     if logLevel >= 4:
-                        print("\n\nStep 13b.v2: ", segIndex, streamerIndex)
+                        print("\n\nStep 13b.v2: ", segIndex, streamerIndex, emptyAudioFiltergraph)
             #13c. Build xstack intermediate video segments
             numRowSegments = len(rowVideoSegmentNames)
             assert numRowSegments > 0 #should have at least one source file for each segment, otherwise we have a gap we need to account for
             if numRowSegments > 1:
                 rowTileWidth = calcTileWidth(numRowSegments)
-                print(segmentResolution, outputResolutionStr, numRowSegments, rowTileWidth*(rowTileWidth-1), rowTileWidth)
-                print(segmentResolution != outputResolutionStr, numRowSegments <= rowTileWidth*(rowTileWidth-1))
+                if logLevel >= 2:
+                    print(segmentResolution, outputResolutionStr, numRowSegments, rowTileWidth*(rowTileWidth-1), rowTileWidth)
+                    print(segmentResolution != outputResolutionStr, numRowSegments <= rowTileWidth*(rowTileWidth-1))
                 scaleToFitFilter = f", scale={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
                 padFilter = f", pad={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(rowTileWidth-1) else ''
                 xstackString = f"[{']['.join(rowVideoSegmentNames)}]xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter} [vseg{segIndex}]"
@@ -1326,7 +1363,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     isSixteenByNine = (height / 9.0) == (width / 16.0)
                     originalResolution = f"{width}:{height}"
                     needToScale = originalResolution != tileResolution
-                    print(inputFilesSorted[fileIndex].videoFile, inputIndex, originalResolution, tileResolution, originalResolution == tileResolution)
+                    if logLevel >= 3:
+                        print(inputFilesSorted[fileIndex].videoFile, inputIndex, originalResolution, tileResolution, originalResolution == tileResolution)
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     if useHardwareAcceleration&HW_DECODE != 0:
@@ -1347,7 +1385,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
                     #print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     tileHeight = int(tileResolution.split(':')[1])
-                    print(f"tileHeight={tileHeight}, video height={height}")
+                    if logLevel >= 3:
+                        print(f"tileHeight={tileHeight}, video height={height}")
                     if tileHeight > height: #upscaling
                         scaleAlgo = '' if useHwFilterAccel else ':flags=lanczos'
                     elif tileHeight < height:
@@ -1459,10 +1498,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 outputMetadataOptions,
                 ["-movflags", "faststart", outputFile]]))
         commandList.append(["echo", "Render complete! Starting cleanup"])
-        commandList.append(["rm", lcf])
+        #commandList.append(["rm", lcf])
         #commandList.extend([["rm", intermediateFile] for intermediateFile in intermediateFilepaths])
-        for command in commandList:
-            print(command, end='\n')
+        if logLevel >= 3:
+            for command in commandList:
+                print(command, end='\n')
         return commandList
 
     if cutMode == 'segment':
@@ -1568,7 +1608,7 @@ print("Initialization complete!")
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
-                                                 RenderConfig(logLevel=0,
+                                                 RenderConfig(logLevel=1,
                                                  #startTimeMode='allOverlapStart',
                                                  #endTimeMode='allOverlapEnd',
                                                  useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
@@ -1629,17 +1669,15 @@ def writeCommandScript(commandList, testNum=None):
 
 
 # %%
-#parsedChat = ParsedChat(r'/mnt/pool2/media/Twitch Downloads/ChilledChaos/S1/ChilledChaos - 2023-12-29 - PROPHUNT IS SO BACK! (Garry\'s Mod) ｜ Lethal Company After! v2017309328.rechat.twitch-gql-20221228.json')
 tempFile = allFilesByVideoId['v2017309328']
 print(tempFile)
-print(tempFile.parsedChat)
+for group in tempFile.parsedChat.groups:
+    print(group)
 
 # %%
 # Threading time!
 #import types
 #import atexit
-import signal
-from thefuzz import process as fuzzproc
 
 errorFilePath = r'./erroredCommands.log'
 statusFilePath = r'./renderStatuses.pickle'
@@ -1836,16 +1874,23 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
             renderCommands[i].insert(-1, '-y') # overwrite temp file if it exists
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDERING')
         hasError = False
+        gc.collect()
         for i in range(len(renderCommands)):
-            with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommand)==1 else f'_{i}'}.log",'a')) as logFile:
+            with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log",'a')) as logFile:
                 print(f"Running render to file {outpath}")
-                result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
+                #result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
+                
+                #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
                 process = subprocess.Popen(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
-                if result.returncode != 0:
+                activeRenderSubprocess = process
+                returncode = process.wait()
+                #if result.returncode != 0:
+                if returncode != 0:
                     hasError = True
-                    setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
-                    with open(errorFilePath, 'a') as errorFile:
-                        errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands)))
+                    if returncode != 130: #ctrl-c on UNIX (?)
+                        setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
+                        with open(errorFilePath, 'a') as errorFile:
+                            errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands)))
                     break
                 #result = types.SimpleNamespace()
                 #result.returncode = 0
@@ -2005,6 +2050,33 @@ def printQueuedJobs():
                 print(queueItem)
 commandArray.append(Command(printQueuedJobs, 'Print queued jobs'))
 
+def printCompleteJobs():
+    renderStatusLock.acquire()
+    #key = f"{streamer}|{date}"
+    completeRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]=='FINISHED']
+    renderStatusLock.release()
+    streamersWithComplete = sorted(set([render[0] for render in completeRenders]))
+    print(streamersWithComplete)
+    selectedStreamer = None
+    if len(streamersWithComplete) > 1:
+        print("Select streamer (blank for all):")
+        for i in range(len(streamersWithComplete)):
+            streamer = streamersWithComplete[i]
+            count = len([render for render in completeRenders if render[0]==streamer])
+            print(f"{i+1}: {streamer} ({count} renders)")
+        userInput = input(" >> ")
+        try:
+            selectedStreamer = streamersWithComplete[int(userInput)-1]
+        except:
+            selectedStreamer = None
+    print("Completed renders:")
+    print(f"Streamer                  | File date")
+    for streamer, date in completeRenders:
+        if selectedStreamer is None or streamer == selectedStreamer:
+            print(f"{streamer:25} | {date}")
+    
+commandArray.append(Command(printCompleteJobs, 'Print completed jobs'))
+
 quitOptions = ('quit', 'exit', 'q');
 def inputManualJob():
     mainStreamer = None
@@ -2068,7 +2140,8 @@ if __name__=='__main__':
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig':defaultSessionRenderConfig,
                                                                        'maxLookback':timedelta(days=14)})
         sessionThread.start()
-
+        commandWorker()
+        sys.exit(0)
     else:
         print("Development mode")
         devSessionRenderConfig = defaultSessionRenderConfig.copy()
