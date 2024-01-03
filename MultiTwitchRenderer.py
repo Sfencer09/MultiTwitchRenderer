@@ -2029,12 +2029,12 @@ def clearErroredJobs():
     renderStatusLock.acquire()
     selectedRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]=='ERRORED']
     streamersWithSelected = sorted(set([render[0] for render in selectedRenders]))
-    #print(streamersWithComplete)
+    #print(streamersWithSelected)
     selectedStreamer = None
     if len(streamersWithSelected) > 1:
         print("Select streamer (blank for all, 'q' to cancel):")
         for i in range(len(streamersWithSelected)):
-            streamer = streamersWithComplete[i]
+            streamer = streamersWithSelected[i]
             count = len([render for render in selectedRenders if render[0]==streamer])
             print(f"{i+1}: {streamer} ({count} errored jobs)")
         userInput = input(" >> ")
