@@ -1814,7 +1814,8 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
         gc.collect()
         for i in range(len(renderCommands)):
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
-                print(f"Running render to file {outpath}")
+                if ffmpeg in renderCommands[i][0]:
+                    print(f"Running render to file {renderCommands[i][-1]}")
                 #result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
                 
                 #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
