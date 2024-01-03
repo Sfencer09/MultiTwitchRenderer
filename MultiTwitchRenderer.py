@@ -24,11 +24,14 @@ from pprint import pprint
 from shlex import quote
 import time as ttime
 
+print = partial(print, flush=True)
+
 if not sys.version_info >= (3, 7, 0):
     raise EnvironmentError("Python version too low, relies on ordered property of dicts")
 
-execfile('./Documents/MultiTwitchRenderer/config.py')
-#streamersParseChatList = ('ChilledChaos', 'ZeRoyalViking')
+configPath = './Documents/MultiTwitchRenderer/config.py' if __debug__ else './config.py'
+with open(configPath) as configFile:
+    exec(configFile.read())
 
 def getVideoInfo(videoFile:str):
     probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
@@ -335,7 +338,7 @@ def scanFiles(log=False):
         if log:
             print(f"\nScanned streamer {streamer} with {len(streamerFiles)} files")
         if len(streamerFiles) > 0:
-            if streamer not in allStreamersWithVideos: 
+            if streamer not in allFilesByStreamer.keys(): 
                 #allStreamersWithVideos.append(streamer)
                 allFilesByStreamer[streamer] = streamerFiles
             else: #streamer already had videos scanned in
@@ -1588,8 +1591,7 @@ def reloadAndSave():
 #import types
 #import atexit
 
-if not os.path.exists(logFolder):
-    os.makedirs(logFolder)
+os.makedirs(logFolder, exist_ok=True)
 if COPY_FILES:
     assert localBasepath.strip(' /\\') != basepath.strip(' /\\')
 
@@ -1637,6 +1639,7 @@ if COPY_FILES:
     copyQueue = queue.PriorityQueue()
 localFileReferenceCounts = {}
 localFileRefCountLock = threading.Lock()
+MAXIMUM_PRIORITY = 9999
 DEFAULT_PRIORITY = 1000
 MANUAL_PRIORITY = 500
 
@@ -1748,6 +1751,7 @@ def copyWorker():
             for command in task.commandArray:
                 command[command.index(remotePath)] = localPath
         #item = QueueItem(streamer, day, renderConfig, outPath)
+        copyQueue.task_done()
         renderQueue.put((DEFAULT_PRIORITY, QueueItem(task.mainStreamer, task.fileDate, task.renderConfig, task.outputPath)))
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
 
@@ -1768,7 +1772,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                                                            task.outputPath)
         outpath = [command for command in renderCommands if command[0].endswith('ffmpeg')][-1][-1]
         
-        print(renderCommands)
+        #print(renderCommands)
         #pathSplitIndex = outpath.rindex('.')
         #tempOutpath = outpath[:pathSplitIndex]+'.temp'+outpath[pathSplitIndex:]
         tempOutpath = insertSuffix(outpath, '.temp')
@@ -1826,6 +1830,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                 print(f"Removing intermediate file {file}")
                 assert basepath not in file
                 os.remove(file)
+        renderQueue.task_done()
         if __debug__:
             break
 
@@ -1991,6 +1996,9 @@ commandArray.append(Command(printCompleteJobs, 'Print completed jobs'))
 
 quitOptions = ('quit', 'exit', 'q');
 
+#... = done
+#None = cancel/quit
+
 def readStreamer(allStreamersList=None, inputText = "Enter streamer name, or 'list' to list valid names. 'q' to exit/cancel: "):
     print(allStreamersList)
     print(allStreamersWithVideos)
@@ -2097,7 +2105,39 @@ def readExcludeStreamers():
 
 renderConfigSchemaManualHandles = {'excludeStreamers': readExcludeStreamers}
 
-def inputManualJob():
+def readRenderConfig(initialRenderConfig = None):
+    renderConfig = initialRenderConfig
+    if currentStatus == 'RENDER_QUEUE':
+        raise Exception("Editing queued renders not supported yet")
+    if renderConfig is None:
+        renderConfig = RenderConfig()
+    print(renderConfig.__dict__)
+    print(len(renderConfig.__dict__.keys()))
+    while True: #manually break out
+        configDict = renderConfig.__dict__
+        print("Current render settings:")
+        sortedKeys = sorted(configDict.keys())
+        for i in range(len(sortedKeys)):
+            print(f"{i+1}) {sortedKeys[i]} = {str(configDict[sortedKeys[i]])}")
+        print("R) Finish and queue render")
+        userInput = input(" >> ")
+        if userInput in quitOptions:
+            return None
+        elif userInput.lower() == 'r':
+            return renderConfig
+        try:
+            selectedKey = sortedKeys[int(userInput)-1]
+        except:
+            print(f"Invalid selection: '{userInput}'")
+            continue
+        if selectedKey in renderConfigSchemaManualHandles.keys():
+            newValue = renderConfigSchemaManualHandles[selectedKey]()
+        else:
+            print(f"New value for {selectedKey}: ")
+            newValue = input(" >> ")
+        configDict[selectedKey] = newValue
+
+def inputManualJob(initialRenderConfig = None):
     allStreamerDays = getAllStreamingDaysByStreamer()
     mainStreamer = readStreamer(allStreamerDays.keys())
     if mainStreamer is None or mainStreamer == ...:
@@ -2154,42 +2194,150 @@ def inputManualJob():
     if outputPath == '':
         outputPath = getVideoOutputPath(mainStreamer, fileDate)
     
-    renderConfig = None
+    #renderConfig = initialRenderConfig
     if currentStatus == 'RENDER_QUEUE':
         raise Exception("Editing queued renders not supported yet")
+    renderConfig = readRenderConfig()
     if renderConfig is None:
-        renderConfig = RenderConfig()
-    print(renderConfig.__dict__)
-    print(len(renderConfig.__dict__.keys()))
-    while True: #manually break out
-        configDict = renderConfig.__dict__
-        print("Current render settings:")
-        sortedKeys = sorted(configDict.keys())
-        for i in range(len(sortedKeys)):
-            print(f"{i+1}) {sortedKeys[i]} = {str(configDict[sortedKeys[i]])}")
-        print("R) Finish and queue render")
-        userInput = input(" >> ")
-        if userInput in quitOptions:
-            return
-        elif userInput.lower() == 'r':
-            break
-        try:
-            selectedKey = sortedKeys[int(userInput)-1]
-        except:
-            print(f"Invalid selection: '{userInput}'")
-            continue
-        if selectedKey in renderConfigSchemaManualHandles.keys():
-            newValue = renderConfigSchemaManualHandles[selectedKey]()
-        else:
-            print(f"New value for {selectedKey}: ")
-            newValue = input(" >> ")
-        configDict[selectedKey] = newValue
+        return None
+    
+    #if renderConfig is None:
+    #    renderConfig = RenderConfig()
+    #print(renderConfig.__dict__)
+    #print(len(renderConfig.__dict__.keys()))
+    #while True: #manually break out
+    #    configDict = renderConfig.__dict__
+    #    print("Current render settings:")
+    #    sortedKeys = sorted(configDict.keys())
+    #    for i in range(len(sortedKeys)):
+    #        print(f"{i+1}) {sortedKeys[i]} = {str(configDict[sortedKeys[i]])}")
+    #    print("R) Finish and queue render")
+    #    userInput = input(" >> ")
+    #    if userInput in quitOptions:
+    #        return
+    #    elif userInput.lower() == 'r':
+    #        break
+    #    try:
+    #        selectedKey = sortedKeys[int(userInput)-1]
+    #    except:
+    #        print(f"Invalid selection: '{userInput}'")
+    #        continue
+    #    if selectedKey in renderConfigSchemaManualHandles.keys():
+    #        newValue = renderConfigSchemaManualHandles[selectedKey]()
+    #    else:
+    #        print(f"New value for {selectedKey}: ")
+    #        newValue = input(" >> ")
+    #    configDict[selectedKey] = newValue
     item = QueueItem(mainStreamer, fileDate, renderConfig, outputPath)
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate, 'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
     (copyQueue if COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
     #raise Exception("Not implemented yet")
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
+
+def editQueueItem(queueEntry):
+    priority, item = queueEntry
+    mainStreamer = item.mainStreamer
+    fileDate = item.fileDate
+    renderConfig = item.renderConfig
+    outputPath = item.outputPath
+    while True:
+        print("Current values:")
+        print(f"Render config: {str(renderConfig)}")
+        print(f"Priority: {priority}")
+        print(f"Output path: {outputPath}")
+        print("Select option:")
+        print("R) Render configuration\nP) Priority\nO) Output path\nD) Delete item from queue\nF) Finish editing and re-add to queue")
+        userInput = input(" >> ")
+        if userInput.lower() in quitOptions:
+            return None
+        elif userInput.lower() == 'r':
+            renderConfig = readRenderConfig(renderConfig)
+        elif userInput.lower() == 'p':
+            valueInput = input(f"Enter new priority (0-{MAXIMUM_PRIORITY}, default is {DEFAULT_PRIORITY}):  ")
+            try:
+                value = int(valueInput)
+                if not 0 <= value <= MAXIMUM_PRIORITY:
+                    print("Value outside of valid range!")
+                    continue
+                priority = value
+            except:
+                print(f"Unable to parse priority '{valueInput}'! Must be a positive integer")
+                continue
+        elif userInput.lower() == 'o':
+            print(f"Enter new output path (relative to {basepath}), blank to cancel:")
+            valueInput = input(basepath)
+            if len(valueInput) == 0:
+                continue
+            elif valueInput.lower() in quitOptions:
+                return None
+            elif not any((valueInput.endswith(ext) for ext in videoExtensions)):
+                print(f"Output path must be that of a video file - must end with one of: {', '.join(videoExtensions)}")
+                continue
+            else:
+                outputPath = os.path.join(basepath, valueInput)
+        elif userInput.lower() == 'f':
+            break
+        elif userInput.lower() == 'd':
+            return ...
+        else:
+            print(f"Invalid option: '{userInput}'")
+    newItem = QueueItem(mainStreamer, fileDate, renderConfig, outputPath)
+    return (priority, newItem)
+
+def editQueue():
+    selectedQueue = None
+    if COPY_FILES:
+        print("Select queue:\nR) Render queue\nC) Copy queue")
+        while selectedQueue is None:
+            userInput = input(" >> ")
+            if userInput.lower().startswith('r'):
+                selectedQueue = renderQueue
+            elif userInput.lower().startswith('c'):
+                selectedQueue = copyQueue
+            elif userInput.lower() in quitOptions:
+                return
+            else:
+                print(f"Unrecognized input ('q' to quit): '{userInput}'")
+    else:
+        selectedQueue = renderQueue
+    #TODO: lock queues so threads won't push or pull items
+    #items = sorted(selectedQueue.queue)
+    items = []
+    while not selectedQueue.empty():
+        items.append(selectedQueue.get())
+    if len(items) == 0:
+        #TODO: release lock
+        print("Queue is empty!")
+        return
+    while True:
+        print("Select queue item to edit: ")
+        for i in range(len(items)):
+            priority, queueItem = items[i]
+            mainStreamer = queueItem.mainStreamer
+            fileDate = queueItem.fileDate
+            print(f"{i+1}) {mainStreamer} {fileDate} (priority: {priority})")
+        userInput = input(" >> ")
+        if userInput.lower() in quitOptions:
+            break
+        try:
+            index = int(userInput)-1
+            selectedItem = items[index]
+            modifiedItem = editQueueItem(selectedItem)
+            if modifiedItem is None:
+                break
+            elif modifiedItem == ...:
+                del items[index]
+            else:
+                items[index] = modifiedItem
+        except:
+            print(f"Invalid input: '{userInput}'")
+            continue
+    for item in items:
+        selectedQueue.put(item)
+    #TODO: release lock
+        
+commandArray.append(Command(editQueue, 'Edit queue(s)'))
 
 def commandWorker():
     while True:
@@ -2228,11 +2376,12 @@ if __name__=='__main__':
                                                logLevel=0,
                                                sessionTrimLookback=0,
                                                sessionTrimLookahead=4)
+    initialize()
     if not __debug__:
         print("Deployment mode")
         if COPY_FILES:
             copyThread.start()
-        renderThread.start()
+        #renderThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig':defaultSessionRenderConfig,
                                                                        'maxLookback':timedelta(days=14)})
         sessionThread.start()
