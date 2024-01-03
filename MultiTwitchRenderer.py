@@ -19,7 +19,7 @@ from datetime import datetime, timezone, time, timedelta
 from schema import Schema, Or, And, Optional, Use
 from fuzzysearch import find_near_matches
 from thefuzz import process as fuzzproc
-from functools import reduce
+from functools import reduce, partial
 from pprint import pprint
 from shlex import quote
 import time as ttime
@@ -1635,8 +1635,10 @@ if os.path.isfile(statusFilePath):
 #renderStatuses = {}
 renderStatusLock = threading.Lock()
 renderQueue = queue.PriorityQueue()
+renderQueueLock = threading.Lock()
 if COPY_FILES:
     copyQueue = queue.PriorityQueue()
+    copyQueueLock = threading.Lock()
 localFileReferenceCounts = {}
 localFileRefCountLock = threading.Lock()
 MAXIMUM_PRIORITY = 9999
@@ -1716,7 +1718,9 @@ def copyWorker():
             ttime.sleep(120)
             continue
             #return
-        task = copyQueue.get(block=False)[1]
+        copyQueueLock.acquire() #block if user is editing queue
+        priority, task = copyQueue.get(block=False)
+        copyQueueLock.release()
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'COPY_QUEUE'
         activeCopyTask = task
         setRenderStatus(task.mainStreamer, task.fileDate, 'COPYING')
@@ -1752,7 +1756,10 @@ def copyWorker():
                 command[command.index(remotePath)] = localPath
         #item = QueueItem(streamer, day, renderConfig, outPath)
         copyQueue.task_done()
-        renderQueue.put((DEFAULT_PRIORITY, QueueItem(task.mainStreamer, task.fileDate, task.renderConfig, task.outputPath)))
+        queueItem = (DEFAULT_PRIORITY, QueueItem(task.mainStreamer, task.fileDate, task.renderConfig, task.outputPath))
+        renderQueueLock.acquire() #block if user is editing queue
+        renderQueue.put(queueItem)
+        renderQueueLock.release()
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
 
 activeRenderTask = None
@@ -1763,7 +1770,10 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
             print("Render queue empty, sleeping")
             ttime.sleep(20)
             continue
-        task = renderQueue.get(block=False)[1]
+        renderQueueLock.acquire() #block if user is editing queue
+        priority, task = renderQueue.get(block=False)
+        renderQueueLock.release()
+        
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
         activeRenderTask = task
         renderCommands = generateTilingCommandMultiSegment(task.mainStreamer,
@@ -1868,8 +1878,10 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                                             sessionTrimLookahead=3,
                                             minimumTimeInVideo=1200,
                                             minGapSize=900)):
+    global allFilesByVideoId
     if len(allFilesByVideoId) == 0:
-        loadFiledata(dataFilepath)
+        #loadFiledata(dataFilepath)
+        initialize()
     scanForExistingVideos()
     while True:
         oldFileCount = len(allFilesByVideoId)
@@ -1969,18 +1981,18 @@ def printQueuedJobs():
                 print(queueItem)
 commandArray.append(Command(printQueuedJobs, 'Print queued jobs'))
 
-def printCompleteJobs():
+def printJobsWithStatus(status):
     renderStatusLock.acquire()
-    completeRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]=='FINISHED']
+    selectedRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]==status]
     renderStatusLock.release()
-    streamersWithComplete = sorted(set([render[0] for render in completeRenders]))
+    streamersWithComplete = sorted(set([render[0] for render in selectedRenders]))
     #print(streamersWithComplete)
     selectedStreamer = None
     if len(streamersWithComplete) > 1:
         print("Select streamer (blank for all):")
         for i in range(len(streamersWithComplete)):
             streamer = streamersWithComplete[i]
-            count = len([render for render in completeRenders if render[0]==streamer])
+            count = len([render for render in selectedRenders if render[0]==streamer])
             print(f"{i+1}: {streamer} ({count} renders)")
         userInput = input(" >> ")
         try:
@@ -1989,10 +2001,11 @@ def printCompleteJobs():
             selectedStreamer = None
     print("Completed renders:")
     print(f"Streamer                  | File date")
-    for streamer, date in completeRenders:
+    for streamer, date in selectedRenders:
         if selectedStreamer is None or streamer == selectedStreamer:
             print(f"{streamer:25} | {date}")
-commandArray.append(Command(printCompleteJobs, 'Print completed jobs'))
+commandArray.append(Command(partial(printJobsWithStatus, 'FINISHED'), 'Print completed jobs'))
+commandArray.append(Command(partial(printJobsWithStatus, 'ERRORED'), 'Print errored jobs'))
 
 quitOptions = ('quit', 'exit', 'q');
 
@@ -2107,8 +2120,6 @@ renderConfigSchemaManualHandles = {'excludeStreamers': readExcludeStreamers}
 
 def readRenderConfig(initialRenderConfig = None):
     renderConfig = initialRenderConfig
-    if currentStatus == 'RENDER_QUEUE':
-        raise Exception("Editing queued renders not supported yet")
     if renderConfig is None:
         renderConfig = RenderConfig()
     print(renderConfig.__dict__)
@@ -2287,30 +2298,33 @@ def editQueueItem(queueEntry):
 
 def editQueue():
     selectedQueue = None
+    selectedQueueLock = None
     if COPY_FILES:
         print("Select queue:\nR) Render queue\nC) Copy queue")
         while selectedQueue is None:
             userInput = input(" >> ")
             if userInput.lower().startswith('r'):
                 selectedQueue = renderQueue
+                selectedQueueLock = renderQueueLock
             elif userInput.lower().startswith('c'):
                 selectedQueue = copyQueue
+                selectedQueueLock = copyQueueLock
             elif userInput.lower() in quitOptions:
                 return
             else:
                 print(f"Unrecognized input ('q' to quit): '{userInput}'")
     else:
         selectedQueue = renderQueue
-    #TODO: lock queues so threads won't push or pull items
-    #items = sorted(selectedQueue.queue)
+        selectedQueueLock = renderQueueLock
+    selectedQueueLock.acquire()
     items = []
     while not selectedQueue.empty():
         items.append(selectedQueue.get())
-    if len(items) == 0:
-        #TODO: release lock
-        print("Queue is empty!")
-        return
     while True:
+        if len(items) == 0:
+            print("Queue is empty!")
+            selectedQueueLock.release()
+            return
         print("Select queue item to edit: ")
         for i in range(len(items)):
             priority, queueItem = items[i]
@@ -2318,7 +2332,7 @@ def editQueue():
             fileDate = queueItem.fileDate
             print(f"{i+1}) {mainStreamer} {fileDate} (priority: {priority})")
         userInput = input(" >> ")
-        if userInput.lower() in quitOptions:
+        if len(userInput) == 0 or userInput.lower() in quitOptions:
             break
         try:
             index = int(userInput)-1
@@ -2330,12 +2344,13 @@ def editQueue():
                 del items[index]
             else:
                 items[index] = modifiedItem
+                items.sort()
         except:
             print(f"Invalid input: '{userInput}'")
             continue
-    for item in items:
+    for item in items: #push modified items back into queue with their new priorities
         selectedQueue.put(item)
-    #TODO: release lock
+    selectedQueueLock.release()
         
 commandArray.append(Command(editQueue, 'Edit queue(s)'))
 
@@ -2376,7 +2391,7 @@ if __name__=='__main__':
                                                logLevel=0,
                                                sessionTrimLookback=0,
                                                sessionTrimLookahead=4)
-    initialize()
+    #initialize()
     if not __debug__:
         print("Deployment mode")
         if COPY_FILES:
@@ -2392,7 +2407,7 @@ if __name__=='__main__':
         devSessionRenderConfig = defaultSessionRenderConfig.copy()
         #devSessionRenderConfig.logLevel = 1
         
-        sessionWorker(renderConfig = devSessionRenderConfig, maxLookback=timedelta(days=0,hours=18))
+        sessionWorker(renderConfig = devSessionRenderConfig, maxLookback=timedelta(days=7,hours=18))
         print(allStreamersWithVideos)
         #copyWorker()
         #print(getAllStreamingDaysByStreamer()['ChilledChaos'])
