@@ -15,10 +15,11 @@
 
 # %%
 import os, subprocess, json, time, math, pickle, re, queue, threading, shutil, random, sys, signal, gc
-from functools import reduce
 from datetime import datetime, timezone, time, timedelta
+from schema import Schema, Or, And, Optional
 from fuzzysearch import find_near_matches
 from thefuzz import process as fuzzproc
+from functools import reduce
 from pprint import pprint
 from shlex import quote
 import time as ttime
@@ -196,7 +197,7 @@ def trimInfoDict(infoDict:dict):
     del newDict['http_headers']
     return newDict
 
-def getHasFfmpegCuda(ffmpegPath=''):
+def getHasFfmpegCuda():
     process = subprocess.run([f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
     print(process.stdout.decode())
     return '--enable-nvdec' in process.stdout.decode()
@@ -434,82 +435,50 @@ HW_INPUT_SCALE=2
 HW_OUTPUT_SCALE=4
 HW_ENCODE=8
 
+renderConfigSchema = Schema({
+    Optional('drawLabels', default=False): bool,
+    Optional('startTimeMode', default='mainSessionStart'): lambda x: x in ('mainSessionStart', 'allOverlapStart'),
+    Optional('endTimeMode', default='mainSessionEnd'): lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
+    Optional('logLevel', default=0): And(int, lambda x: 0 <= x <= 4), #max logLevel = 4
+    Optional('sessionTrimLookback', default=0): int, #TODO: convert from number of segments to number of seconds. Same for lookahead
+    Optional('sessionTrimLookahead', default=0): And(int, lambda x: x>=0),
+    Optional('sessionTrimLookbackSeconds', default=0): And(int, lambda x: x>=0), #Not implemented yet
+    Optional('sessionTrimLookaheadSeconds', default=600): And(int, lambda x: x>=0),
+    #Optional(Or(Optional('sessionTrimLookback', default=0), Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): int,
+    #Optional(Or(Optional('sessionTrimLookahead', default=0), Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
+    Optional('minGapSize', default=0): And(int, lambda x: x>=0),
+    Optional('outputCodec', default='libx264'): lambda x: x in ('libx264', 'libx265', 'h264_nvenc', 'hevc_nvenc'),
+    Optional('encodingSpeedPreset', default='medium'): lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
+    Optional('useHardwareAcceleration', default=0): And(int, lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+    Optional('maxHwaccelFiles', default=None): Or(lambda x: x is None, And(int, lambda x: x > 0)),
+    Optional('minimumTimeInVideo', default=900): And(int, lambda x: x>=0),
+    Optional('cutMode', default='chunked'):lambda x: x in ('chunked', ),#'trim', 'segment'),
+    Optional('useChat', default=True):bool,
+    Optional('excludeStreamers', default=None): Or(lambda x: x is None, And(int, lambda x: x > 0))
+})
+
 class RenderConfig:
-    def __init__(self, #targetStreamer, targetDate, outputFile=None, 
-                 *, drawLabels=False,
-                 startTimeMode='mainSessionStart',
-                 endTimeMode='mainSessionEnd',
-                 logLevel=0, #max logLevel = 4
-                 sessionTrimLookback=0, #TODO: convert from number of segments to number of seconds. Same for lookahead
-                 sessionTrimLookahead=5,
-                 sessionTrimLookbackSeconds=30, #Not implemented yet
-                 sessionTrimLookaheadSeconds=600,
-                 minGapSize=0,
-                 outputCodec='libx264',
-                 encodingSpeedPreset='medium',
-                 useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-                 maxHwaccelFiles=None,
-                 minimumTimeInVideo=900,
-                 cutMode='chunked',
-                 useChat=True,
-                 excludeStreamers=None, #not implemented yet, current idea {'streamer':None(for total exclude)|[{'game'}]}
-                 ffmpegPath=''):
-        #self.targetStreamer = targetStreamer        #self.targetDate = targetDate        #if outputFile is None:        #    self.outputFile = getVideoOutputPath(mainStreamer, targetDate)        #else:        #    self.outputFile = outputFile
-        if startTimeMode not in ('mainSessionStart', 'allOverlapStart'):
-            raise Exception(f"Unknown startTimeMode value: {str(startTimeMode)}")
-        if endTimeMode not in ('mainSessionEnd', 'allOverlapEnd'):
-            raise Exception(f"Unknown endTimeMode value: {str(endTimeMode)}")
-        if outputCodec not in ('libx264', 'libx265', 'h264_nvenc'):
-            raise Exception(f"Unknown output codec: {str(outputCodec)}")
-        if encodingSpeedPreset not in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow') or encodingSpeedPreset in [f'p{i}' for i in range(1, 8)]:
-            raise Exception(f"Unknown encoding speed preset: {str(encodingSpeedPreset)}")
-        if useHardwareAcceleration & (HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE) != useHardwareAcceleration:
-            raise Exception(f"Unknown useHardwareAcceleration value: {str(useHardwareAcceleration)}")
-        if cutMode not in ('trim', 'segment', 'chunked'):
-            raise Exception(f"Unknown cutMode value: {str(cutMode)}")
-        if outputCodec in ('h264_nvenc', 'hevc_nvenc'):
-            if useHardwareAcceleration & HW_ENCODE == 0:
-                raise Exception(f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {outputCodec}")
-            if encodingSpeedPreset not in [f'p{i}' for i in range(1, 8)]:
+    def __init__(self, **kwargs):
+        values = renderConfigSchema.validate(kwargs)
+        if values['outputCodec'] in ('h264_nvenc', 'hevc_nvenc'):
+            if values['useHardwareAcceleration'] & HW_ENCODE == 0:
+                raise Exception(f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {values['outputCodec']}")
+            if values['encodingSpeedPreset'] not in [f'p{i}' for i in range(1, 8)]:
                 raise Exception("Must use p1-p7 presets with hardware codecs")
-        elif encodingSpeedPreset not in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'):
+        elif values['encodingSpeedPreset'] not in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'):
             raise Exception("Can only use p1-p7 presets with hardware codecs")
-        if useHardwareAcceleration & HW_OUTPUT_SCALE != 0:
-            if useHardwareAcceleration & HW_ENCODE == 0:
+        if values['useHardwareAcceleration'] & HW_OUTPUT_SCALE != 0:
+            if values['useHardwareAcceleration'] & HW_ENCODE == 0:
                 raise Exception(f"Hardware-accelerated output scaling must currently be used with hardware encoding")
-        if useHardwareAcceleration & HW_ENCODE != 0:
-            if outputCodec not in ('h264_nvenc', 'hevc_nvenc'):
+        if values['useHardwareAcceleration'] & HW_ENCODE != 0:
+            if values['outputCodec'] not in ('h264_nvenc', 'hevc_nvenc'):
                 raise Exception(f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled")
-        self.outputCodec = outputCodec
-        self.startTimeMode = startTimeMode
-        self.endTimeMode = endTimeMode
-        self.encodingSpeedPreset = encodingSpeedPreset
-        self.useHardwareAcceleration = useHardwareAcceleration
-        self.logLevel = logLevel
-        self.sessionTrimLookback = sessionTrimLookback
-        self.sessionTrimLookahead = sessionTrimLookahead
-        self.sessionTrimLookbackSeconds = sessionTrimLookbackSeconds
-        self.sessionTrimLookaheadSeconds = sessionTrimLookaheadSeconds
-        self.minGapSize = minGapSize
-        self.maxHwaccelFiles = maxHwaccelFiles
-        self.minimumTimeInVideo = minimumTimeInVideo
-        self.cutMode = cutMode
-        self.useChat = useChat
-        self.ffmpegPath = ffmpegPath
-        self.drawLabels = drawLabels
+        for key, value in values.items():
+            setattr(self, key, value)
     def copy(self):
-        return RenderConfig(drawLabels=self.drawLabels, startTimeMode=self.startTimeMode, endTimeMode=self.endTimeMode, 
-                            logLevel=self.logLevel, sessionTrimLookback=self.sessionTrimLookback,
-                            sessionTrimLookahead=self.sessionTrimLookahead, minGapSize=self.minGapSize,
-                            sessionTrimLookbackSeconds=self.sessionTrimLookbackSeconds,
-                            sessionTrimLookaheadSeconds=self.sessionTrimLookaheadSeconds,
-                            outputCodec=self.outputCodec, encodingSpeedPreset=self.encodingSpeedPreset,
-                            useHardwareAcceleration=self.useHardwareAcceleration,
-                            maxHwaccelFiles=self.maxHwaccelFiles, minimumTimeInVideo=self.minimumTimeInVideo,
-                            cutMode=self.cutMode, useChat=self.useChat, ffmpegPath=self.ffmpegPath)
+        return RenderConfig(**self.__dict__)
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None):
-    
     otherStreamers = [name for name in allStreamersWithVideos if name is not mainStreamer]
     if outputFile is None:
         outputFile = getVideoOutputPath(mainStreamer, targetDate)
@@ -520,7 +489,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     minGapSize=renderConfig.minGapSize; outputCodec=renderConfig.outputCodec; encodingSpeedPreset=renderConfig.encodingSpeedPreset;
     useHardwareAcceleration=renderConfig.useHardwareAcceleration; maxHwaccelFiles=renderConfig.maxHwaccelFiles; 
     minimumTimeInVideo=renderConfig.minimumTimeInVideo; cutMode=renderConfig.cutMode; useChat=renderConfig.useChat; 
-    ffmpegPath=renderConfig.ffmpegPath;
+    #ffmpegPath=renderConfig.ffmpegPath;
     #########
     #2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(datetime.fromisoformat(targetDate), DAY_START_TIME)
@@ -739,6 +708,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     segmentFileMatrix[i][streamerIndex] = None
         if logLevel >= 2:
             printSegmentMatrix(showGameChanges=True)
+    else:
+        #trim by seconds
+        raise Exception("Not implemented yet")
     
     def splitRow(rowNum, timestamp):
         assert uniqueTimestampsSorted[rowNum] < timestamp < uniqueTimestampsSorted[rowNum+1]
@@ -1540,73 +1512,72 @@ def reloadAndSave():
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
 
-# %%
-#reloadAndSave()
-initialize()
-print("Initialization complete!")
-
-#testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
-#testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
-                                                 RenderConfig(logLevel=1,
-                                                 #startTimeMode='allOverlapStart',
-                                                 #endTimeMode='allOverlapEnd',
-                                                 useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
-                                                 sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
-                                                 minGapSize=1200,
-                                                 maxHwaccelFiles=20,
-                                                 #useChat=False,
-                                                 drawLabels=True,
-                                                  #sessionTrimLookback=1, 
-                                                  #sessionTrimLookahead=-1,
-                                                  #outputCodec='libx264',
-                                                  #encodingSpeedPreset='medium',
-                                                  #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-                                                  minimumTimeInVideo=900,
-                                                  #cutMode='chunked',
-                                                  #useChat=True,
-                                                 ffmpegPath='/home/ubuntu/ffmpeg-cuda/ffmpeg/'))
-
-
-
-print([extractInputFiles(testCommand) for testCommand in testCommands])
-print("\n\n")
-for testCommand in testCommands:
-    if 'ffmpeg' in testCommand[0]:
-        testCommand.insert(-1, '-y')
-        testCommand.insert(-1, '-stats_period')
-        testCommand.insert(-1, '30')
-        #testCommand.insert(-1, )
-#print(testCommands)
-#testCommandString = formatCommand(testCommand)
-testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
-print(testCommandStrings)
-def writeCommandStrings(commandList, testNum=None):
-    if testNum is None:
-        for i in range(2,1000):
-            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-            if not os.path.isfile(path):
-                testNum = i
-    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
-    print(path)
-    with open(path, 'w') as file:
-        file.write('\n'.join(testCommandStrings))
-        file.write('\necho "Render complete!!"')
-def writeCommandScript(commandList, testNum=None):
-    if testNum is None:
-        for i in range(2,1000):
-            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-            if not os.path.isfile(path):
-                testNum = i
-    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
-    print(path)
-    with open(path, 'w') as file:
-        file.write(' && \\\n'.join(testCommandStrings))
-        file.write(' && \\\necho "Render complete!!"')
-
-#writeCommandStrings(testCommandStrings, 10)
-#writeCommandScript(testCommandStrings, 11)
-
+# %% [markdown]
+# #reloadAndSave()
+# initialize()
+# print("Initialization complete!")
+#
+# #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
+# #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
+# testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
+#                                                  RenderConfig(logLevel=1,
+#                                                  #startTimeMode='allOverlapStart',
+#                                                  #endTimeMode='allOverlapEnd',
+#                                                  useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
+#                                                  sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
+#                                                  minGapSize=1200,
+#                                                  maxHwaccelFiles=20,
+#                                                  #useChat=False,
+#                                                  drawLabels=True,
+#                                                   #sessionTrimLookback=1, 
+#                                                   #sessionTrimLookahead=-1,
+#                                                   #outputCodec='libx264',
+#                                                   #encodingSpeedPreset='medium',
+#                                                   #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+#                                                   minimumTimeInVideo=900,
+#                                                   #cutMode='chunked',
+#                                                   #useChat=True,
+#                                                  ))
+#
+#
+#
+# print([extractInputFiles(testCommand) for testCommand in testCommands])
+# print("\n\n")
+# for testCommand in testCommands:
+#     if 'ffmpeg' in testCommand[0]:
+#         testCommand.insert(-1, '-y')
+#         testCommand.insert(-1, '-stats_period')
+#         testCommand.insert(-1, '30')
+#         #testCommand.insert(-1, )
+# #print(testCommands)
+# #testCommandString = formatCommand(testCommand)
+# testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
+# print(testCommandStrings)
+# def writeCommandStrings(commandList, testNum=None):
+#     if testNum is None:
+#         for i in range(2,1000):
+#             path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+#             if not os.path.isfile(path):
+#                 testNum = i
+#     path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
+#     print(path)
+#     with open(path, 'w') as file:
+#         file.write('\n'.join(testCommandStrings))
+#         file.write('\necho "Render complete!!"')
+# def writeCommandScript(commandList, testNum=None):
+#     if testNum is None:
+#         for i in range(2,1000):
+#             path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+#             if not os.path.isfile(path):
+#                 testNum = i
+#     path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
+#     print(path)
+#     with open(path, 'w') as file:
+#         file.write(' && \\\n'.join(testCommandStrings))
+#         file.write(' && \\\necho "Render complete!!"')
+#
+# #writeCommandStrings(testCommandStrings, 10)
+# #writeCommandScript(testCommandStrings, 11)
 
 # %%
 # Threading time!
@@ -1847,6 +1818,8 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                 print(f"Removing intermediate file {file}")
                 assert basepath not in file
                 os.remove(file)
+        if __debug__:
+            break
 
 def getAllStreamingDaysByStreamer():
     daysByStreamer = {}
@@ -1956,6 +1929,19 @@ def endRendersAndExit():
     sys.exit(0)
 commandArray.append(Command(endRendersAndExit, 'Exit program'))
 
+def startRenderThread():
+    print("Starting render thread")
+    if renderThread is not None and not renderThread.is_alive():
+        renderThread.start()
+    index = None
+    for i in range(len(commandArray)):
+        if commandArray[i].targetFunc == startRenderThread:
+            index = i
+            break
+    assert index is not None
+    del commandArray[index]
+commandArray.append(Command(startRenderThread, 'Start render thread'))
+
 def printActiveJobs():
     print(f"Active render job:", "None" if activeRenderTask is None else f"{str(activeRenderTask)}")
     if COPY_FILES:
@@ -1978,11 +1964,10 @@ commandArray.append(Command(printQueuedJobs, 'Print queued jobs'))
 
 def printCompleteJobs():
     renderStatusLock.acquire()
-    #key = f"{streamer}|{date}"
     completeRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]=='FINISHED']
     renderStatusLock.release()
     streamersWithComplete = sorted(set([render[0] for render in completeRenders]))
-    print(streamersWithComplete)
+    #print(streamersWithComplete)
     selectedStreamer = None
     if len(streamersWithComplete) > 1:
         print("Select streamer (blank for all):")
@@ -2000,27 +1985,82 @@ def printCompleteJobs():
     for streamer, date in completeRenders:
         if selectedStreamer is None or streamer == selectedStreamer:
             print(f"{streamer:25} | {date}")
-
 commandArray.append(Command(printCompleteJobs, 'Print completed jobs'))
 
 quitOptions = ('quit', 'exit', 'q');
 def inputManualJob():
     mainStreamer = None
+    allStreamerDays = getAllStreamingDaysByStreamer()
     while mainStreamer is None:
         userInput = input("Enter streamer name: ")
         if userInput.lower() in quitOptions:
             return
-        for streamer in globalInputStreamers:
+        for streamer in allStreamerDays.keys():
             if streamer.lower() == userInput.lower():
                 mainStreamer = streamer
                 break
         if mainStreamer is None:
-            closestMatch, ratio = fuzzproc.extractOne(userInput, globalInputStreamers)
+            closestMatch, ratio = fuzzproc.extractOne(userInput, allStreamerDays.keys())
+            if ratio < 50:
+                print("Could not parse streamer name, please try again")
+                continue
             isMatch = input(f"Streamer '{userInput}' not found, did you mean '{closestMatch}'? ({str(ratio)}% match) (y/n) ")
             if isMatch.lower().startswith('y'):
                 mainStreamer = closestMatch
                 break
-    
+    fileDate = None
+    streamerDays = allStreamerDays[mainStreamer]
+    if len(streamerDays) == 0:
+        print("Selected streamer has no streams!")
+        return
+    pageNum = 0
+    pageSize = 30
+    pageWidth = 3
+    while fileDate is None:
+        print("Enter file date to render:")
+        optionRows = []
+        hasPrevPage = pageNum > 0
+        if hasPrevPage:
+            print("P) Previous page")
+        startIndex = pageNum*pageSize
+        endIndex = (pageNum+1)*pageSize
+        dates = streamerDays[startIndex:endIndex]
+        for dayIndex in range(len(dates)):
+            print(f"{dayIndex+1}) {dates[dayIndex]}    ", end='')
+            if dayIndex % pageWidth == pageWidth-1 or dayIndex==len(dates)-1:
+                print()
+        hasNextPage = endIndex<len(streamerDays)
+        if hasNextPage:
+            print("N) Next page")
+        userInput = input(" >> ")
+        if userInput.lower() == 'p':
+            if hasPrevPage:
+                pageNum -= 1
+                continue
+            else:
+                print("No previous page!")
+        elif userInput.lower() == 'n':
+            if hasNextPage:
+                pageNum += 1
+                continue
+            else:
+                print("No next page!")
+        elif userInput.lower() in quitOptions:
+            return
+        try:
+            fileDate = dates[int(userInput)-1]
+        except:
+            print("Invalid input!")
+            ttime.sleep(2)
+            fileDate = None
+    currentStatus = getRenderStatus(mainStreamer, fileDate)
+    print(f"Got {mainStreamer} {fileDate}, current status {currentStatus}")
+    renderConfig = None
+    if currentStatus == 'RENDER_QUEUE':
+        raise Exception("Editing queued renders not supported yet")
+    if renderConfig is None:
+        renderConfig = RenderConfig()
+    print(renderConfig.__dict__)
     raise Exception("Not implemented yet")
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
 
@@ -2048,7 +2088,11 @@ def commandWorker():
         except KeyboardInterrupt as ki:
             print("Detected keyboard interrupt, returning to main menu. Press Ctrl-C again to exit program")
         #raise Exception("Not implemented yet")
-        
+
+renderThread = threading.Thread(target=renderWorker)
+if COPY_FILES:
+    copyThread = threading.Thread(target=copyWorker)
+
 
 if __name__=='__main__':
     defaultSessionRenderConfig = RenderConfig(drawLabels=False,
@@ -2060,9 +2104,7 @@ if __name__=='__main__':
     if not __debug__:
         print("Deployment mode")
         if COPY_FILES:
-            copyThread = threading.Thread(target=copyWorker)
             copyThread.start()
-        renderThread = threading.Thread(target=renderWorker)
         renderThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig':defaultSessionRenderConfig,
                                                                        'maxLookback':timedelta(days=14)})
@@ -2074,7 +2116,7 @@ if __name__=='__main__':
         devSessionRenderConfig = defaultSessionRenderConfig.copy()
         devSessionRenderConfig.logLevel = 1
         
-        sessionWorker(renderConfig = devSessionRenderConfig, maxLookback=timedelta(days=7,hours=18))
+        sessionWorker(renderConfig = devSessionRenderConfig, maxLookback=timedelta(days=0,hours=18))
         
         #copyWorker()
         #print(getAllStreamingDaysByStreamer()['ChilledChaos'])
