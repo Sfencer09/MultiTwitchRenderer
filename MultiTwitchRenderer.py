@@ -16,7 +16,7 @@
 # %%
 import os, subprocess, json, time, math, pickle, re, queue, threading, shutil, random, sys, signal, gc
 from datetime import datetime, timezone, time, timedelta
-from schema import Schema, Or, And, Optional
+from schema import Schema, Or, And, Optional, Use
 from fuzzysearch import find_near_matches
 from thefuzz import process as fuzzproc
 from functools import reduce
@@ -336,10 +336,11 @@ def scanFiles(log=False):
             print(f"\nScanned streamer {streamer} with {len(streamerFiles)} files")
         if len(streamerFiles) > 0:
             if streamer not in allStreamersWithVideos: 
-                allStreamersWithVideos.append(streamer)
+                #allStreamersWithVideos.append(streamer)
                 allFilesByStreamer[streamer] = streamerFiles
             else: #streamer already had videos scanned in
                 allFilesByStreamer[streamer].extend(streamerFiles)
+    allStreamersWithVideos = list(allFilesByStreamer.keys())
     if log:
         print("Step 0: ", allStreamersWithVideos, end="\n\n\n")
 
@@ -434,27 +435,28 @@ HW_DECODE=1
 HW_INPUT_SCALE=2
 HW_OUTPUT_SCALE=4
 HW_ENCODE=8
+trueStrings = ('t', 'y', 'true', 'yes')
 
 renderConfigSchema = Schema({
-    Optional('drawLabels', default=False): bool,
+    Optional('drawLabels', default=False): Or(bool, Use(lambda x: x.lower() in trueStrings)),
     Optional('startTimeMode', default='mainSessionStart'): lambda x: x in ('mainSessionStart', 'allOverlapStart'),
     Optional('endTimeMode', default='mainSessionEnd'): lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
-    Optional('logLevel', default=0): And(int, lambda x: 0 <= x <= 4), #max logLevel = 4
-    Optional('sessionTrimLookback', default=0): int, #TODO: convert from number of segments to number of seconds. Same for lookahead
-    Optional('sessionTrimLookahead', default=0): And(int, lambda x: x>=0),
-    Optional('sessionTrimLookbackSeconds', default=0): And(int, lambda x: x>=0), #Not implemented yet
-    Optional('sessionTrimLookaheadSeconds', default=600): And(int, lambda x: x>=0),
+    Optional('logLevel', default=0): And(Use(int), lambda x: 0 <= x <= 4), #max logLevel = 4
+    Optional('sessionTrimLookback', default=0): Use(int), #TODO: convert from number of segments to number of seconds. Same for lookahead
+    Optional('sessionTrimLookahead', default=0): And(Use(int), lambda x: x >= 0),
+    Optional('sessionTrimLookbackSeconds', default=0): And(Use(int), lambda x: x >= 0), #Not implemented yet
+    Optional('sessionTrimLookaheadSeconds', default=600): And(Use(int), lambda x: x >= 0),
     #Optional(Or(Optional('sessionTrimLookback', default=0), Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): int,
     #Optional(Or(Optional('sessionTrimLookahead', default=0), Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
-    Optional('minGapSize', default=0): And(int, lambda x: x>=0),
+    Optional('minGapSize', default=0): And(Use(int), lambda x: x >= 0),
     Optional('outputCodec', default='libx264'): lambda x: x in ('libx264', 'libx265', 'h264_nvenc', 'hevc_nvenc'),
     Optional('encodingSpeedPreset', default='medium'): lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    Optional('useHardwareAcceleration', default=0): And(int, lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-    Optional('maxHwaccelFiles', default=None): Or(lambda x: x is None, And(int, lambda x: x > 0)),
-    Optional('minimumTimeInVideo', default=900): And(int, lambda x: x>=0),
-    Optional('cutMode', default='chunked'):lambda x: x in ('chunked', ),#'trim', 'segment'),
-    Optional('useChat', default=True):bool,
-    Optional('excludeStreamers', default=None): Or(lambda x: x is None, And(int, lambda x: x > 0))
+    Optional('useHardwareAcceleration', default=0): And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+    Optional('maxHwaccelFiles', default=0): And(Use(int), lambda x: x >= 0),
+    Optional('minimumTimeInVideo', default=900): And(Use(int), lambda x: x >= 0),
+    Optional('cutMode', default='chunked'): lambda x: x in ('chunked', ),#'trim', 'segment'),
+    Optional('useChat', default=True): Or(bool, Use(lambda x: x.lower() in trueStrings)),
+    Optional('excludeStreamers', default=None): Or(lambda x: x is None, [str], {str:Or(lambda x: x is None, [str])}) #Cannot be passed as string
 })
 
 class RenderConfig:
@@ -477,6 +479,8 @@ class RenderConfig:
             setattr(self, key, value)
     def copy(self):
         return RenderConfig(**self.__dict__)
+    def __repr__(self):
+        return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items()))})"
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None):
     otherStreamers = [name for name in allStreamersWithVideos if name is not mainStreamer]
@@ -488,8 +492,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     sessionTrimLookbackSeconds=renderConfig.sessionTrimLookbackSeconds; sessionTrimLookaheadSeconds=renderConfig.sessionTrimLookaheadSeconds;
     minGapSize=renderConfig.minGapSize; outputCodec=renderConfig.outputCodec; encodingSpeedPreset=renderConfig.encodingSpeedPreset;
     useHardwareAcceleration=renderConfig.useHardwareAcceleration; maxHwaccelFiles=renderConfig.maxHwaccelFiles; 
-    minimumTimeInVideo=renderConfig.minimumTimeInVideo; cutMode=renderConfig.cutMode; useChat=renderConfig.useChat; 
-    #ffmpegPath=renderConfig.ffmpegPath;
+    minimumTimeInVideo=renderConfig.minimumTimeInVideo; cutMode=renderConfig.cutMode; useChat=renderConfig.useChat;
     #########
     #2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(datetime.fromisoformat(targetDate), DAY_START_TIME)
@@ -513,17 +516,18 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #3. For all other streamers, build a sorted array of sessions that have matching games & have time overlap (and/or
         # appear in a !who-type command during that time if rechat is found)
     secondarySessionsArray = []
-    secondarySessionsByStreamer = {}
+    inputSessionsByStreamer = {}
+    inputSessionsByStreamer[mainStreamer] = mainSessionsOnTargetDate
     for streamer in otherStreamers:
-        secondarySessionsByStreamer[streamer] = []
+        inputSessionsByStreamer[streamer] = []
         for session in allStreamerSessions[streamer]:
             if any((session.hasOverlap(x, useChat) for x in mainSessionsOnTargetDate)):
                 secondarySessionsArray.append(session)
-                secondarySessionsByStreamer[streamer].append(session)
-        secondarySessionsByStreamer[streamer].sort(key=lambda x: x.startTimestamp)
+                inputSessionsByStreamer[streamer].append(session)
+        inputSessionsByStreamer[streamer].sort(key=lambda x: x.startTimestamp)
     if logLevel >= 3:
         print("\n\n\nStep 3: ")#, secondarySessionsArray)
-        pprint(secondarySessionsByStreamer)
+        pprint(inputSessionsByStreamer)
 
     #4. Build a separate array of all sessions from #3, sorted by start time
     secondarySessionsArray.sort(key=lambda x: x.startTimestamp)
@@ -555,7 +559,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     for streamer in allInputStreamers:
         timePairs = []
         inputSessionTimestampsByStreamer[streamer] = timePairs
-        for session in secondarySessionsByStreamer[streamer]:
+        for session in inputSessionsByStreamer[streamer]:
             start, end = session.startTimestamp, session.endTimestamp
             if len(timePairs) == 0:
                 timePairs.append([start, end])
@@ -617,7 +621,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         assert segmentFileMatrix[segIndex][streamerIndex] is session.file
         addOverlappingSessions(mainSessionsOnTargetDate, 0)
         for i in range(1, len(allInputStreamers)):
-            addOverlappingSessions(secondarySessionsByStreamer[allInputStreamers[i]], i)
+            addOverlappingSessions(inputSessionsByStreamer[allInputStreamers[i]], i)
     if logLevel >= 1:
         print("\n\n\nStep 8: ")
         if logLevel >= 4:
@@ -793,9 +797,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             del allInputStreamersSortKey[streamer]
             del inputSessionTimestampsByStreamer[streamer]
             secondaryStreamers.remove(streamer)
-            for session in secondarySessionsByStreamer[streamer]:
+            for session in inputSessionsByStreamer[streamer]:
                 secondarySessionsArray.remove(session)
-            del secondarySessionsByStreamer[streamer]
+            del inputSessionsByStreamer[streamer]
     if logLevel >= 1:
         print(allInputStreamers, allInputStreamersSortKey)
         if logLevel >= 2:
@@ -845,7 +849,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     for i in range(len(inputFilesSorted)):
         file = inputFilesSorted[i]
         if useHardwareAcceleration&HW_DECODE != 0:
-            if maxHwaccelFiles is None or i < maxHwaccelFiles:
+            if maxHwaccelFiles == 0 or i < maxHwaccelFiles:
                 inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
                 #inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
                 if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
@@ -1019,7 +1023,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     inputVSegName = f"file{fileIndex}V{fileSegNum}"
                     outputVSegName = f"seg{segIndex}V{streamerIndex}"
                     labelFilter = f", drawtext=text='{str(streamerIndex+1)} {allInputStreamers[streamerIndex]}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
-                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or fileIndex < maxHwaccelFiles)
+                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles == 0 or fileIndex < maxHwaccelFiles)
                     uploadFilter, downloadFilter = (f", hwupload_cuda", f", hwdownload,format=pix_fmts=yuv420p") if useHwFilterAccel and (needToScale or not isSixteenByNine) else ('', '')
                     scaleFilter = f", scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame" if needToScale else ''
                     padFilter = f", pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
@@ -1132,7 +1136,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     #print(inputFile.videoFile, fpsRaw, fpsActual, fpsActual==60)
-                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
+                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
                     if not useHwFilterAccel:
                         if outputResolution[0] > width: #upscaling
                             scaleAlgo = ':sws_flags=lanczos'
@@ -1150,11 +1154,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     #timeFilter = f"setpts={vpts}"
                     filtergraphBody = None
                     if needToScale or not isSixteenByNine:
-                        if useHardwareAcceleration == 3 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        if useHardwareAcceleration == 3 and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [scaleFilter, padFilter, downloadFilter, fpsFilter, trimFilter, timeFilter, labelFilter]
-                        elif useHardwareAcceleration == 2 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        elif useHardwareAcceleration == 2 and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [fpsFilter, trimFilter, timeFilter, uploadFilter, scaleFilter, padFilter, downloadFilter, labelFilter]
-                        elif useHardwareAcceleration == 1 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        elif useHardwareAcceleration == 1 and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [fpsFilter, trimFilter, timeFilter, scaleFilter, padFilter, labelFilter]
                         elif useHardwareAcceleration >= 4:
                             raise Exception("Not implemented yet")
@@ -1279,7 +1283,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     if useHardwareAcceleration&HW_DECODE != 0:
-                        if maxHwaccelFiles is None or inputIndex < maxHwaccelFiles:
+                        if maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles:
                             rowInputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
                             #rowInputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
                             if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
@@ -1293,7 +1297,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         rowInputOptions.append(file.localVideoFile)
                     else:
                         rowInputOptions.append(file.videoFile)
-                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles)
+                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
                     #print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     tileHeight = int(tileResolution.split(':')[1])
                     if logLevel >= 3:
@@ -1313,11 +1317,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     filtergraphBody = None
                     if needToScale or not isSixteenByNine:
                         mask = HW_DECODE|HW_INPUT_SCALE
-                        if useHardwareAcceleration&mask == HW_DECODE and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        if useHardwareAcceleration&mask == HW_DECODE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [fpsFilter,trimFilter,timeFilter,scaleFilter,padFilter,labelFilter]
-                        elif useHardwareAcceleration&mask == HW_INPUT_SCALE and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        elif useHardwareAcceleration&mask == HW_INPUT_SCALE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [fpsFilter,trimFilter,timeFilter,uploadFilter,scaleFilter,padFilter,downloadFilter,labelFilter]
-                        elif useHardwareAcceleration&mask == (HW_DECODE|HW_INPUT_SCALE) and (maxHwaccelFiles is None or inputIndex < maxHwaccelFiles):
+                        elif useHardwareAcceleration&mask == (HW_DECODE|HW_INPUT_SCALE) and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
                             filtergraphBody = [scaleFilter,padFilter,downloadFilter,fpsFilter,trimFilter,timeFilter,labelFilter]
                         #elif useHardwareAcceleration >= 4:
                         #    raise Exception("Not implemented yet")
@@ -1519,25 +1523,25 @@ def reloadAndSave():
 #
 # #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 # #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
-# testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-22", 
-#                                                  RenderConfig(logLevel=1,
+# testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
+#                                                  ) #RenderConfig(logLevel=1,
 #                                                  #startTimeMode='allOverlapStart',
 #                                                  #endTimeMode='allOverlapEnd',
-#                                                  useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
-#                                                  sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
-#                                                  minGapSize=1200,
-#                                                  maxHwaccelFiles=20,
+#                                                  #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
+#                                                  #sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
+#                                                  #minGapSize=1200,
+#                                                  #maxHwaccelFiles=20,
 #                                                  #useChat=False,
-#                                                  drawLabels=True,
+#                                                  #drawLabels=True,
 #                                                   #sessionTrimLookback=1, 
 #                                                   #sessionTrimLookahead=-1,
 #                                                   #outputCodec='libx264',
 #                                                   #encodingSpeedPreset='medium',
 #                                                   #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-#                                                   minimumTimeInVideo=900,
+#                                                   #minimumTimeInVideo=900,
 #                                                   #cutMode='chunked',
 #                                                   #useChat=True,
-#                                                  ))
+#                                                  #)
 #
 #
 #
@@ -1590,7 +1594,6 @@ if COPY_FILES:
     assert localBasepath.strip(' /\\') != basepath.strip(' /\\')
 
 class QueueItem:
-    #def __init__(self, commandArray, mainStreamer, fileDate):
     def __init__(self, mainStreamer, fileDate, renderConfig:RenderConfig, outputPath=None):
         self.fileDate = fileDate
         self.mainStreamer = mainStreamer
@@ -1614,7 +1617,7 @@ class QueueItem:
     def __str__(self):
         return f"{self.mainStreamer} {self.fileDate}"
     def __repr__(self):
-        return f"QueueItem(mainStreamer={self.mainStreamer}, fileDate={self.fileDate})"
+        return f"QueueItem(mainStreamer={self.mainStreamer}, fileDate={self.fileDate}, renderConfig={self.renderConfig}, outputPath={self.outputPath})"
 
 
 renderStatuses = {}
@@ -1634,6 +1637,8 @@ if COPY_FILES:
     copyQueue = queue.PriorityQueue()
 localFileReferenceCounts = {}
 localFileRefCountLock = threading.Lock()
+DEFAULT_PRIORITY = 1000
+MANUAL_PRIORITY = 500
 
 def incrFileRefCount(filename):
     assert filename.startswith(localBasepath)
@@ -1708,7 +1713,7 @@ def copyWorker():
             ttime.sleep(120)
             continue
             #return
-        task = copyQueue.get(block=False)
+        task = copyQueue.get(block=False)[1]
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'COPY_QUEUE'
         activeCopyTask = task
         setRenderStatus(task.mainStreamer, task.fileDate, 'COPYING')
@@ -1741,9 +1746,9 @@ def copyWorker():
             filesBySourceVideoPath[localPath] = file
             #replace file path in renderCommand
             for command in task.commandArray:
-                renderCommand[renderCommand.index(remotePath)] = localPath
+                command[command.index(remotePath)] = localPath
         #item = QueueItem(streamer, day, renderConfig, outPath)
-        renderQueue.put(QueueItem(task.mainStreamer, task.fileDate, task.renderConfig, task.outputPath))
+        renderQueue.put((DEFAULT_PRIORITY, QueueItem(task.mainStreamer, task.fileDate, task.renderConfig, task.outputPath)))
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
 
 activeRenderTask = None
@@ -1754,8 +1759,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
             print("Render queue empty, sleeping")
             ttime.sleep(20)
             continue
-        task = renderQueue.get(block=False)
-        print(task.commandArray)
+        task = renderQueue.get(block=False)[1]
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
         activeRenderTask = task
         renderCommands = generateTilingCommandMultiSegment(task.mainStreamer,
@@ -1763,11 +1767,13 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                                                            task.renderConfig,
                                                            task.outputPath)
         outpath = [command for command in renderCommands if command[0].endswith('ffmpeg')][-1][-1]
+        
+        print(renderCommands)
         #pathSplitIndex = outpath.rindex('.')
         #tempOutpath = outpath[:pathSplitIndex]+'.temp'+outpath[pathSplitIndex:]
         tempOutpath = insertSuffix(outpath, '.temp')
         print(outpath, tempOutpath)
-        renderCommand[-1][-1] = tempOutpath # output to temp file, so final filename will always be a complete file
+        renderCommands[-1][-1] = tempOutpath # output to temp file, so final filename will always be a complete file
         for i in range(len(renderCommands)):
             renderCommands[i].insert(-1, "-stats_period")
             renderCommands[i].insert(-1, str(stats_period))
@@ -1776,12 +1782,13 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
         hasError = False
         gc.collect()
         for i in range(len(renderCommands)):
-            with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log",'a')) as logFile:
+            
+            with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
                 print(f"Running render to file {outpath}")
                 #result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
                 
                 #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
-                process = subprocess.Popen(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
+                process = subprocess.Popen(renderCommands[i], stdout=logFile, stderr=subprocess.STDOUT)
                 activeRenderSubprocess = process
                 returncode = process.wait()
                 #if result.returncode != 0:
@@ -1842,7 +1849,7 @@ def getAllStreamingDaysByStreamer():
 #drawLabels=False, startTimeMode='mainSessionStart', endTimeMode='mainSessionEnd', logLevel=2, #max logLevel = 4
 # sessionTrimLookback=1, #sessionTrimLookahead=-1, minGapSize=0, outputCodec='libx264',
 # encodingSpeedPreset='medium', useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale, bit 3(4)=(unsupported) encode
-# maxHwaccelFiles=None, minimumTimeInVideo=900, cutMode='chunked', useChat=True, ffmpegPath=''
+# maxHwaccelFiles=0, minimumTimeInVideo=900, cutMode='chunked', useChat=True, ffmpegPath=''
 
 def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS, 
                   maxLookback:timedelta=DEFAULT_MAX_LOOKBACK, 
@@ -1884,21 +1891,13 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                     if status is None:
                         #new file, build command and add to queue
                         outPath = getVideoOutputPath(streamer, day)
-                        command = generateTilingCommandMultiSegment(streamer, day, renderConfig, outPath)#,
-                                                                    #drawLabels=drawLabels,
-                                                                    #startTimeMode=startTimeMode,
-                                                                    #endTimeMode=endTimeMode,
-                                                                    #logLevel=logLevel,
-                                                                    #cutMode=cutMode,
-                                                                    #sessionTrimLookback=sessionTrimLookback,
-                                                                    #encodingSpeedPreset=encodingSpeedPreset,
-                                                                    #minimumTimeInVideo=minimumTimeInVideo)
+                        command = generateTilingCommandMultiSegment(streamer, day, renderConfig, outPath)
                         if command is None: #command cannot be made, maybe solo stream or only one
                             print(f"Skipping render for streamer {streamer} from {day}")
                             continue
                         item = QueueItem(streamer, day, renderConfig, outPath)
                         print(f"Adding render for streamer {streamer} from {day}")
-                        (copyQueue if COPY_FILES else renderQueue).put(item)
+                        (copyQueue if COPY_FILES else renderQueue).put((DEFAULT_PRIORITY, item))
                         setRenderStatus(streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
                         #break #
                     elif maxLookback is None:
@@ -1910,6 +1909,8 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
         #ttime.sleep(60*60)#*24)
         break
 
+
+# %%
 class Command:
     def __init__(self, targetFunc, description):
         self.targetFunc = targetFunc
@@ -1988,26 +1989,118 @@ def printCompleteJobs():
 commandArray.append(Command(printCompleteJobs, 'Print completed jobs'))
 
 quitOptions = ('quit', 'exit', 'q');
-def inputManualJob():
-    mainStreamer = None
-    allStreamerDays = getAllStreamingDaysByStreamer()
-    while mainStreamer is None:
-        userInput = input("Enter streamer name: ")
-        if userInput.lower() in quitOptions:
-            return
-        for streamer in allStreamerDays.keys():
+
+def readStreamer(allStreamersList=None, inputText = "Enter streamer name, or 'list' to list valid names. 'q' to exit/cancel: "):
+    print(allStreamersList)
+    print(allStreamersWithVideos)
+    if allStreamersList is None:
+        allStreamersList = allStreamersWithVideos
+    while True:
+        print(inputText)
+        userInput = input(" >> ")
+        if userInput == '':
+            return ...
+        elif userInput.lower() in quitOptions:
+            return None
+        elif userInput.lower() == 'list':
+            for streamer in allStreamersList:
+                print(streamer)
+            continue
+        for streamer in allStreamersList:
             if streamer.lower() == userInput.lower():
-                mainStreamer = streamer
+                return streamer
+        closestMatch, ratio = fuzzproc.extractOne(userInput, allStreamersList)
+        if ratio < 50:
+            print("Could not parse streamer name, please try again")
+            if requireVideos:
+                print("(If the streamer name is valid, they may not have any known videos)")
+            continue
+        isMatch = input(f"Streamer '{userInput}' not found, did you mean '{closestMatch}'? ({str(ratio)}% match) (y/n) ")
+        if isMatch.lower().startswith('y'):
+            return closestMatch
+
+def readExcludeStreamers():
+    print("Selecting streamers to exclude, or empty input when done entering")
+    streamerExclusions = {}
+    while True:
+        parsedStreamer = readStreamer(inputText="Enter streamer name, or 'list' to list valid names. 'q' to exit/cancel. Leave empty if done: ")
+        if parsedStreamer is None:
+            return None
+        elif parsedStreamer == ...:
+            if len(streamerExclusions) == 0:
+                print("No streamers entered, cancelling")
+                return None
+            else:
                 break
-        if mainStreamer is None:
-            closestMatch, ratio = fuzzproc.extractOne(userInput, allStreamerDays.keys())
-            if ratio < 50:
-                print("Could not parse streamer name, please try again")
-                continue
-            isMatch = input(f"Streamer '{userInput}' not found, did you mean '{closestMatch}'? ({str(ratio)}% match) (y/n) ")
-            if isMatch.lower().startswith('y'):
-                mainStreamer = closestMatch
+        allGames = sorted(((game, count) for game, count in calcGameCounts().items()), key=lambda x:-x[1])
+        print(f"Streamer {parsedStreamer} selected")
+        excludedGames = []
+        def readExcludeGame():
+            gamesPage = 0
+            gamesPageSize = 20
+            while True:
+                startIndex = gamesPage*gamesPageSize
+                endIndex = (gamesPage+1)*gamesPageSize
+                pageGames = allGames[startIndex:endIndex]
+                hasPrevPage = gamesPage > 0
+                hasNextPage = endIndex < len(allGames)
+                if hasPrevPage:
+                    print("P) Previous page")
+                for i in range(len(pageGames)):
+                    print(f"{i+1}) {pageGames[i][0]}")
+                if hasNextPage:
+                    print("N) Next page")
+                userInput = input(" >> ")
+                if userInput.lower() in quitOptions:
+                    return None
+                elif userInput.lower() == 'p':
+                    if hasPrevPage:
+                        gamesPage -= 1; continue
+                    else:
+                        print("No previous page")
+                elif userInput.lower() == 'n':
+                    if hasNextPage:
+                        gamesPage += 1; continue
+                    else:
+                        print("No next page")
+                elif userInput == '':
+                    return ...
+                elif userInput.isdigit():
+                    index = int(userInput)-1
+                    if not 0 < index <= len(pageGames):
+                        print(f"Entered number outside of valid range (1-{len(pageGames)})")
+                        continue
+                    return pageGames[index]
+                else:
+                    for game, _ in allGames:
+                        if game.lower() == userInput.lower():
+                            return excludeGame
+        while True:
+            if len(excludedGames) > 0:
+                print(f"Excluded games so far: {str(excludedGames)}")
+                print(f"Enter game number or manually enter game name. Leave blank to end game selection or 'q' to abort:")
+            else:
+                print(f"Enter game number or manually enter game name. Leave blank to select all games or 'q' to abort:")
+            excludeGame = readExcludeGame()
+            if excludeGame is None:
+                return None
+            elif excludeGame == ...:
                 break
+            else:
+                excludedGames.append(excludeGame)
+        if len(excludedGames) == 0:
+            streamerExclusions[parsedStreamer] = None
+        else:
+            streamerExclusions[parsedStreamer] = excludedGames
+    return streamerExclusions
+
+renderConfigSchemaManualHandles = {'excludeStreamers': readExcludeStreamers}
+
+def inputManualJob():
+    allStreamerDays = getAllStreamingDaysByStreamer()
+    mainStreamer = readStreamer(allStreamerDays.keys())
+    if mainStreamer is None or mainStreamer == ...:
+        return
     fileDate = None
     streamerDays = allStreamerDays[mainStreamer]
     if len(streamerDays) == 0:
@@ -2055,13 +2148,46 @@ def inputManualJob():
             fileDate = None
     currentStatus = getRenderStatus(mainStreamer, fileDate)
     print(f"Got {mainStreamer} {fileDate}, current status {currentStatus}")
+    
+    outputPath = input("Enter output path (Leave blank for default):\n")
+    if outputPath == '':
+        outputPath = getVideoOutputPath(mainStreamer, fileDate)
+    
     renderConfig = None
     if currentStatus == 'RENDER_QUEUE':
         raise Exception("Editing queued renders not supported yet")
     if renderConfig is None:
         renderConfig = RenderConfig()
     print(renderConfig.__dict__)
-    raise Exception("Not implemented yet")
+    print(len(renderConfig.__dict__.keys()))
+    while True: #manually break out
+        configDict = renderConfig.__dict__
+        print("Current render settings:")
+        sortedKeys = sorted(configDict.keys())
+        for i in range(len(sortedKeys)):
+            print(f"{i+1}) {sortedKeys[i]} = {str(configDict[sortedKeys[i]])}")
+        print("R) Finish and queue render")
+        userInput = input(" >> ")
+        if userInput in quitOptions:
+            return
+        elif userInput.lower() == 'r':
+            break
+        try:
+            selectedKey = sortedKeys[int(userInput)-1]
+        except:
+            print(f"Invalid selection: '{userInput}'")
+            continue
+        if selectedKey in renderConfigSchemaManualHandles.keys():
+            newValue = renderConfigSchemaManualHandles[selectedKey]()
+        else:
+            print(f"New value for {selectedKey}: ")
+            newValue = input(" >> ")
+        configDict[selectedKey] = newValue
+    item = QueueItem(mainStreamer, fileDate, renderConfig, outputPath)
+    print(f"Adding render for streamer {mainStreamer} from {fileDate}")
+    setRenderStatus(mainStreamer, fileDate, 'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
+    (copyQueue if COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
+    #raise Exception("Not implemented yet")
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
 
 def commandWorker():
@@ -2114,10 +2240,10 @@ if __name__=='__main__':
     else:
         print("Development mode")
         devSessionRenderConfig = defaultSessionRenderConfig.copy()
-        devSessionRenderConfig.logLevel = 1
+        #devSessionRenderConfig.logLevel = 1
         
         sessionWorker(renderConfig = devSessionRenderConfig, maxLookback=timedelta(days=0,hours=18))
-        
+        print(allStreamersWithVideos)
         #copyWorker()
         #print(getAllStreamingDaysByStreamer()['ChilledChaos'])
         commandWorker()
@@ -2225,118 +2351,118 @@ if __name__=='__main__':
 #
 # print(renderStatuses)
 
-# %% [markdown]
-# gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
-#                'Tabletop Simulator': ('Board Games',),
-#                'Suika Game': ('Suika',),
-#                'Monopoly Plus': ('Monopoly',)}
-#
-# def normalizeAllGames():
-#     gameCounts = calcGameCounts()
-#     pprint(gameCounts)
-#     print("\n\n\n---------------------------------------------------------------\n\n\n")
-#     knownReplacements = {}
-#     lowercaseGames = {}
-#     for game, alias in gameAliases.items():
-#         assert game.lower() not in lowercaseGames.keys()
-#         knownReplacements[game] = list(alias)
-#         lowercaseGames[game.lower()] = game
-#     replacedGames = {}
-#     for game in gameCounts.keys():
-#         #if gameCounts[game] == 1:
-#         #    continue
-#         trueGame = None
-#         for key in knownReplacements.keys():
-#             if any((game == alias for alias in knownReplacements[key])):
-#                 trueGame = key
-#                 break
-#         if trueGame is None:
-#             trueGame = game
-#         else:
-#             print("game, trueGame:", game, trueGame)
-#             replacedGames[game] = trueGame
-#             continue
-#             
-#         #if any((any((game == alias for alias in knownReplacements[key])) for key in knownReplacements.keys())):
-#             #game is already a known alias
-#         #    continue
-#         lowergame = game.lower()
-#         if lowergame in lowercaseGames.keys():
-#             altgame = lowercaseGames[lowergame]
-#             if altgame == game:
-#                 continue
-#             if gameCounts[game] > gameCounts[altgame]:
-#                 aliases = knownReplacements[altgame]
-#                 aliases.append(altgame)
-#                 del knownReplacements[altgame]
-#                 knownReplacements[game] = aliases
-#             elif gameCounts[altgame] > gameCounts[game]:
-#                 knownReplacements[altgame].append(game)
-#             else:
-#                 raise Exception(f"Two capitalizations have the same count, cannot determine which is correct: {game}; {altgame}")
-#         #else:
-#         elif gameCounts[game] > 1:
-#             knownReplacements[game] = []
-#             lowercaseGames[lowergame] = game
-#     print("\n\n\n---------------------------------------------------------------\n\n\nreplacedGames:")
-#     pprint(replacedGames, width=200)
-#     print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
-#     pprint(knownReplacements, width=200)
-#     print("\n\n\n---------------------------------------------------------------\n\n\n")
-#     for game in (game for game in gameCounts.keys() if gameCounts[game]==1):
-#         matches = []
-#         lowergame = game.lower()
-#         lowergameParts = lowergame.split(' ')
-#         for knownGame, knownAliases in knownReplacements.items():
-#             knownGameLower = knownGame.lower()
-#             knownGameParts = knownGameLower.split(' ')
-#             if all((part in lowergameParts for part in knownGameParts)) and knownGameLower in lowergame:
-#                 difference = lowergame.replace(knownGameLower, '').strip()
-#                 if not difference.isdigit():
-#                     matches.append(knownGame)
-#                     continue
-#             for knownAlias in knownAliases:
-#                 aliasLower = knownAlias.lower()
-#                 aliasParts = aliasLower.split(' ')
-#                 if all((part in lowergameParts for part in aliasParts)) and aliasLower in lowergame:
-#                     difference = lowergame.replace(aliasLower, '').strip()
-#                     if not difference.isdigit():
-#                         matches.append(knownGame)
-#         if len(matches) > 0:
-#             print("game, matches:", game, matches)
-#             #longestIndex = 0
-#             #for index in range(1, len(matches)):
-#             #    if len(matches[index]) > len(matches[longestIndex])
-#             #        longestIndex = index
-#             def locateIndex(x):
-#                 index = game.lower().find(x.lower())
-#                 if index != -1:
-#                     return index
-#                 if x in knownReplacements.keys():
-#                     for alias in knownReplacements[x]:
-#                         index = alias.lower().find(x.lower())
-#                         if index != -1:
-#                             return index
-#                 return -1
-#             longestMatch = sorted(matches, key=lambda x:(0-locateIndex(x), len(x)))[-1]
-#             #longestMatch = sorted(matches, key=lambda x:(game.lower().index(x.lower()), len(x)))[-1]
-#             #assert len(matches) == 1
-#             knownReplacements[longestMatch].append(game)
-#     for key in list(knownReplacements.keys()):
-#         if len(knownReplacements[key])==0:
-#             del knownReplacements[key]
-#     print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
-#     pprint(knownReplacements, width=200)
-#     def normalizeGame(originalGame:str):
-#         for game, aliases in knownReplacements.items():
-#             if originalGame == game or originalGame in aliases:
-#                 return game
-#     for streamer, sessions in allStreamerSessions.items():
-#         print(f"Normalizing games for streamer {streamer}")
-#         for session in sessions:
-#             ...
-#
-# normalizeAllGames()
+# %%
+gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
+               'Tabletop Simulator': ('Board Games',),
+               'Suika Game': ('Suika',),
+               'Monopoly Plus': ('Monopoly',)}
+
+def normalizeAllGames():
+    gameCounts = calcGameCounts()
+    pprint(gameCounts)
+    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    knownReplacements = {}
+    lowercaseGames = {}
+    for game, alias in gameAliases.items():
+        assert game.lower() not in lowercaseGames.keys()
+        knownReplacements[game] = list(alias)
+        lowercaseGames[game.lower()] = game
+    replacedGames = {}
+    for game in gameCounts.keys():
+        #if gameCounts[game] == 1:
+        #    continue
+        trueGame = None
+        for key in knownReplacements.keys():
+            if any((game == alias for alias in knownReplacements[key])):
+                trueGame = key
+                break
+        if trueGame is None:
+            trueGame = game
+        else:
+            print("game, trueGame:", game, trueGame)
+            replacedGames[game] = trueGame
+            continue
+            
+        #if any((any((game == alias for alias in knownReplacements[key])) for key in knownReplacements.keys())):
+            #game is already a known alias
+        #    continue
+        lowergame = game.lower()
+        if lowergame in lowercaseGames.keys():
+            altgame = lowercaseGames[lowergame]
+            if altgame == game:
+                continue
+            if gameCounts[game] > gameCounts[altgame]:
+                aliases = knownReplacements[altgame]
+                aliases.append(altgame)
+                del knownReplacements[altgame]
+                knownReplacements[game] = aliases
+            elif gameCounts[altgame] > gameCounts[game]:
+                knownReplacements[altgame].append(game)
+            else:
+                raise Exception(f"Two capitalizations have the same count, cannot determine which is correct: {game}; {altgame}")
+        #else:
+        elif gameCounts[game] > 1:
+            knownReplacements[game] = []
+            lowercaseGames[lowergame] = game
+    print("\n\n\n---------------------------------------------------------------\n\n\nreplacedGames:")
+    pprint(replacedGames, width=200)
+    print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
+    pprint(knownReplacements, width=200)
+    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    for game in (game for game in gameCounts.keys() if gameCounts[game]==1):
+        matches = []
+        lowergame = game.lower()
+        lowergameParts = lowergame.split(' ')
+        for knownGame, knownAliases in knownReplacements.items():
+            knownGameLower = knownGame.lower()
+            knownGameParts = knownGameLower.split(' ')
+            if all((part in lowergameParts for part in knownGameParts)) and knownGameLower in lowergame:
+                difference = lowergame.replace(knownGameLower, '').strip()
+                if not difference.isdigit():
+                    matches.append(knownGame)
+                    continue
+            for knownAlias in knownAliases:
+                aliasLower = knownAlias.lower()
+                aliasParts = aliasLower.split(' ')
+                if all((part in lowergameParts for part in aliasParts)) and aliasLower in lowergame:
+                    difference = lowergame.replace(aliasLower, '').strip()
+                    if not difference.isdigit():
+                        matches.append(knownGame)
+        if len(matches) > 0:
+            print("game, matches:", game, matches)
+            #longestIndex = 0
+            #for index in range(1, len(matches)):
+            #    if len(matches[index]) > len(matches[longestIndex])
+            #        longestIndex = index
+            def locateIndex(x):
+                index = game.lower().find(x.lower())
+                if index != -1:
+                    return index
+                if x in knownReplacements.keys():
+                    for alias in knownReplacements[x]:
+                        index = alias.lower().find(x.lower())
+                        if index != -1:
+                            return index
+                return -1
+            longestMatch = sorted(matches, key=lambda x:(0-locateIndex(x), len(x)))[-1]
+            #longestMatch = sorted(matches, key=lambda x:(game.lower().index(x.lower()), len(x)))[-1]
+            #assert len(matches) == 1
+            knownReplacements[longestMatch].append(game)
+    for key in list(knownReplacements.keys()):
+        if len(knownReplacements[key])==0:
+            del knownReplacements[key]
+    print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
+    pprint(knownReplacements, width=200)
+    def normalizeGame(originalGame:str):
+        for game, aliases in knownReplacements.items():
+            if originalGame == game or originalGame in aliases:
+                return game
+    for streamer, sessions in allStreamerSessions.items():
+        print(f"Normalizing games for streamer {streamer}")
+        for session in sessions:
+            ...
+
+normalizeAllGames()
 
 # %% [markdown]
 # # tileResolutionsV1 = [None,"1920:1080", "1920:1080", "1280:720", "960:540", "768:432", "640:360", "640:360"]
@@ -2513,23 +2639,23 @@ if __name__=='__main__':
 #             raise e
 # print(properties)
 
-# %% [markdown]
-# #[[0,0,1920,1080]],
-# #[[0,0,1920,1080],[1920,0,3840,1080]],
-# #[[0,0,1920,1080],[1920,0,3840,1080],
-# # [960,1080,2880,2160]],
-# #[[0,0,1920,1080],[1920,0,3840,1080],
-# # [0,1080,1920,2160],[1920,1080,3840,2160]],
-# #[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# # [640,720,1920,1440],[1920,720,3200,1440]],
-# #[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# # [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440]],
-# #[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# # [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
-# # [1280,1440,2560,2160]],
-# #[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# # [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
-# # [640,1440,1920,2160],[1920,1440,3200,2160]],
-# #[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# # [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
-# # [0,1440,1280,2160],[1280,1440,2560,2160],[2560,1440,3840,2160]]
+# %%
+#[[0,0,1920,1080]],
+#[[0,0,1920,1080],[1920,0,3840,1080]],
+#[[0,0,1920,1080],[1920,0,3840,1080],
+# [960,1080,2880,2160]],
+#[[0,0,1920,1080],[1920,0,3840,1080],
+# [0,1080,1920,2160],[1920,1080,3840,2160]],
+#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
+# [640,720,1920,1440],[1920,720,3200,1440]],
+#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
+# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440]],
+#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
+# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
+# [1280,1440,2560,2160]],
+#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
+# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
+# [640,1440,1920,2160],[1920,1440,3200,2160]],
+#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
+# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
+# [0,1440,1280,2160],[1280,1440,2560,2160],[2560,1440,3840,2160]]
