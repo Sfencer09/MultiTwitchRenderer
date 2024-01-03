@@ -1692,6 +1692,23 @@ def getRenderStatus(streamer, date):
     status = renderStatuses[key] if key in renderStatuses.keys() else None
     renderStatusLock.release()
     return status
+def deleteRenderStatus(streamer, date, *, lock=True):
+    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
+    assert streamer in allStreamersWithVideos
+    key = f"{streamer}|{date}"
+    if lock:
+        renderStatusLock.acquire()
+    if key in renderStatuses.keys():
+        currentStatus = renderStatuses[key]
+        if currentStatus in ('RENDER_QUEUE', 'COPY_QUEUE'):
+            print(f"Cannot delete render status, current value is {currentStatus}")
+            return False
+        del renderStatuses[key]
+        return True
+    else:
+        print(f"Key {key} not found in render statuses")
+        return False
+    
 def scanForExistingVideos():
     for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
         fullpath = os.path.join(basepath, outputDirectory, "S1")
@@ -1985,27 +2002,57 @@ def printJobsWithStatus(status):
     renderStatusLock.acquire()
     selectedRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]==status]
     renderStatusLock.release()
-    streamersWithComplete = sorted(set([render[0] for render in selectedRenders]))
+    streamersWithSelected = sorted(set([render[0] for render in selectedRenders]))
     #print(streamersWithComplete)
     selectedStreamer = None
-    if len(streamersWithComplete) > 1:
+    if len(streamersWithSelected) > 1:
         print("Select streamer (blank for all):")
-        for i in range(len(streamersWithComplete)):
+        for i in range(len(streamersWithSelected)):
             streamer = streamersWithComplete[i]
             count = len([render for render in selectedRenders if render[0]==streamer])
             print(f"{i+1}: {streamer} ({count} renders)")
         userInput = input(" >> ")
         try:
-            selectedStreamer = streamersWithComplete[int(userInput)-1]
+            selectedStreamer = streamersWithSelected[int(userInput)-1]
         except:
             selectedStreamer = None
-    print("Completed renders:")
+    formattedStatus = status[0].upper()+status[1:].lower()
+    print(f"{formattedStatus} renders:")
     print(f"Streamer                  | File date")
     for streamer, date in selectedRenders:
         if selectedStreamer is None or streamer == selectedStreamer:
             print(f"{streamer:25} | {date}")
 commandArray.append(Command(partial(printJobsWithStatus, 'FINISHED'), 'Print completed jobs'))
 commandArray.append(Command(partial(printJobsWithStatus, 'ERRORED'), 'Print errored jobs'))
+
+def clearErroredJobs():
+    renderStatusLock.acquire()
+    selectedRenders = [key.split('|') for key in renderStatuses.keys() if renderStatuses[key]=='ERRORED']
+    streamersWithSelected = sorted(set([render[0] for render in selectedRenders]))
+    #print(streamersWithComplete)
+    selectedStreamer = None
+    if len(streamersWithSelected) > 1:
+        print("Select streamer (blank for all, 'q' to cancel):")
+        for i in range(len(streamersWithSelected)):
+            streamer = streamersWithComplete[i]
+            count = len([render for render in selectedRenders if render[0]==streamer])
+            print(f"{i+1}: {streamer} ({count} errored jobs)")
+        userInput = input(" >> ")
+        if len(userInput) > 0:
+            if userInput.lower() in quitOptions:
+                return
+            try:
+                selectedStreamer = streamersWithSelected[int(userInput)-1]
+            except:
+                selectedStreamer = None
+    for streamer, date in selectedRenders:
+        if selectedStreamer is None or streamer == selectedStreamer:
+            print(f"Clearing error status for {streamer} {date}")
+            deleteRenderStatus(streamer, date, lock=False)
+    with open(statusFilePath, 'wb') as statusFile:
+        pickle.dump(renderStatuses, statusFile)
+    renderStatusLock.release()
+commandArray.append(Command(clearErroredJobs, 'Clean up errored jobs'))
 
 quitOptions = ('quit', 'exit', 'q');
 
@@ -2205,45 +2252,15 @@ def inputManualJob(initialRenderConfig = None):
     if outputPath == '':
         outputPath = getVideoOutputPath(mainStreamer, fileDate)
     
-    #renderConfig = initialRenderConfig
     if currentStatus == 'RENDER_QUEUE':
         raise Exception("Editing queued renders not supported yet")
     renderConfig = readRenderConfig()
     if renderConfig is None:
         return None
-    
-    #if renderConfig is None:
-    #    renderConfig = RenderConfig()
-    #print(renderConfig.__dict__)
-    #print(len(renderConfig.__dict__.keys()))
-    #while True: #manually break out
-    #    configDict = renderConfig.__dict__
-    #    print("Current render settings:")
-    #    sortedKeys = sorted(configDict.keys())
-    #    for i in range(len(sortedKeys)):
-    #        print(f"{i+1}) {sortedKeys[i]} = {str(configDict[sortedKeys[i]])}")
-    #    print("R) Finish and queue render")
-    #    userInput = input(" >> ")
-    #    if userInput in quitOptions:
-    #        return
-    #    elif userInput.lower() == 'r':
-    #        break
-    #    try:
-    #        selectedKey = sortedKeys[int(userInput)-1]
-    #    except:
-    #        print(f"Invalid selection: '{userInput}'")
-    #        continue
-    #    if selectedKey in renderConfigSchemaManualHandles.keys():
-    #        newValue = renderConfigSchemaManualHandles[selectedKey]()
-    #    else:
-    #        print(f"New value for {selectedKey}: ")
-    #        newValue = input(" >> ")
-    #    configDict[selectedKey] = newValue
     item = QueueItem(mainStreamer, fileDate, renderConfig, outputPath)
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate, 'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
     (copyQueue if COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
-    #raise Exception("Not implemented yet")
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
 
 def editQueueItem(queueEntry):
