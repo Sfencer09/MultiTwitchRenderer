@@ -1782,7 +1782,6 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
         hasError = False
         gc.collect()
         for i in range(len(renderCommands)):
-            
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
                 print(f"Running render to file {outpath}")
                 #result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
@@ -1793,11 +1792,13 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                 returncode = process.wait()
                 #if result.returncode != 0:
                 if returncode != 0:
+                    print("Render errored! Writing to log file")
                     hasError = True
                     if returncode != 130: #ctrl-c on UNIX (?)
                         setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
                         with open(errorFilePath, 'a') as errorFile:
                             errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands)))
+                            errorFile.write('\n\n')
                     break
                 #result = types.SimpleNamespace()
                 #result.returncode = 0

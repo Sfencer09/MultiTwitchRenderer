@@ -45,6 +45,7 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
                    'Your__Narrator': ['YourNarrator']}
 
 nongroupGames = ('Just Chatting', "I'm Only Sleeping")
+ffmpegPath='' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
 
 characterReplacements = {'?':'？', '/':'', '\\':''}
 
