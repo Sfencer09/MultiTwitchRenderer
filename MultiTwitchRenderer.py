@@ -1702,11 +1702,17 @@ def deleteRenderStatus(streamer, date, *, lock=True):
         currentStatus = renderStatuses[key]
         if currentStatus in ('RENDER_QUEUE', 'COPY_QUEUE'):
             print(f"Cannot delete render status, current value is {currentStatus}")
+            if lock:
+                renderStatusLock.release()
             return False
         del renderStatuses[key]
+        if lock:
+            renderStatusLock.release()
         return True
     else:
         print(f"Key {key} not found in render statuses")
+        if lock:
+            renderStatusLock.release()
         return False
     
 def scanForExistingVideos():
