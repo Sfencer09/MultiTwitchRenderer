@@ -1820,21 +1820,30 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
         gc.collect()
         for i in range(len(renderCommands)):
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
-                if ffmpeg in renderCommands[i][0]:
-                    print(f"Running render to file {renderCommands[i][-1]}")
+                currentCommand = renderCommands[i]
+                if 'ffmpeg' in currentCommand[0]:
+                    print(f"Running render to file {currentCommand[-1]}")
                 #result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
                 
                 #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
-                process = subprocess.Popen(renderCommands[i], stdout=logFile, stderr=subprocess.STDOUT)
-                activeRenderSubprocess = process
-                returncode = process.wait()
-                #if result.returncode != 0:
+                
+                try:
+                    process = subprocess.Popen([str(command) for command in currentCommand], stdout=logFile, stderr=subprocess.STDOUT)
+                    activeRenderSubprocess = process
+                    returncode = process.wait()
+                    activeRenderSubprocess = None
+                except Exception as ex:
+                    print(ex)
+                    returncode = -1
+                    activeRenderSubprocess = None
                 if returncode != 0:
                     print("Render errored! Writing to log file")
                     hasError = True
                     if returncode != 130: #ctrl-c on UNIX (?)
                         setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
                         with open(errorFilePath, 'a') as errorFile:
+                            errorFile.write(f'Errored on: {formatCommand(currentCommand)}\n')
+                            errorFile.write(f'Full command list: ')
                             errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands)))
                             errorFile.write('\n\n')
                     break
@@ -1851,7 +1860,7 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
             while os.path.isfile(insertSuffix(outpath, suffix)):
                 suffix = f" ({count})"
                 count += 1
-            shutil.move(tempOutpath, insertSuffix(outpath))
+            shutil.move(tempOutpath, insertSuffix(outpath, suffix))
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
             if COPY_FILES:
                 for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
