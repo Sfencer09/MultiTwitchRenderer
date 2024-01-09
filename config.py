@@ -4,7 +4,8 @@ from datetime import timezone, time, timedelta
 streamersParseChatList = ('ChilledChaos', 'ZeRoyalViking')
 
 basepath = '/mnt/pool2/media/Twitch Downloads/'
-localBasepath = '/mnt/scratch1/'
+#localBasepath = '/mnt/scratch1/'
+localBasepath = '/mnt/pool1/media/downloads/'
 outputDirectory = "Rendered Multiviews"
 
 mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
@@ -85,7 +86,9 @@ logFolder = r'./logs/'
 COPY_FILES = False
 DEFAULT_MAX_LOOKBACK=timedelta(days=30)
 
-minimumSessionWorkerDelay = timedelta(hours=4)
+minimumSessionWorkerDelay = timedelta(hours=2)
 
 DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
 
+DEFAULT_OVERWRITE_INTERMEDIATE = True
+DEFAULT_OVERWRITE_OUTPUT = False

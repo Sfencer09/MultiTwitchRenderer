@@ -1801,7 +1801,9 @@ def copyWorker():
 
 activeRenderTask = None
 activeRenderSubprocess = None
-def renderWorker(stats_period=30, overwrite_intermediate=True, overwrite_output=False): #30 seconds between encoding stats printing
+def renderWorker(stats_period=30, #30 seconds between encoding stats printing
+                 overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
+                 overwrite_output=DEFAULT_OVERWRITE_OUTPUT):
     while True:
         if renderQueue.empty():
             print("Render queue empty, sleeping")
