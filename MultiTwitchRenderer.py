@@ -1494,6 +1494,20 @@ def calcGameCounts():
                     allGames[game] += 1
     return allGames
 
+def calcGameTimes():
+    allGames = {}
+    for streamer in sorted(allFilesByStreamer.keys()):
+        for file in allFilesByStreamer[streamer]:
+            chapters = file.infoJson['chapters']
+            for chapter in chapters:
+                game = chapter['title']
+                length = chapter['end_time'] - chapter['start_time']
+                if game not in allGames.keys():
+                    allGames[game] = length
+                else:
+                    allGames[game] += length
+    return allGames
+
 def initialize():
     global allFilesByVideoId
     if len(allFilesByVideoId) == 0:
@@ -1787,7 +1801,7 @@ def copyWorker():
 
 activeRenderTask = None
 activeRenderSubprocess = None
-def renderWorker(stats_period=30): #30 seconds between encoding stats printing
+def renderWorker(stats_period=30, overwrite_intermediate=True, overwrite_output=False): #30 seconds between encoding stats printing
     while True:
         if renderQueue.empty():
             print("Render queue empty, sleeping")
@@ -1799,34 +1813,49 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
         
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
         activeRenderTask = task
-        renderCommands = generateTilingCommandMultiSegment(task.mainStreamer,
+        taskCommands = generateTilingCommandMultiSegment(task.mainStreamer,
                                                            task.fileDate,
                                                            task.renderConfig,
                                                            task.outputPath)
-        outpath = [command for command in renderCommands if command[0].endswith('ffmpeg')][-1][-1]
-        
+        renderCommands = [command for command in renderCommands if command[0].endswith('ffmpeg')]
+        if not overwrite_output:
+            outpath = renderCommands[-1][-1]
+            count = 1
+            suffix = ""
+            while os.path.isfile(insertSuffix(outpath, suffix)):
+                suffix = f" ({count})"
+                count += 1
+            renderCommands[-1][-1] = insertSuffix(outpath, suffix)
+        #shutil.move(tempOutpath, insertSuffix(outpath, suffix))
         #print(renderCommands)
         #pathSplitIndex = outpath.rindex('.')
         #tempOutpath = outpath[:pathSplitIndex]+'.temp'+outpath[pathSplitIndex:]
-        tempOutpath = insertSuffix(outpath, '.temp')
-        print(outpath, tempOutpath)
-        renderCommands[-1][-1] = tempOutpath # output to temp file, so final filename will always be a complete file
+        #tempOutpath = insertSuffix(outpath, '.temp')
+        #print(outpath, tempOutpath)
+        #renderCommands[-1][-1] = tempOutpath # output to temp file, so final filename will always be a complete file
         for i in range(len(renderCommands)):
             renderCommands[i].insert(-1, "-stats_period")
             renderCommands[i].insert(-1, str(stats_period))
-            renderCommands[i].insert(-1, '-y') # overwrite temp file if it exists
+            renderCommands[i].insert(-1, '-y') # overwrite (temp) file if it exists
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDERING')
         hasError = False
         gc.collect()
-        for i in range(len(renderCommands)):
+        for i in range(len(taskCommands)):
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
-                currentCommand = renderCommands[i]
+                currentCommand = taskCommands[i]
+                trueOutpath = None
                 if 'ffmpeg' in currentCommand[0]:
-                    print(f"Running render to file {currentCommand[-1]}")
-                #result = subprocess.run(renderCommand[i], stdout=logFile, stderr=subprocess.STDOUT)
-                
+                    if not overwrite_intermediate:
+                        trueOutpath = currentCommand[-1]
+                        if os.path.isfile(trueOutpath):
+                            print(f"Skipping render to file {trueOutPath}, file already exists")
+                            continue
+                        else:
+                            currentCommand[-1] = insertSuffix(trueOutpath, '.temp')
+                    print(f"Running render to file {currentCommand[-1]} ...", end='')
+
                 #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
-                
+
                 try:
                     process = subprocess.Popen([str(command) for command in currentCommand], stdout=logFile, stderr=subprocess.STDOUT)
                     activeRenderSubprocess = process
@@ -1837,9 +1866,9 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                     returncode = -1
                     activeRenderSubprocess = None
                 if returncode != 0:
-                    print("Render errored! Writing to log file")
                     hasError = True
                     if returncode != 130: #ctrl-c on UNIX (?)
+                        print(f" Render errored! Writing to log file {errorFilePath}")
                         setRenderStatus(task.mainStreamer, task.fileDate, 'ERRORED')
                         with open(errorFilePath, 'a') as errorFile:
                             errorFile.write(f'Errored on: {formatCommand(currentCommand)}\n')
@@ -1847,20 +1876,12 @@ def renderWorker(stats_period=30): #30 seconds between encoding stats printing
                             errorFile.write(' ;; '.join((formatCommand(renderCommand) for renderCommand in renderCommands)))
                             errorFile.write('\n\n')
                     break
-                #result = types.SimpleNamespace()
-                #result.returncode = 0
-                #ttime.sleep(15)
-        #except KeyboardInterrupt as ki:
-        #    print("Caught keyboard interrupt, reraising")
-        #    raise KeyboardInterrupt(ki)
+                else:
+                    print(" Render complete!")
+                    if trueOutpath is not None:
+                        shutil.move(currentCommand[-1], trueOutpath)
         
         if not hasError:
-            count = 1
-            suffix = ""
-            while os.path.isfile(insertSuffix(outpath, suffix)):
-                suffix = f" ({count})"
-                count += 1
-            shutil.move(tempOutpath, insertSuffix(outpath, suffix))
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
             if COPY_FILES:
                 for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
@@ -2193,11 +2214,11 @@ def readRenderConfig(initialRenderConfig = None):
         sortedKeys = sorted(configDict.keys())
         for i in range(len(sortedKeys)):
             print(f"{i+1}) {sortedKeys[i]} = {str(configDict[sortedKeys[i]])}")
-        print("R) Finish and queue render")
+        print("F) Finish and queue render")
         userInput = input(" >> ")
         if userInput in quitOptions:
             return None
-        elif userInput.lower() == 'r':
+        elif userInput.lower() == 'f':
             return renderConfig
         try:
             selectedKey = sortedKeys[int(userInput)-1]
@@ -2450,105 +2471,6 @@ if __name__=='__main__':
             print(game, allGames[game])
         del allGames
 
-# %% [markdown]
-# basepath = '/mnt/pool2/media/Twitch Downloads/'
-# localBasepath = '/mnt/scratch1/'
-# outputDirectory = "Rendered Multiviews"
-#
-# globalAllStreamers = [name for name in os.listdir(basepath) if
-#                       (name not in ("NA", outputDirectory) and 
-#                        os.path.isdir(os.path.join(basepath, name)))]
-#     #mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
-#     #secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
-#
-# streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'APlatypus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'ArtificialActr':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'BonsaiBroz':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
-#                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    #'BryceMcQuaid':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Courtilly':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'CrashVS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'DooleyNotedGaming':['Jeremy'], 
-#                    'ElainaExe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'emerome':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'FlanelJoe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'HeckMuffins':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Junkyard129':['Junkyard', 'Junk', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Kn0vis':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
-#                                  'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'MG4R':['Greg', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'MicheleBoyd':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm', #hacky override for Twitch Rivals 12/7/23
-#                                       'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'ToastyFPS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'VikramAFC':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Your__Narrator': ['YourNarrator']}
-#
-# nongroupGames = ('Just Chatting', "I'm Only Sleeping")
-#
-# characterReplacements = {'?':'？', '/':'', '\\':''}
-#
-# threadCount = 16 #os.cpu_count()
-#
-# defaultSetPTS = "PTS-STARTPTS"
-# videoSetPTS = "N/FRAME_RATE/TB"
-# audioSetPTS = "N/SR/TB"
-# apts = defaultSetPTS
-# vpts = defaultSetPTS
-#
-# videoExt = '.mp4'
-# infoExt = '.info.json'
-# chatExt = '.rechat.twitch-gql-20221228.json'
-# otherExts = ['.description', '.jpg']
-# videoIdRegex = r"(v[\d]+)"
-#
-# DEFAULT_DATA_FILEPATH = r'./knownFiles.pickle' #r'/home/ubuntu/Documents/MultiTwitchRenderer/allTwitchFiles.pickle'
-#
-# REDUCED_MEMORY = False
-#
-# EST_TIMEZONE = timezone(timedelta(hours=-5))
-# CST_TIMEZONE = timezone(timedelta(hours=-6))
-# MST_TIMEZONE = timezone(timedelta(hours=-7))
-# PST_TIMEZONE = timezone(timedelta(hours=-8))
-# UTC_TIMEZONE = timezone(timedelta(hours=0))
-# LOCAL_TIMEZONE = CST_TIMEZONE
-# DAY_START_TIME = time(0, 0, 0, tzinfo=LOCAL_TIMEZONE)
-#
-# outputResolutions = [None, (1920,1080), (3840,1080), (3840,2160), (3840,2160), (3840,2160), (3840,2160), (4480,2520)]
-# outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "25M",       "30M",       "40M"]
-#
-# errorFilePath = r'./erroredCommands.log'
-# statusFilePath = r'./renderStatuses.pickle'
-# logFolder = r'./logs/'
-# COPY_FILES = False
-# DEFAULT_MAX_LOOKBACK=timedelta(days=30)
-#
-# minimumSessionWorkerDelay = timedelta(hours=4)
-#
-# DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
-#
-
-# %% [markdown]
-# tempFile = allFilesByVideoId['v2017309328']
-# print(tempFile)
-# for group in tempFile.parsedChat.groups:
-#     print(group)
-
-# %% [markdown]
-# os.cpu_count()
-#
-# str(renderQueue.queue)
-#
-# print(renderStatuses)
-
 # %%
 gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
                'Tabletop Simulator': ('Board Games',),
@@ -2660,7 +2582,119 @@ def normalizeAllGames():
         for session in sessions:
             ...
 
+pprint(sorted(calcGameTimes().items(), key=lambda x:x[1]))
 normalizeAllGames()
+
+# %%
+gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
+               'Tabletop Simulator': ('Board Games',),
+               'Suika Game': ('Suika',),
+               'Monopoly Plus': ('Monopoly',)}
+
+def normalizeAllGamesV2():
+    gameCounts = calcGameCounts()
+    pprint(gameCounts)
+    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    replacements = {}
+
+# %% [markdown]
+# basepath = '/mnt/pool2/media/Twitch Downloads/'
+# localBasepath = '/mnt/scratch1/'
+# outputDirectory = "Rendered Multiviews"
+#
+# globalAllStreamers = [name for name in os.listdir(basepath) if
+#                       (name not in ("NA", outputDirectory) and 
+#                        os.path.isdir(os.path.join(basepath, name)))]
+#     #mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
+#     #secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
+#
+# streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'APlatypus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'ArtificialActr':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'BonsaiBroz':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
+#                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    #'BryceMcQuaid':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'Courtilly':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'CrashVS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'DooleyNotedGaming':['Jeremy'], 
+#                    'ElainaExe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'emerome':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'FlanelJoe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'HeckMuffins':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'Junkyard129':['Junkyard', 'Junk', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'Kn0vis':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
+#                                  'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'MG4R':['Greg', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'MicheleBoyd':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm', #hacky override for Twitch Rivals 12/7/23
+#                                       'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'ToastyFPS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'VikramAFC':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+#                    'Your__Narrator': ['YourNarrator']}
+#
+# nongroupGames = ('Just Chatting', "I'm Only Sleeping")
+#
+# characterReplacements = {'?':'？', '/':'', '\\':''}
+#
+# threadCount = 16 #os.cpu_count()
+#
+# defaultSetPTS = "PTS-STARTPTS"
+# videoSetPTS = "N/FRAME_RATE/TB"
+# audioSetPTS = "N/SR/TB"
+# apts = defaultSetPTS
+# vpts = defaultSetPTS
+#
+# videoExt = '.mp4'
+# infoExt = '.info.json'
+# chatExt = '.rechat.twitch-gql-20221228.json'
+# otherExts = ['.description', '.jpg']
+# videoIdRegex = r"(v[\d]+)"
+#
+# DEFAULT_DATA_FILEPATH = r'./knownFiles.pickle' #r'/home/ubuntu/Documents/MultiTwitchRenderer/allTwitchFiles.pickle'
+#
+# REDUCED_MEMORY = False
+#
+# EST_TIMEZONE = timezone(timedelta(hours=-5))
+# CST_TIMEZONE = timezone(timedelta(hours=-6))
+# MST_TIMEZONE = timezone(timedelta(hours=-7))
+# PST_TIMEZONE = timezone(timedelta(hours=-8))
+# UTC_TIMEZONE = timezone(timedelta(hours=0))
+# LOCAL_TIMEZONE = CST_TIMEZONE
+# DAY_START_TIME = time(0, 0, 0, tzinfo=LOCAL_TIMEZONE)
+#
+# outputResolutions = [None, (1920,1080), (3840,1080), (3840,2160), (3840,2160), (3840,2160), (3840,2160), (4480,2520)]
+# outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "25M",       "30M",       "40M"]
+#
+# errorFilePath = r'./erroredCommands.log'
+# statusFilePath = r'./renderStatuses.pickle'
+# logFolder = r'./logs/'
+# COPY_FILES = False
+# DEFAULT_MAX_LOOKBACK=timedelta(days=30)
+#
+# minimumSessionWorkerDelay = timedelta(hours=4)
+#
+# DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
+#
+
+# %% [markdown]
+# tempFile = allFilesByVideoId['v2017309328']
+# print(tempFile)
+# for group in tempFile.parsedChat.groups:
+#     print(group)
+
+# %% [markdown]
+# os.cpu_count()
+#
+# str(renderQueue.queue)
+#
+# print(renderStatuses)
 
 # %% [markdown]
 # # tileResolutionsV1 = [None,"1920:1080", "1920:1080", "1280:720", "960:540", "768:432", "640:360", "640:360"]
@@ -2838,22 +2872,3 @@ normalizeAllGames()
 # print(properties)
 
 # %%
-#[[0,0,1920,1080]],
-#[[0,0,1920,1080],[1920,0,3840,1080]],
-#[[0,0,1920,1080],[1920,0,3840,1080],
-# [960,1080,2880,2160]],
-#[[0,0,1920,1080],[1920,0,3840,1080],
-# [0,1080,1920,2160],[1920,1080,3840,2160]],
-#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# [640,720,1920,1440],[1920,720,3200,1440]],
-#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440]],
-#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
-# [1280,1440,2560,2160]],
-#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
-# [640,1440,1920,2160],[1920,1440,3200,2160]],
-#[[0,0,1280,720],[1280,0,2560,720],[2560,0,3840,720],
-# [0,720,1280,1440],[1280,720,2560,1440],[2560,720,3840,1440],
-# [0,1440,1280,2160],[1280,1440,2560,2160],[2560,1440,3840,2160]]
