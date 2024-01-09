@@ -1850,7 +1850,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                     if not overwrite_intermediate:
                         trueOutpath = currentCommand[-1]
                         if os.path.isfile(trueOutpath):
-                            print(f"Skipping render to file {trueOutPath}, file already exists")
+                            print(f"Skipping render to file {trueOutpath}, file already exists")
                             continue
                         else:
                             currentCommand[-1] = insertSuffix(trueOutpath, '.temp')
