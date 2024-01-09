@@ -1819,7 +1819,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                                                            task.fileDate,
                                                            task.renderConfig,
                                                            task.outputPath)
-        renderCommands = [command for command in renderCommands if command[0].endswith('ffmpeg')]
+        renderCommands = [command for command in taskCommands if command[0].endswith('ffmpeg')]
         if not overwrite_output:
             outpath = renderCommands[-1][-1]
             count = 1
