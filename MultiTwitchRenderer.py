@@ -213,7 +213,7 @@ def getHasHardwareAceleration():
         process2 = subprocess.run(["nvidia-smi", "-q", "-d", "MEMORY,UTILIZATION"], capture_output=True)
         nvidiaSmiOutput = process2.stdout.decode()
         print(nvidiaSmiOutput)
-        if process2.returncode != 0:
+        if process2.returncode == 0:
             encoding = False; decoding = False
             for row in outstr.split('\r\n'):
                 if 'Encoding' in row:
@@ -232,7 +232,7 @@ def getHasHardwareAceleration():
         process3 = subprocess.run(["rocm-smi", "--json"], capture_output=True)
         amdSmiOutput = process3.stdout.decode()
         print(amdSmiOutput)
-        if process3.returncode != 0:
+        if process3.returncode == 0:
             print("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
             return ('AMD', HW_DECODE|HW_ENCODE)
     except:
