@@ -1521,7 +1521,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             def __repr__(self):
                 if self.filepath is None:
                     while self.filepath is None or os.path.isfile(self.filepath):
-                        self.filepath = f"./ffmpegConcatList{random.randrange(0,100000)}.txt"
+                        self.filepath = f"./ffmpegConcatList{random.randrange(0, 1000)}.txt"
                     with open(self.filepath, 'w') as lazyfile:
                         lazyfile.write(self.contents)
                 else:
@@ -1539,7 +1539,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                  '-map', '0'],
                 outputMetadataOptions,
                 ["-movflags", "faststart", outputFile]]))
-        commandList.append(["echo", "Render complete! Starting cleanup"])
+        #commandList.append(["echo", "Render complete! Starting cleanup"])
         #commandList.append(["rm", lcf])
         #commandList.extend([["rm", intermediateFile] for intermediateFile in intermediateFilepaths])
         if logLevel >= 3:
@@ -1665,7 +1665,7 @@ print("Initialization complete!")
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
-                                                 ) #RenderConfig(logLevel=1,
+                                                 RenderConfig(logLevel=1),
                                                  #startTimeMode='allOverlapStart',
                                                  #endTimeMode='allOverlapEnd',
                                                  #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
@@ -1682,7 +1682,7 @@ testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28",
                                                   #minimumTimeInVideo=900,
                                                   #cutMode='chunked',
                                                   #useChat=True,
-                                                 #)
+                                                 )
 
 
 
@@ -1954,6 +1954,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                 suffix = f" ({count})"
                 count += 1
             renderCommands[-1][-1] = insertSuffix(outpath, suffix)
+        finalOutpath = renderCommands[-1][-1]
         #shutil.move(tempOutpath, insertSuffix(outpath, suffix))
         #print(renderCommands)
         #pathSplitIndex = outpath.rindex('.')
@@ -1968,6 +1969,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDERING')
         hasError = False
         gc.collect()
+        tempFiles = []
         for i in range(len(taskCommands)):
             activeRenderTaskSubindex = i
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
@@ -1976,6 +1978,9 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                 if 'ffmpeg' in currentCommand[0]:
                     if not overwrite_intermediate:
                         trueOutpath = currentCommand[-1]
+                        if trueOutpath != finalOutpath:
+                            assert trueOutpath.startswith(localBasepath)
+                            tempFiles.append(trueOutpath)
                         if os.path.isfile(trueOutpath):
                             shouldSkip = True
                             try:
@@ -2031,8 +2036,9 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                     if remainingRefs == 0:
                         print(f"Removing local file {file}")
                         os.remove(file)
-            intermediateFiles = set([command[-1] for command in renderCommands[:-1] if command[0].endswith('ffmpeg')])
-            for file in intermediateFiles:
+            #intermediateFiles = set([command[-1] for command in renderCommands[:-1] if command[0].endswith('ffmpeg')])
+            #for file in intermediateFiles:
+            for file in tempFiles:
                 print(f"Removing intermediate file {file}")
                 assert basepath not in file
                 os.remove(file)
