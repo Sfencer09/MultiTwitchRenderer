@@ -30,6 +30,11 @@ if not sys.version_info >= (3, 7, 0):
     raise EnvironmentError("Python version too low, relies on ordered property of dicts")
 
 configPath = './Documents/MultiTwitchRenderer/config.py' if __debug__ else './config.py'
+HW_DECODE=1
+HW_INPUT_SCALE=2
+HW_OUTPUT_SCALE=4
+HW_ENCODE=8
+
 with open(configPath) as configFile:
     exec(configFile.read())
 
@@ -200,12 +205,88 @@ def trimInfoDict(infoDict:dict):
     del newDict['http_headers']
     return newDict
 
-def getHasFfmpegCuda():
-    process = subprocess.run([f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
-    print(process.stdout.decode())
-    return '--enable-nvdec' in process.stdout.decode()
-HAS_CUDA = getHasFfmpegCuda()
-print('NVIDIA hardware video decoding detected' if HAS_CUDA else 'No hardware video decoding detected')
+def getHasHardwareAceleration():
+    SCALING = HW_INPUT_SCALE|HW_OUTPUT_SCALE
+    process1 = subprocess.run([f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
+    print(process1.stdout.decode())
+    try:
+        process2 = subprocess.run(["nvidia-smi", "-q", "-d", "MEMORY,UTILIZATION"], capture_output=True)
+        nvidiaSmiOutput = process2.stdout.decode()
+        print(nvidiaSmiOutput)
+        if process2.returncode != 0:
+            encoding = False; decoding = False
+            for row in outstr.split('\r\n'):
+                if 'Encoding' in row:
+                    encoding = 'N/A' not in row
+                elif 'Decoding' in row:
+                    decoding = 'N/A' not in row
+            mask = SCALING
+            if decoding:
+                mask |= HW_DECODE
+            if encoding:
+                mask |= HW_ENCODE
+            return ('NVIDIA', mask)
+    except:
+        pass
+    try:
+        process3 = subprocess.run(["rocm-smi", "--json"], capture_output=True)
+        amdSmiOutput = process3.stdout.decode()
+        print(amdSmiOutput)
+        if process3.returncode != 0:
+            print("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
+            return ('AMD', HW_DECODE|HW_ENCODE)
+    except:
+        pass
+    return (None, 0)
+HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
+if HWACCEL_BRAND is not None:
+    print(f'{HWACCEL_BRAND} hardware video acceleration detected')
+    print(f'Functions:')
+    if HWACCEL_FUNCTIONS & HW_DECODE != 0:
+        print("    Decode")
+    if HWACCEL_FUNCTIONS & (HW_INPUT_SCALING|HW_OUTPUT_SCALING) != 0:
+        print("    Scaling")
+    if HWACCEL_FUNCTIONS & HW_ENCODE != 0:
+        print("    Encode")
+else:
+    print('No hardware video decoding detected!')
+
+
+#inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
+#inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
+#if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
+#    inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
+#HWACCEL_BRAND
+HWACCEL_VALUES = {
+    'NVIDIA':{
+        #'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
+        'scale_filter': '_npp',
+        'pad_filter': '_opencl',
+        'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
+        'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
+        'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
+    },
+    'AMD':{
+        #'support_mask': HW_DECODE|HW_ENCODE,
+        'scale_filter': None,
+        'pad_filter': None,
+        'decode_input_options': ('-hwaccel', 'd3d11va'), #('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
+        'scale_input_options': None,
+        'encode_codecs': ('h264_amf', 'hevc_amf'),
+    },
+    'Intel':{
+        #'support_mask': HW_DECODE|HW_ENCODE,
+        'scale_filter': None,
+        'pad_filter': None,
+        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
+        'scale_input_options': None,
+        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+    },
+}
+if HWACCEL_BRAND is not None:
+    ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
+else:
+    ACTIVE_HWACCEL_VALUES = None
 
 def localDateFromTimestamp(timestamp:int|float):
     dt = datetime.fromtimestamp(timestamp, LOCAL_TIMEZONE)
@@ -434,38 +515,66 @@ def pretty_print(clas, indent=0):
 def toFfmpegTimestamp(ts:int|float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
-HW_DECODE=1
-HW_INPUT_SCALE=2
-HW_OUTPUT_SCALE=4
-HW_ENCODE=8
 trueStrings = ('t', 'y', 'true', 'yes')
 
+defaultRenderConfig = RENDER_CONFIG_DEFAULTS
+try:
+    with open('./renderConfig.json') as renderConfigJsonFile:
+        default_render_config = json.load(renderConfigJsonFile)
+except:
+    print("Coult not load renderConfig.json, using defaults from config.py")
+
+acceptedOutputCodecs = ['libx264', 'libx265']
+if ACTIVE_HWACCEL_VALUES is not None:
+    hardwareOutputCodecs = ACTIVE_HWACCEL_VALUES['encode_codecs']
+    acceptedOutputCodecs.extend(hardwareOutputCodecs)
+else:
+    hardwareOutputCodecs = []
+
 renderConfigSchema = Schema({
-    Optional('drawLabels', default=False): Or(bool, Use(lambda x: x.lower() in trueStrings)),
-    Optional('startTimeMode', default='mainSessionStart'): lambda x: x in ('mainSessionStart', 'allOverlapStart'),
-    Optional('endTimeMode', default='mainSessionEnd'): lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
-    Optional('logLevel', default=0): And(Use(int), lambda x: 0 <= x <= 4), #max logLevel = 4
-    Optional('sessionTrimLookback', default=0): Use(int), #TODO: convert from number of segments to number of seconds. Same for lookahead
-    Optional('sessionTrimLookahead', default=0): And(Use(int), lambda x: x >= 0),
-    Optional('sessionTrimLookbackSeconds', default=0): And(Use(int), lambda x: x >= 0), #Not implemented yet
-    Optional('sessionTrimLookaheadSeconds', default=600): And(Use(int), lambda x: x >= 0),
+    Optional('drawLabels', default=defaultRenderConfig['drawLabels']):
+            Or(bool, Use(lambda x: x.lower() in trueStrings)),
+    Optional('startTimeMode', default=defaultRenderConfig['startTimeMode']):
+            lambda x: x in ('mainSessionStart', 'allOverlapStart'),
+    Optional('endTimeMode', default=defaultRenderConfig['endTimeMode']):
+            lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
+    Optional('logLevel', default=defaultRenderConfig['logLevel']):
+            And(Use(int), lambda x: 0 <= x <= 4), #max logLevel = 4
+    Optional('sessionTrimLookback', default=defaultRenderConfig['sessionTrimLookback']):
+            Use(int), #TODO: convert from number of segments to number of seconds. Same for lookahead
+    Optional('sessionTrimLookahead', default=defaultRenderConfig['sessionTrimLookahead']):
+            And(Use(int), lambda x: x >= 0),
+    Optional('sessionTrimLookbackSeconds', default=defaultRenderConfig['sessionTrimLookbackSeconds']):
+            And(Use(int), lambda x: x >= 0), #Not implemented yet
+    Optional('sessionTrimLookaheadSeconds', default=defaultRenderConfig['sessionTrimLookaheadSeconds']):
+            And(Use(int), lambda x: x >= 0),
     #Optional(Or(Optional('sessionTrimLookback', default=0), Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): int,
     #Optional(Or(Optional('sessionTrimLookahead', default=0), Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
-    Optional('minGapSize', default=0): And(Use(int), lambda x: x >= 0),
-    Optional('outputCodec', default='libx264'): lambda x: x in ('libx264', 'libx265', 'h264_nvenc', 'hevc_nvenc'),
-    Optional('encodingSpeedPreset', default='medium'): lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    Optional('useHardwareAcceleration', default=0): And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-    Optional('maxHwaccelFiles', default=0): And(Use(int), lambda x: x >= 0),
-    Optional('minimumTimeInVideo', default=900): And(Use(int), lambda x: x >= 0),
-    Optional('cutMode', default='chunked'): lambda x: x in ('chunked', ),#'trim', 'segment'),
-    Optional('useChat', default=True): Or(bool, Use(lambda x: x.lower() in trueStrings)),
-    Optional('excludeStreamers', default=None): Or(lambda x: x is None, [str], {str:Or(lambda x: x is None, [str])}) #Cannot be passed as string
+    Optional('minGapSize', default=defaultRenderConfig['minGapSize']):
+            And(Use(int), lambda x: x >= 0),
+    Optional('outputCodec', default=defaultRenderConfig['outputCodec']):
+            lambda x: x in acceptedOutputCodecs,
+    Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']):
+            lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
+    Optional('useHardwareAcceleration', default=defaultRenderConfig['useHardwareAcceleration']):
+            And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
+            #And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+    Optional('maxHwaccelFiles', default=defaultRenderConfig['maxHwaccelFiles']):
+            And(Use(int), lambda x: x >= 0),
+    Optional('minimumTimeInVideo', default=defaultRenderConfig['minimumTimeInVideo']):
+            And(Use(int), lambda x: x >= 0),
+    Optional('cutMode', default=defaultRenderConfig['cutMode']):
+            lambda x: x in ('chunked', ),#'trim', 'segment'),
+    Optional('useChat', default=defaultRenderConfig['useChat']):
+            Or(bool, Use(lambda x: x.lower() in trueStrings)),
+    Optional('excludeStreamers', default=None):
+            Or(lambda x: x is None, [str], {str:Or(lambda x: x is None, [str])}) #Cannot be passed as string
 })
 
 class RenderConfig:
     def __init__(self, **kwargs):
         values = renderConfigSchema.validate(kwargs)
-        if values['outputCodec'] in ('h264_nvenc', 'hevc_nvenc'):
+        if values['outputCodec'] in hardwareOutputCodecs:
             if values['useHardwareAcceleration'] & HW_ENCODE == 0:
                 raise Exception(f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {values['outputCodec']}")
             if values['encodingSpeedPreset'] not in [f'p{i}' for i in range(1, 8)]:
@@ -476,7 +585,7 @@ class RenderConfig:
             if values['useHardwareAcceleration'] & HW_ENCODE == 0:
                 raise Exception(f"Hardware-accelerated output scaling must currently be used with hardware encoding")
         if values['useHardwareAcceleration'] & HW_ENCODE != 0:
-            if values['outputCodec'] not in ('h264_nvenc', 'hevc_nvenc'):
+            if values['outputCodec'] not in hardwareOutputCodecs:
                 raise Exception(f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled")
         for key, value in values.items():
             setattr(self, key, value)
@@ -853,12 +962,16 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         file = inputFilesSorted[i]
         if useHardwareAcceleration&HW_DECODE != 0:
             if maxHwaccelFiles == 0 or i < maxHwaccelFiles:
-                inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
+                decodeOptions = ACTIVE_HWACCEL_VALUES['decode_input_options']
+                scaleOptions = ACTIVE_HWACCEL_VALUES['scale_input_options']
+                inputOptions.extend(decodeOptions)
+                #inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
                 #inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-                if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
-                    inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
-            else:
-                inputOptions.extend(('-threads', str(threadCount//2)))
+                if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode in ('trim', 'chunked') and scaleOptions is not None:
+                    inputOptions.extend(scaleOptions)
+                    #inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
+            #else:
+            #    inputOptions.extend(('-threads', str(threadCount//2)))
         inputOptions.append('-i')
         if file.localVideoFile is not None:
             inputOptions.append(file.localVideoFile)
@@ -929,7 +1042,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     threadOptions = ['-threads', str(threadCount),
                  '-filter_threads', str(threadCount),
                  '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
-    uploadFilter = "hwupload_cuda"
+    uploadFilter = "hwupload_cuda" #HWACCEL_VALUES[HWACCEL_BRAND]
     downloadFilter= "hwdownload,format=pix_fmts=yuv420p"
     timeFilter = f"setpts={vpts}"
     
@@ -1102,6 +1215,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     if logLevel >= 1:
         print("\n\n\nStep 13.v1: ", segmentTileCounts, maxSegmentTiles, outputResolution)
 
+    def getScaleAlgorithm(inputDim, outputDim, useHwScaling):
+        if outputDim > inputDim: #upscaling
+            return '' if useHwScaling else ':flags=lanczos'
+        elif outputDim < inputDim:
+            return ':interp_algo=super' if useHwScaling else '' #':flags=area'
+        else: #outputDim == inputDim
+            return ''
+        
     # v1
     def filtergraphTrimVersion():#uniqueTimestampsSorted, allInputStreamers, segmentFileMatrix, segmentSessionMatrix
         filtergraphParts = []
@@ -1140,17 +1261,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     #print(inputFile.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
-                    if not useHwFilterAccel:
-                        if outputResolution[0] > width: #upscaling
-                            scaleAlgo = ':sws_flags=lanczos'
-                        elif outputResolution[0] < width:
-                            scaleAlgo = '' #':sws_flags=area'
-                        else:
-                            scaleAlgo = ''
-                    else:
-                        scaleAlgo = '' #don't specify for HW-accelerated scaling
-                    scaleFilter = f"scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
-                    padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
+                    scaleAlgo = getScaleAlgorithm(height, int(tileResolution.split(':')[0]), useHwFilterAccel)
+                    scaleSuffix = ACTIVE_HWACCEL_VALUES['scale_filter'] if useHwFilterAccel else ''
+                    padSuffix = ACTIVE_HWACCEL_VALUES['pad_filter'] if useHwFilterAccel else ''
+                    scaleFilter = f"scale{scaleSuffix}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
+                    padFilter = f"pad{padSuffix}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
                     labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     trimFilter = f"trim={startOffset}:{endOffset}"
@@ -1287,12 +1402,16 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     if useHardwareAcceleration&HW_DECODE != 0:
                         if maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles:
-                            rowInputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
-                            #rowInputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-                            if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
-                                rowInputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
-                        else:
-                            rowInputOptions.extend(('-threads', str(threadCount//2)))
+                            decodeOptions = ACTIVE_HWACCEL_VALUES['decode_input_options']
+                            scaleOptions = ACTIVE_HWACCEL_VALUES['scale_input_options']
+                            inputOptions.extend(decodeOptions)
+                            #inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
+                            #inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
+                            if useHardwareAcceleration&HW_INPUT_SCALE != 0 and scaleOptions is not None:
+                                inputOptions.extend(scaleOptions)
+                            #    rowInputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
+                        #else:
+                        #    rowInputOptions.extend(('-threads', str(threadCount//2)))
                     if startOffset != 0:
                         rowInputOptions.extend(('-ss', str(startOffset)))
                     rowInputOptions.append('-i')
@@ -1305,14 +1424,17 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     tileHeight = int(tileResolution.split(':')[1])
                     if logLevel >= 3:
                         print(f"tileHeight={tileHeight}, video height={height}")
-                    if tileHeight > height: #upscaling
-                        scaleAlgo = '' if useHwFilterAccel else ':flags=lanczos'
-                    elif tileHeight < height:
-                        scaleAlgo = ':interp_algo=super' if useHwFilterAccel else '' #':flags=area'
-                    else:
-                        scaleAlgo = ''
-                    scaleFilter = f"scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
-                    padFilter = f"pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
+                    #if tileHeight > height: #upscaling
+                    #    scaleAlgo = '' if useHwFilterAccel else ':flags=lanczos'
+                    #elif tileHeight < height:
+                    #    scaleAlgo = ':interp_algo=super' if useHwFilterAccel else '' #':flags=area'
+                    #else:
+                    #    scaleAlgo = ''
+                    scaleAlgo = getScaleAlgorithm(height, tileHeight, useHwFilterAccel)
+                    scaleSuffix = ACTIVE_HWACCEL_VALUES['scale_filter'] if useHwFilterAccel else ''
+                    padSuffix = ACTIVE_HWACCEL_VALUES['pad_filter'] if useHwFilterAccel else ''
+                    scaleFilter = f"scale{scaleSuffix}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
+                    padFilter = f"pad{padSuffix}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
                     labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
                     #trimFilter = f"trim={startOffset}:{endOffset}"
@@ -1357,11 +1479,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 rowTileWidth = calcTileWidth(numRowSegments)
                 segmentRes = [int(x) for x in segmentResolution.split(':')]
                 useHwOutscaleAccel = useHardwareAcceleration & HW_OUTPUT_SCALE != 0
-                scaleToFitFilter = f"scale{'_npp' if useHwOutscaleAccel else ''}={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
-                padFilter = f"pad{'_opencl' if useHwOutscaleAccel else ''}={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(rowTileWidth-1) else ''
+                scaleSuffix = ACTIVE_HWACCEL_VALUES['scale_filter'] if useHwOutscaleAccel else ''
+                padSuffix = ACTIVE_HWACCEL_VALUES['pad_filter'] if useHwOutscaleAccel else ''
+                scaleToFitFilter = f"scale{scaleSuffix}={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
+                padFilter = f"pad{padSuffix}={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(rowTileWidth-1) else ''
                 xstackFilter = f"xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}"
                 #xstackString = f"[{']['.join(rowVideoSegmentNames)}] xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter}{uploadFilter if useHardwareAcceleration&HW_ENCODE!=0 else ''} [vseg{segIndex}]"
-                if useHardwareAcceleration&HW_ENCODE!=0:
+                if useHardwareAcceleration & HW_ENCODE!=0:
                     if useHwOutscaleAccel:
                         xstackBody = [xstackFilter, uploadFilter, scaleToFitFilter, padFilter]
                     else:
@@ -1533,72 +1657,73 @@ def reloadAndSave():
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
 
-# %% [markdown]
-# #reloadAndSave()
-# initialize()
-# print("Initialization complete!")
-#
-# #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
-# #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
-# testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
-#                                                  ) #RenderConfig(logLevel=1,
-#                                                  #startTimeMode='allOverlapStart',
-#                                                  #endTimeMode='allOverlapEnd',
-#                                                  #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
-#                                                  #sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
-#                                                  #minGapSize=1200,
-#                                                  #maxHwaccelFiles=20,
-#                                                  #useChat=False,
-#                                                  #drawLabels=True,
-#                                                   #sessionTrimLookback=1, 
-#                                                   #sessionTrimLookahead=-1,
-#                                                   #outputCodec='libx264',
-#                                                   #encodingSpeedPreset='medium',
-#                                                   #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-#                                                   #minimumTimeInVideo=900,
-#                                                   #cutMode='chunked',
-#                                                   #useChat=True,
-#                                                  #)
-#
-#
-#
-# print([extractInputFiles(testCommand) for testCommand in testCommands])
-# print("\n\n")
-# for testCommand in testCommands:
-#     if 'ffmpeg' in testCommand[0]:
-#         testCommand.insert(-1, '-y')
-#         testCommand.insert(-1, '-stats_period')
-#         testCommand.insert(-1, '30')
-#         #testCommand.insert(-1, )
-# #print(testCommands)
-# #testCommandString = formatCommand(testCommand)
-# testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
-# print(testCommandStrings)
-# def writeCommandStrings(commandList, testNum=None):
-#     if testNum is None:
-#         for i in range(2,1000):
-#             path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-#             if not os.path.isfile(path):
-#                 testNum = i
-#     path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
-#     print(path)
-#     with open(path, 'w') as file:
-#         file.write('\n'.join(testCommandStrings))
-#         file.write('\necho "Render complete!!"')
-# def writeCommandScript(commandList, testNum=None):
-#     if testNum is None:
-#         for i in range(2,1000):
-#             path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-#             if not os.path.isfile(path):
-#                 testNum = i
-#     path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
-#     print(path)
-#     with open(path, 'w') as file:
-#         file.write(' && \\\n'.join(testCommandStrings))
-#         file.write(' && \\\necho "Render complete!!"')
-#
-# #writeCommandStrings(testCommandStrings, 10)
-# #writeCommandScript(testCommandStrings, 11)
+# %%
+#reloadAndSave()
+initialize()
+print("Initialization complete!")
+
+#testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
+testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
+#testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
+                                                 ) #RenderConfig(logLevel=1,
+                                                 #startTimeMode='allOverlapStart',
+                                                 #endTimeMode='allOverlapEnd',
+                                                 #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
+                                                 #sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
+                                                 #minGapSize=1200,
+                                                 #maxHwaccelFiles=20,
+                                                 #useChat=False,
+                                                 #drawLabels=True,
+                                                  #sessionTrimLookback=1, 
+                                                  #sessionTrimLookahead=-1,
+                                                  #outputCodec='libx264',
+                                                  #encodingSpeedPreset='medium',
+                                                  #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+                                                  #minimumTimeInVideo=900,
+                                                  #cutMode='chunked',
+                                                  #useChat=True,
+                                                 #)
+
+
+
+print([extractInputFiles(testCommand) for testCommand in testCommands])
+print("\n\n")
+for testCommand in testCommands:
+    if 'ffmpeg' in testCommand[0]:
+        testCommand.insert(-1, '-y')
+        testCommand.insert(-1, '-stats_period')
+        testCommand.insert(-1, '30')
+        #testCommand.insert(-1, )
+#print(testCommands)
+#testCommandString = formatCommand(testCommand)
+testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
+print(testCommandStrings)
+def writeCommandStrings(commandList, testNum=None):
+    if testNum is None:
+        for i in range(2,1000):
+            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+            if not os.path.isfile(path):
+                testNum = i
+    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
+    print(path)
+    with open(path, 'w') as file:
+        file.write('\n'.join(testCommandStrings))
+        file.write('\necho "Render complete!!"')
+def writeCommandScript(commandList, testNum=None):
+    if testNum is None:
+        for i in range(2,1000):
+            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+            if not os.path.isfile(path):
+                testNum = i
+    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
+    print(path)
+    with open(path, 'w') as file:
+        file.write(' && \\\n'.join(testCommandStrings))
+        file.write(' && \\\necho "Render complete!!"')
+
+#writeCommandStrings(testCommandStrings, 10)
+#writeCommandScript(testCommandStrings, 11)
+
 
 # %%
 # Threading time!
@@ -1800,14 +1925,15 @@ def copyWorker():
         setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
 
 activeRenderTask = None
+activeRenderTaskSubindex = None
 activeRenderSubprocess = None
 def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
                  overwrite_output=DEFAULT_OVERWRITE_OUTPUT):
     while True:
         if renderQueue.empty():
-            print("Render queue empty, sleeping")
-            ttime.sleep(20)
+            #print("Render queue empty, sleeping")
+            ttime.sleep(10)
             continue
         renderQueueLock.acquire() #block if user is editing queue
         priority, task = renderQueue.get(block=False)
@@ -1843,6 +1969,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
         hasError = False
         gc.collect()
         for i in range(len(taskCommands)):
+            activeRenderTaskSubindex = i
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
                 currentCommand = taskCommands[i]
                 trueOutpath = None
@@ -1850,11 +1977,22 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                     if not overwrite_intermediate:
                         trueOutpath = currentCommand[-1]
                         if os.path.isfile(trueOutpath):
-                            print(f"Skipping render to file {trueOutpath}, file already exists")
-                            continue
+                            shouldSkip = True
+                            try:
+                                videoInfo = getVideoInfo(trueOutpath)
+                                duration = int(float(videoInfo['format']['duration']))
+                                #if duration != 
+                            except Exception as ex:
+                                if task.renderConfig.loglevel > 0:
+                                    print(ex)
+                            if shouldSkip:
+                                if task.renderConfig.loglevel > 0:
+                                    print(f"Skipping render to file {trueOutpath}, file already exists")
+                                continue
                         else:
                             currentCommand[-1] = insertSuffix(trueOutpath, '.temp')
-                    print(f"Running render to file {currentCommand[-1]} ...", end='')
+                    if task.renderConfig.loglevel > 0:
+                        print(f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...", end='')
 
                 #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
 
@@ -1879,9 +2017,11 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                             errorFile.write('\n\n')
                     break
                 else:
-                    print(" Render complete!")
                     if trueOutpath is not None:
                         shutil.move(currentCommand[-1], trueOutpath)
+                        print(f" Render to {trueOutpath} complete!")
+                    else:
+                        print(f" Render to {currentCommand[-1]} complete!")
         
         if not hasError:
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')

@@ -92,3 +92,22 @@ DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
 
 DEFAULT_OVERWRITE_INTERMEDIATE = True
 DEFAULT_OVERWRITE_OUTPUT = False
+
+RENDER_CONFIG_DEFAULTS = {
+    'drawLabels': False,
+    'startTimeMode': 'mainSessionStart',
+    'endTimeMode': 'mainSessionEnd',
+    'logLevel': 0,
+    'sessionTrimLookback': 0,
+    'sessionTrimLookahead': 0,
+    'sessionTrimLookbackSeconds': 0,
+    'sessionTrimLookaheadSeconds': 600,
+    'minGapSize': 0,
+    'outputCodec': 'libx264',
+    'encodingSpeedPreset': 'medium',
+    'useHardwareAcceleration': 0,
+    'maxHwaccelFiles': 0,
+    'minimumTimeInVideo': 900,
+    'cutMode': 'chunked',
+    'useChat': True,
+}
