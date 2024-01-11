@@ -213,30 +213,35 @@ def getHasHardwareAceleration():
         process2 = subprocess.run(["nvidia-smi", "-q", "-d", "MEMORY,UTILIZATION"], capture_output=True)
         nvidiaSmiOutput = process2.stdout.decode()
         print(nvidiaSmiOutput)
+        print(process2.returncode)
         if process2.returncode == 0:
             encoding = False; decoding = False
-            for row in outstr.split('\r\n'):
-                if 'Encoding' in row:
+            rowCount = 0
+            for row in nvidiaSmiOutput.split('\n'):
+                if 'Encoder' in row:
                     encoding = 'N/A' not in row
-                elif 'Decoding' in row:
+                elif 'Decoder' in row:
                     decoding = 'N/A' not in row
+                rowCount += 1
+            print(f"Row count: {rowCount}")
             mask = SCALING
             if decoding:
                 mask |= HW_DECODE
             if encoding:
                 mask |= HW_ENCODE
             return ('NVIDIA', mask)
-    except:
-        pass
+    except Exception as ex:
+        print(ex)
     try:
         process3 = subprocess.run(["rocm-smi", "--json"], capture_output=True)
         amdSmiOutput = process3.stdout.decode()
         print(amdSmiOutput)
+        print(process3.returncode)
         if process3.returncode == 0:
             print("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
             return ('AMD', HW_DECODE|HW_ENCODE)
-    except:
-        pass
+    except Exception as ex:
+        print(ex)
     return (None, 0)
 HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
 if HWACCEL_BRAND is not None:
@@ -244,7 +249,7 @@ if HWACCEL_BRAND is not None:
     print(f'Functions:')
     if HWACCEL_FUNCTIONS & HW_DECODE != 0:
         print("    Decode")
-    if HWACCEL_FUNCTIONS & (HW_INPUT_SCALING|HW_OUTPUT_SCALING) != 0:
+    if HWACCEL_FUNCTIONS & (HW_INPUT_SCALE|HW_OUTPUT_SCALE) != 0:
         print("    Scaling")
     if HWACCEL_FUNCTIONS & HW_ENCODE != 0:
         print("    Encode")
@@ -1017,8 +1022,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     for streamerIndex in range(len(allInputStreamers)):
         outputMapOptions.extend(('-map', f"[aout{streamerIndex}]"))
         streamerName = allInputStreamers[streamerIndex]
-        outputMetadataOptions.extend((f"-metadata:s:a:{streamerIndex}", f"title=\"{streamerName}\"",
-                                      f"-metadata:s:a:{streamerIndex}", "language=eng"))
+        outputMetadataOptions.extend((f"-metadata:s:a:{streamerIndex}",
+                                          f"title=\"{str(streamerIndex+1)+' - ' if drawLabels else ''}{streamerName}\"",
+                                      f"-metadata:s:a:{streamerIndex}",
+                                          "language=eng"))
     codecOptions = ["-c:a","aac",
          "-c:v", outputCodec,
          "-s", outputResolutionStr]
@@ -1657,73 +1664,72 @@ def reloadAndSave():
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
 
-# %%
-#reloadAndSave()
-initialize()
-print("Initialization complete!")
-
-#testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
-testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
-#testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
-                                                 RenderConfig(logLevel=1),
-                                                 #startTimeMode='allOverlapStart',
-                                                 #endTimeMode='allOverlapEnd',
-                                                 #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
-                                                 #sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
-                                                 #minGapSize=1200,
-                                                 #maxHwaccelFiles=20,
-                                                 #useChat=False,
-                                                 #drawLabels=True,
-                                                  #sessionTrimLookback=1, 
-                                                  #sessionTrimLookahead=-1,
-                                                  #outputCodec='libx264',
-                                                  #encodingSpeedPreset='medium',
-                                                  #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-                                                  #minimumTimeInVideo=900,
-                                                  #cutMode='chunked',
-                                                  #useChat=True,
-                                                 )
-
-
-
-print([extractInputFiles(testCommand) for testCommand in testCommands])
-print("\n\n")
-for testCommand in testCommands:
-    if 'ffmpeg' in testCommand[0]:
-        testCommand.insert(-1, '-y')
-        testCommand.insert(-1, '-stats_period')
-        testCommand.insert(-1, '30')
-        #testCommand.insert(-1, )
-#print(testCommands)
-#testCommandString = formatCommand(testCommand)
-testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
-print(testCommandStrings)
-def writeCommandStrings(commandList, testNum=None):
-    if testNum is None:
-        for i in range(2,1000):
-            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-            if not os.path.isfile(path):
-                testNum = i
-    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
-    print(path)
-    with open(path, 'w') as file:
-        file.write('\n'.join(testCommandStrings))
-        file.write('\necho "Render complete!!"')
-def writeCommandScript(commandList, testNum=None):
-    if testNum is None:
-        for i in range(2,1000):
-            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-            if not os.path.isfile(path):
-                testNum = i
-    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
-    print(path)
-    with open(path, 'w') as file:
-        file.write(' && \\\n'.join(testCommandStrings))
-        file.write(' && \\\necho "Render complete!!"')
-
-#writeCommandStrings(testCommandStrings, 10)
-#writeCommandScript(testCommandStrings, 11)
-
+# %% [markdown]
+# #reloadAndSave()
+# initialize()
+# print("Initialization complete!")
+#
+# #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
+# testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
+# #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
+#                                                  RenderConfig(logLevel=1),
+#                                                  #startTimeMode='allOverlapStart',
+#                                                  #endTimeMode='allOverlapEnd',
+#                                                  #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
+#                                                  #sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
+#                                                  #minGapSize=1200,
+#                                                  #maxHwaccelFiles=20,
+#                                                  #useChat=False,
+#                                                  #drawLabels=True,
+#                                                   #sessionTrimLookback=1, 
+#                                                   #sessionTrimLookahead=-1,
+#                                                   #outputCodec='libx264',
+#                                                   #encodingSpeedPreset='medium',
+#                                                   #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+#                                                   #minimumTimeInVideo=900,
+#                                                   #cutMode='chunked',
+#                                                   #useChat=True,
+#                                                  )
+#
+#
+#
+# print([extractInputFiles(testCommand) for testCommand in testCommands])
+# print("\n\n")
+# for testCommand in testCommands:
+#     if 'ffmpeg' in testCommand[0]:
+#         testCommand.insert(-1, '-y')
+#         testCommand.insert(-1, '-stats_period')
+#         testCommand.insert(-1, '30')
+#         #testCommand.insert(-1, )
+# #print(testCommands)
+# #testCommandString = formatCommand(testCommand)
+# testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
+# print(testCommandStrings)
+# def writeCommandStrings(commandList, testNum=None):
+#     if testNum is None:
+#         for i in range(2,1000):
+#             path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+#             if not os.path.isfile(path):
+#                 testNum = i
+#     path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
+#     print(path)
+#     with open(path, 'w') as file:
+#         file.write('\n'.join(testCommandStrings))
+#         file.write('\necho "Render complete!!"')
+# def writeCommandScript(commandList, testNum=None):
+#     if testNum is None:
+#         for i in range(2,1000):
+#             path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
+#             if not os.path.isfile(path):
+#                 testNum = i
+#     path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
+#     print(path)
+#     with open(path, 'w') as file:
+#         file.write(' && \\\n'.join(testCommandStrings))
+#         file.write(' && \\\necho "Render complete!!"')
+#
+# #writeCommandStrings(testCommandStrings, 10)
+# #writeCommandScript(testCommandStrings, 11)
 
 # %%
 # Threading time!
@@ -1988,28 +1994,38 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                                 duration = int(float(videoInfo['format']['duration']))
                                 #if duration != 
                             except Exception as ex:
-                                if task.renderConfig.loglevel > 0:
+                                if task.renderConfig.logLevel > 0:
                                     print(ex)
                             if shouldSkip:
-                                if task.renderConfig.loglevel > 0:
+                                if task.renderConfig.logLevel > 0:
                                     print(f"Skipping render to file {trueOutpath}, file already exists")
                                 continue
                         else:
                             currentCommand[-1] = insertSuffix(trueOutpath, '.temp')
-                    if task.renderConfig.loglevel > 0:
+                    if task.renderConfig.logLevel > 0:
                         print(f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...", end='')
 
                 #TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
 
                 try:
-                    process = subprocess.Popen([str(command) for command in currentCommand], stdout=logFile, stderr=subprocess.STDOUT)
+                    process = subprocess.Popen([str(command) for command in currentCommand],
+                                               stdin=subprocess.DEVNULL,
+                                               stdout=logFile,
+                                               stderr=subprocess.STDOUT)
                     activeRenderSubprocess = process
                     returncode = process.wait()
                     activeRenderSubprocess = None
+                except KeyboardInterrupt:
+                    print("Keyboard interrupt detected, stopping active render!")
+                    process.kill()
+                    process.wait()
+                    print("Render terminated!")
+                    return
                 except Exception as ex:
                     print(ex)
                     returncode = -1
                     activeRenderSubprocess = None
+                
                 if returncode != 0:
                     hasError = True
                     if returncode != 130: #ctrl-c on UNIX (?)
@@ -2581,6 +2597,10 @@ def commandWorker():
             print("Detected keyboard interrupt, returning to main menu. Press Ctrl-C again to exit program")
         #raise Exception("Not implemented yet")
 
+
+# %%
+
+# %%
 renderThread = threading.Thread(target=renderWorker)
 if COPY_FILES:
     copyThread = threading.Thread(target=copyWorker)
