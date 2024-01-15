@@ -8,6 +8,8 @@ basepath = '/mnt/pool2/media/Twitch Downloads/'
 localBasepath = '/mnt/pool1/media/downloads/'
 outputDirectory = "Rendered Multiviews"
 
+ENABLE_URWID = False
+
 mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
 globalAllStreamers = [name for name in os.listdir(basepath) if
                       (name not in ("NA", outputDirectory) and 
@@ -22,6 +24,8 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
                    #'BryceMcQuaid':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'Courtilly':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'CheesyBlueNips':['Cheesy'],
+                   'ChilledChaos':['Chilled'],
                    'CrashVS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'DooleyNotedGaming':['Jeremy'], 
                    'ElainaExe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
@@ -29,19 +33,28 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
                    'FlanelJoe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'HeckMuffins':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'Junkyard129':['Junkyard', 'Junk', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                'Kara'],
+                   #'KDoolz':['Kat'],
                    'Kn0vis':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
-                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                'Speedy'],
+                   'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                     'Larry'],
                    'MG4R':['Greg', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'MicheleBoyd':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'ozzaworld':['ozza'],
+                   'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                      'Pasta', 'Pastaroni'],
                    'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm', #hacky override for Twitch Rivals 12/7/23
-                                      'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                                      'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                     'SideArms'],
+                   'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                 'Shab'],
                    'ToastyFPS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'TomFawkes':['Tom Fawks'],
                    'VikramAFC':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'Your__Narrator': ['YourNarrator']}
 
@@ -86,7 +99,7 @@ logFolder = r'./logs/'
 COPY_FILES = False
 DEFAULT_MAX_LOOKBACK=timedelta(days=30)
 
-minimumSessionWorkerDelay = timedelta(hours=2)
+minimumSessionWorkerDelay = timedelta(hours=3)
 
 DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
 
