@@ -567,7 +567,7 @@ trueStrings = ('t', 'y', 'true', 'yes')
 defaultRenderConfig = RENDER_CONFIG_DEFAULTS
 try:
     with open('./renderConfig.json') as renderConfigJsonFile:
-        default_render_config = json.load(renderConfigJsonFile)
+        defaultRenderConfig = json.load(renderConfigJsonFile)
 except:
     print("Coult not load renderConfig.json, using defaults from config.py")
 
@@ -902,7 +902,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     segmentFileMatrix[i][streamerIndex] = None
         if logLevel >= 2:
             printSegmentMatrix(showGameChanges=True)
-    else:
+    elif sessionTrimLookbackSeconds > 0 or sessionTrimLookaheadSeconds > 0:
         #trim by seconds
         raise Exception("Not implemented yet")
     
@@ -1961,6 +1961,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
         
         assert getRenderStatus(task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
         global activeRenderTask
+        global activeRenderTaskSubindex
         activeRenderTask = task
         taskCommands = generateTilingCommandMultiSegment(task.mainStreamer,
                                                            task.fileDate,
@@ -1993,6 +1994,7 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
         tempFiles = []
         for i in range(len(taskCommands)):
             activeRenderTaskSubindex = i
+            #TODO: add preemptive scheduling
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
                 currentCommand = taskCommands[i]
                 trueOutpath = None
@@ -2104,14 +2106,15 @@ def getAllStreamingDaysByStreamer():
 def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS, 
                   maxLookback:timedelta=DEFAULT_MAX_LOOKBACK, 
                   dataFilepath=DEFAULT_DATA_FILEPATH,
-                  renderConfig=RenderConfig(drawLabels=False,
-                                            startTimeMode='mainSessionStart',
-                                            endTimeMode='mainSessionEnd',
-                                            logLevel=0,
-                                            sessionTrimLookback=1,
-                                            sessionTrimLookahead=3,
-                                            minimumTimeInVideo=1200,
-                                            minGapSize=900)):
+                  renderConfig=RenderConfig()):
+                                            #drawLabels=False,
+                                            #startTimeMode='mainSessionStart',
+                                            #endTimeMode='mainSessionEnd',
+                                            #logLevel=0,
+                                            #sessionTrimLookback=1,
+                                            #sessionTrimLookahead=3,
+                                            #minimumTimeInVideo=1200,
+                                            #minGapSize=900)):
     sessionLog = sessionText.addLine
     global allFilesByVideoId
     if len(allFilesByVideoId) == 0:
@@ -2146,7 +2149,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                         outPath = getVideoOutputPath(streamer, day)
                         command = generateTilingCommandMultiSegment(streamer, day, renderConfig, outPath)
                         if command is None: #command cannot be made, maybe solo stream or only one
-                            sessionLog(f"Skipping render for streamer {streamer} from {day}")
+                            sessionLog(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
                             continue
                         item = QueueItem(streamer, day, renderConfig, outPath)
                         sessionLog(f"Adding render for streamer {streamer} from {day}")
@@ -2174,16 +2177,18 @@ commandArray = []
 def endRendersAndExit():
     print('Shutting down, please wait at least 15 seconds before manually killing...')
     if activeRenderSubprocess is not None:
-        #signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        print("Terminating render thread")
         activeRenderSubprocess.terminate()
         activeRenderSubprocess.wait(10)
         if activeRenderSubprocess.poll is None:
             print("Terminating render thread did not complete within 10 seconds, killing instead")
             activeRenderSubprocess.kill()
             activeRenderSubprocess.wait()
-        #signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
         if activeRenderSubprocess.poll is not None:
             print("Active render stopped successfully")
+    print("Stopping!")
     sys.exit(0)
 commandArray.append(Command(endRendersAndExit, 'Exit program'))
 
@@ -2201,7 +2206,7 @@ def startRenderThread():
 commandArray.append(Command(startRenderThread, 'Start render thread'))
 
 def printActiveJobs():
-    print(f"Active render job:", "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}")
+    print(f"Active render job:", "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
     if COPY_FILES:
         print(f"Active copy job:", "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
 commandArray.append(Command(printActiveJobs, 'Print active jobs'))
@@ -2529,6 +2534,7 @@ def editQueueItem(queueEntry):
         elif userInput.lower() == 'f':
             break
         elif userInput.lower() == 'd':
+            deleteRenderStatus(mainStreamer, fileDate)
             return ...
         else:
             print(f"Invalid option: '{userInput}'")
@@ -2816,6 +2822,12 @@ menu_top = SubMenu('Main Menu', [
     #]),
     ActionChoice('Exit program', endRendersAndExit if 'endRendersAndExit' in globals().keys() else exit_program),
     InfoChoice('Start render thread', renderThreadChoice, RenderThreadStatusString()),
+    #InfoChoice('Print active jobs', activeJobsChoice, ),
+    #InfoChoice('Print queued jobs'),
+    #InfoChoice('Print completed jobs'),
+    #InfoChoice('Print errored jobs'),
+    #ActionChoice('Clean up errored jobs'),
+    #PagedMenu('Edit queue(s)')
     #InfoChoice('')
 ])
 
@@ -2889,12 +2901,12 @@ if COPY_FILES:
 
 
 if __name__=='__main__':
-    defaultSessionRenderConfig = RenderConfig(drawLabels=False,
-                                               startTimeMode='mainSessionStart',
-                                               endTimeMode='mainSessionEnd',
-                                               logLevel=0,
-                                               sessionTrimLookback=0,
-                                               sessionTrimLookahead=4)
+    defaultSessionRenderConfig = RenderConfig()#drawLabels=False,
+                                               #startTimeMode='mainSessionStart',
+                                               #endTimeMode='mainSessionEnd',
+                                               #logLevel=0,
+                                               #sessionTrimLookback=0,
+                                               #sessionTrimLookahead=4)
     #initialize()
     if not __debug__:
         print("Deployment mode")
