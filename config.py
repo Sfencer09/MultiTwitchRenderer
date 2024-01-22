@@ -22,7 +22,8 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
                    'BonsaiBroz':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    #'BryceMcQuaid':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                'https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy',],
                    'Courtilly':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'CheesyBlueNips':['Cheesy'],
                    'ChilledChaos':['Chilled'],
@@ -32,38 +33,50 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
                    'emerome':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'FlanelJoe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'HeckMuffins':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'Junkyard129':['Junkyard', 'Junk', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Junkyard129':['Junkyard', 'Junk',
+                                  'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
-                                'Kara'],
+                                #' Kara,',
+                                ],
                    #'KDoolz':['Kat'],
                    'Kn0vis':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
+                   'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'
+                               'https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy',],
                    'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
                                  'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
-                                'Speedy'],
+                                 'https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy',
+                                 'Speedy'],
                    'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                      'https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy',
                                      'Larry'],
                    'MG4R':['Greg', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'MicheleBoyd':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'ozzaworld':['ozza'],
                    'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
+                                      'https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy',
                                       'Pasta', 'Pastaroni'],
+                   'Skadj':['https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy'],
+                   'SlackATK':['https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy'],
                    'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm', #hacky override for Twitch Rivals 12/7/23
                                       'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
-                                     'SideArms'],
+                                      'https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy',
+                                      'SideArms'],
+                   'TayderTot':['https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy'],
                    'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1',
                                  'Shab'],
                    'ToastyFPS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'TomFawkes':['Tom Fawks'],
                    'VikramAFC':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-                   'Your__Narrator': ['YourNarrator']}
+                   'Your__Narrator': ['YourNarrator'],
+                   'Zentreya':['https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy'],
+                  }
 
 nongroupGames = ('Just Chatting', "I'm Only Sleeping")
 ffmpegPath='' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
 
 characterReplacements = {'?':'？', '/':'', '\\':''}
 
-threadCount = 16 #os.cpu_count()
+threadCount = os.cpu_count()
 
 defaultSetPTS = "PTS-STARTPTS"
 videoSetPTS = "N/FRAME_RATE/TB"
@@ -105,6 +118,7 @@ DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
 
 DEFAULT_OVERWRITE_INTERMEDIATE = True
 DEFAULT_OVERWRITE_OUTPUT = False
+DEFAULT_LOOKBACK_DAYS = 14
 
 RENDER_CONFIG_DEFAULTS = {
     'drawLabels': False,
@@ -124,3 +138,10 @@ RENDER_CONFIG_DEFAULTS = {
     'cutMode': 'chunked',
     'useChat': True,
 }
+# -
+
+gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
+               'Tabletop Simulator': ('Board Games',),
+               'Suika Game': ('Suika',),
+               'Monopoly Plus': ('Monopoly',)}
+

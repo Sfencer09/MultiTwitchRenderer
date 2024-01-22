@@ -2902,7 +2902,7 @@ if __name__=='__main__':
             copyThread.start()
         #renderThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig':defaultSessionRenderConfig,
-                                                                       'maxLookback':timedelta(days=14)})
+                                                                       'maxLookback':timedelta(days=DEFAULT_LOOKBACK_DAYS)})
         sessionThread.start()
         if ENABLE_URWID:
             mainStart()
