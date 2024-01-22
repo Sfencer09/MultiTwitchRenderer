@@ -73,7 +73,9 @@ class SourceFile:
     def isComplete(self):
         return self.videoFile is not None and self.infoFile is not None
     def setInfoFile(self, infoFile):
-        assert self.infoFile is None
+        if self.infoFile == infoFile:
+            return
+        assert self.infoFile is None, f"Cannot overwrite existing info file {self.chatFile} with new file {infoFile}"
         assert infoFile.endswith(infoExt) and os.path.isfile(infoFile) and os.path.isabs(infoFile)
         self.infoFile = infoFile
         with open(infoFile) as file:
@@ -82,12 +84,16 @@ class SourceFile:
         self.startTimestamp = self.infoJson['timestamp']
         self.endTimestamp = self.duration + self.startTimestamp
     def setVideoFile(self, videoFile):
-        assert self.videoFile is None
+        if self.videoFile == videoFile:
+            return
+        assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
         assert videoFile.endswith(videoExt) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
         self.videoFile = videoFile
         self.downloadTime = convertToDatetime(os.path.getmtime(videoFile))
     def setChatFile(self, chatFile):
-        assert self.chatFile is None
+        if self.chatFile == chatFile:
+            return
+        assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
         assert chatFile.endswith(chatExt) and os.path.isfile(chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
         if self.streamer in streamersParseChatList:
@@ -381,11 +387,13 @@ def scanSessionsFromFile(file:SourceFile):
         allStreamerSessions[streamer].append(session)
 
 def scanFiles(log=False):
-    newFiles = set()
+    #newFiles = set()
+    #newFilesByStreamer = dict()
+    newFilesByVideoId = dict()
     for streamer in globalAllStreamers:
         if log:
             print(f"Scanning streamer {streamer} ", end='')
-        streamerFiles = []
+        newStreamerFiles = []
         streamerBasePath = os.path.join(basepath, streamer, 'S1')
         count = 0
         for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExt, infoExt, chatExt)))):
@@ -402,22 +410,23 @@ def scanFiles(log=False):
             if log and count % 10 == 0:
                 print('.', end='')
             file = None
-            if videoId not in allFilesByVideoId.keys():
+            if videoId not in allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
                 if filename.endswith(videoExt):
                     file = SourceFile(streamer, videoId, videoFile=filepath)
-                    filesBySourceVideoPath[filepath] = file
+                    #filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
                     file = SourceFile(streamer, videoId, infoFile=filepath)
                 else:
                     assert filename.endswith(chatExt)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
-                allFilesByVideoId[videoId] = file
-                streamerFiles.append(file)
+                #allFilesByVideoId[videoId] = file
+                newFilesByVideoId[videoId] = file
+                newStreamerFiles.append(file)
             else:
-                file = allFilesByVideoId[videoId]
+                file = allFilesByVideoId[videoId] if videoId in allFilesByVideoId.keys() else newFilesByVideoId[videoId]
                 if filename.endswith(videoExt):
                     file.setVideoFile(filepath)
-                    filesBySourceVideoPath[filepath] = file
+                    #filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
                     file.setInfoFile(filepath)
                 else:
@@ -425,40 +434,51 @@ def scanFiles(log=False):
                     file.setChatFile(filepath)
                     #if streamer in streamersParseChatList:
                     #    file.parsedChat = ParsedChat(filepath)
-                if file.isComplete():
-                    newFiles.add(file)
-            allScannedFiles.add(filepath)
+                #if file.isComplete():
+                #    newFiles.add(file)
+            #allScannedFiles.add(filepath)
             count += 1
         count = 0
         if log:
-            print('*', end='')
-        for i in reversed(range(len(streamerFiles))):
-            file = streamerFiles[i]
+            print()
+            #print('*', end='')
+        newCompleteFiles = []
+        for i in reversed(range(len(newStreamerFiles))):
+            file = newStreamerFiles[i]
             if file.isComplete():
-                if file.chatFile is not None and streamer in streamersParseChatList:
+                allScannedFiles.add(file.videoFile)
+                allScannedFiles.add(file.infoFile)
+                if file.chatFile is not None:
+                    allScannedFiles.add(file.chatFile)
+                filesBySourceVideoPath[file.videoFile] = file
+                allFilesByVideoId[file.videoId] = file
+                count += 1
+                scanSessionsFromFile(file)
+                newCompleteFiles.append(file)
+                #if file.chatFile is not None and streamer in streamersParseChatList:
                     #if file.parsedChat is None:
                     #    file.parsedChat = ParsedChat(file.chatFile)
-                    if log and count % 10 == 0:
-                        print('.', end='')
-                    count += 1
+                #    if log and count % 10 == 0:
+                #        print('.', end='')
+                #    count += 1
                 #else:
                 #    file.parsedChat = None
                 #filesBySourceVideoPath[file.videoPath] = file
-            else:
+            #else:
                 #print(f"Deleting incomplete file at index {i}: {streamerFiles[i]}")
-                if file.videoFile is not None:
-                    del filesBySourceVideoPath[file.videoFile]
-                del allFilesByVideoId[file.videoId]
-                del streamerFiles[i]
+            #    if file.videoFile is not None:
+            #        del filesBySourceVideoPath[file.videoFile]
+            #    del allFilesByVideoId[file.videoId]
+            #    del streamerFiles[i]
         #if log:
-        if len(streamerFiles) > 0 or log:
-            print(f"\nScanned streamer {streamer} with {len(streamerFiles)} files")
-        if len(streamerFiles) > 0:
+        if count > 0 or log:
+            print(f"Scanned streamer {streamer} with {count} files")
+        if len(newStreamerFiles) > 0:
             if streamer not in allFilesByStreamer.keys(): 
                 #allStreamersWithVideos.append(streamer)
-                allFilesByStreamer[streamer] = streamerFiles
+                allFilesByStreamer[streamer] = newCompleteFiles
             else: #streamer already had videos scanned in
-                allFilesByStreamer[streamer].extend(streamerFiles)
+                allFilesByStreamer[streamer].extend(newCompleteFiles)
     global allStreamersWithVideos
     allStreamersWithVideos = list(allFilesByStreamer.keys())
     if log:
@@ -468,13 +488,13 @@ def scanFiles(log=False):
     #for streamer in allStreamersWithVideos:
     #    allStreamerSessions[streamer] = []
     #    for file in allFilesByStreamer[streamer]:
-    
     # 1. Add new sessions for each streamer
-    for file in newFiles:
-        scanSessionsFromFile(file)
-    for streamer in allStreamersWithVideos:
-        allStreamerSessions[streamer].sort(key=lambda x:x.startTimestamp)
     
+    
+    for sessionList in allStreamerSessions.values():
+        sessionList.sort(key=lambda x:x.startTimestamp)
+    #for streamer in allStreamersWithVideos:
+    #    allStreamerSessions[streamer].sort(key=lambda x:x.startTimestamp)
     if log:
         print("Step 1: ", sum((len(x) for x in allStreamerSessions.values())), end="\n\n\n")
 
