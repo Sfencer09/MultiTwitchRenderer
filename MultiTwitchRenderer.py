@@ -616,8 +616,10 @@ renderConfigSchema = Schema({
             lambda x: x in ('chunked', ),#'trim', 'segment'),
     Optional('useChat', default=defaultRenderConfig['useChat']):
             Or(bool, Use(lambda x: x.lower() in trueStrings)),
+    Optional('includeStreamers', default=None): #overrides chat, but will not prevent game matching
+            Or(lambda x: x is None, [str], {str:Or(lambda x: x is None, [str])}), #Cannot be passed as string
     Optional('excludeStreamers', default=None):
-            Or(lambda x: x is None, [str], {str:Or(lambda x: x is None, [str])}) #Cannot be passed as string
+            Or(lambda x: x is None, [str], {str:Or(lambda x: x is None, [str])}), #Cannot be passed as string
 })
 
 class RenderConfig:
@@ -701,10 +703,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     secondarySessionsArray = []
     inputSessionsByStreamer = {}
     inputSessionsByStreamer[mainStreamer] = mainSessionsOnTargetDate
-    for streamer in otherStreamers:
+    for streamer in allStreamerSessions.keys():
+        if streamer == mainStreamer:
+            continue
         inputSessionsByStreamer[streamer] = []
         for session in allStreamerSessions[streamer]:
             if any((session.hasOverlap(x, useChat) for x in mainSessionsOnTargetDate)):
+                if excludeStreamers is not None and streamer in excludeStreamers.keys():
+                    if excludeStreamers[streamer] is None or session.game in excludeStreamers[streamer]:
+                        continue
                 secondarySessionsArray.append(session)
                 inputSessionsByStreamer[streamer].append(session)
         inputSessionsByStreamer[streamer].sort(key=lambda x: x.startTimestamp)
@@ -2354,7 +2361,7 @@ def readExcludeStreamers():
                     if not 0 < index <= len(pageGames):
                         print(f"Entered number outside of valid range (1-{len(pageGames)})")
                         continue
-                    return pageGames[index]
+                    return pageGames[index][0]
                 else:
                     for game, _ in allGames:
                         if game.lower() == userInput.lower():
