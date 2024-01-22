@@ -539,15 +539,6 @@ def generateLayout(numTiles):
         return f"{generateLEC(x,'w')}_{generateLEC(y,'h')}"
     return "|".join([generateLE(n) for n in range(numTiles)])
 
-def pretty_print(clas, indent=0):
-    output = ' ' * indent +  type(clas).__name__ +  ':\n'
-    indent += 4
-    for k,v in clas.__dict__.items():
-        if '__dict__' in dir(v):
-            output += pretty_print(v,indent)
-        else:
-            output += ' ' * indent +  k + ': ' + str(v) + '\n'
-
 def toFfmpegTimestamp(ts:int|float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
@@ -633,16 +624,28 @@ class RenderConfig:
         return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items()))})"
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None):
-    otherStreamers = [name for name in allStreamersWithVideos if name is not mainStreamer]
+    otherStreamers = [name for name in allStreamersWithVideos if name != mainStreamer]
     if outputFile is None:
         outputFile = getVideoOutputPath(mainStreamer, targetDate)
     #########
-    drawLabels=renderConfig.drawLabels; startTimeMode=renderConfig.startTimeMode; endTimeMode=renderConfig.endTimeMode; 
-    logLevel=renderConfig.logLevel; sessionTrimLookback=renderConfig.sessionTrimLookback; sessionTrimLookahead=renderConfig.sessionTrimLookahead;
-    sessionTrimLookbackSeconds=renderConfig.sessionTrimLookbackSeconds; sessionTrimLookaheadSeconds=renderConfig.sessionTrimLookaheadSeconds;
-    minGapSize=renderConfig.minGapSize; outputCodec=renderConfig.outputCodec; encodingSpeedPreset=renderConfig.encodingSpeedPreset;
-    useHardwareAcceleration=renderConfig.useHardwareAcceleration; maxHwaccelFiles=renderConfig.maxHwaccelFiles; 
-    minimumTimeInVideo=renderConfig.minimumTimeInVideo; cutMode=renderConfig.cutMode; useChat=renderConfig.useChat;
+    drawLabels = renderConfig.drawLabels
+    startTimeMode = renderConfig.startTimeMode
+    endTimeMode = renderConfig.endTimeMode
+    logLevel = renderConfig.logLevel
+    sessionTrimLookback = renderConfig.sessionTrimLookback
+    sessionTrimLookahead = renderConfig.sessionTrimLookahead
+    sessionTrimLookbackSeconds = renderConfig.sessionTrimLookbackSeconds
+    sessionTrimLookaheadSeconds = renderConfig.sessionTrimLookaheadSeconds
+    minGapSize = renderConfig.minGapSize
+    outputCodec = renderConfig.outputCodec
+    encodingSpeedPreset = renderConfig.encodingSpeedPreset
+    useHardwareAcceleration = renderConfig.useHardwareAcceleration
+    maxHwaccelFiles = renderConfig.maxHwaccelFiles
+    minimumTimeInVideo = renderConfig.minimumTimeInVideo
+    cutMode = renderConfig.cutMode
+    useChat = renderConfig.useChat
+    excludeStreamers = renderConfig.excludeStreamers
+    #includeStreamers = renderConfig.includeStreamers
     #########
     #2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(datetime.fromisoformat(targetDate), DAY_START_TIME)
@@ -659,7 +662,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         if logLevel >= 2:
             pprint(mainSessionsOnTargetDate)
     
-    groupsFromMainFiles = reduce(list.append,#list.__add__,
+    groupsFromMainFiles = reduce(list.append, #list.__add__,
             (file.parsedChat.groups for file in set((session.file for session in mainSessionsOnTargetDate)
                                                    ) if file.parsedChat is not None), [])
     if logLevel >= 1:
@@ -1707,88 +1710,6 @@ def reloadAndSave():
     saveFiledata(DEFAULT_DATA_FILEPATH)
 
 
-# %% [markdown]
-# # ##################
-# #
-# # Testing block below
-# #
-# # ###################
-
-# %%
-#reloadAndSave()
-#initialize()
-#scanFiles(log=True)
-print("Initialization complete!")
-
-#testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
-#testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
-#testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-13',
-                                                 RenderConfig(logLevel=4,
-                                                 #startTimeMode='allOverlapStart',
-                                                 #endTimeMode='allOverlapEnd',
-                                                 #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
-                                                 #sessionTrimLookback=0,#3, #TODO: convert from number of segments to number of seconds. Same for lookahead
-                                                 #minGapSize=1200,
-                                                 minGapSize=1800,
-                                                 #maxHwaccelFiles=20,
-                                                 #useChat=False,
-                                                 #drawLabels=True,
-                                                  #sessionTrimLookback=1, 
-                                                  #sessionTrimLookahead=-1,
-                                                  #outputCodec='libx264',
-                                                  #encodingSpeedPreset='medium',
-                                                  #useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-                                                  #minimumTimeInVideo=900,
-                                                  #cutMode='chunked',
-                                                  #useChat=True,
-                                                 ))
-
-
-
-print([extractInputFiles(testCommand) for testCommand in testCommands])
-print("\n\n")
-for testCommand in testCommands:
-    if 'ffmpeg' in testCommand[0]:
-        testCommand.insert(-1, '-y')
-        testCommand.insert(-1, '-stats_period')
-        testCommand.insert(-1, '30')
-        #testCommand.insert(-1, )
-#print(testCommands)
-#testCommandString = formatCommand(testCommand)
-testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
-print(testCommandStrings)
-def writeCommandStrings(commandList, testNum=None):
-    if testNum is None:
-        for i in range(2,1000):
-            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-            if not os.path.isfile(path):
-                testNum = i
-    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.txt"
-    print(path)
-    with open(path, 'w') as file:
-        file.write('\n'.join(testCommandStrings))
-        file.write('\necho "Render complete!!"')
-def writeCommandScript(commandList, testNum=None):
-    if testNum is None:
-        for i in range(2,1000):
-            path = f"/mnt/pool2/media/ffmpeg test{str(i)}.txt"
-            if not os.path.isfile(path):
-                testNum = i
-    path = f"/mnt/pool2/media/ffmpeg test{str(testNum)}.sh"
-    print(path)
-    with open(path, 'w') as file:
-        file.write(' && \\\n'.join(testCommandStrings))
-        file.write(' && \\\necho "Render complete!!"')
-
-#writeCommandStrings(testCommandStrings, 10)
-#writeCommandScript(testCommandStrings, 11)
-
-
-# %%
-pprint(allFilesByVideoId['v2028655388'].parsedChat.groups)
-#print(allStreamersWithVideos)
-
 # %%
 # Threading time!
 #import types
@@ -2742,6 +2663,8 @@ class MenuButton(urwid.Button):
         self._w = urwid.AttrMap(urwid.SelectableIcon(
             ['  \N{BULLET} ', caption], 2), None, 'selected')
 
+
+
 class SubMenu(urwid.WidgetWrap):
     def __init__(self, caption, choices):
         super().__init__(MenuButton(
@@ -2882,6 +2805,7 @@ focus_map = {
     'heading': 'focus heading',
     'options': 'focus options',
     'line': 'focus line'}
+
 class HorizontalBoxes(urwid.Columns):
     def __init__(self):
         super().__init__([], dividechars=1)
@@ -2974,404 +2898,124 @@ if __name__=='__main__':
             print(game, allGames[game])
         del allGames
 
-# %% [markdown]
-# gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
-#                'Tabletop Simulator': ('Board Games',),
-#                'Suika Game': ('Suika',),
-#                'Monopoly Plus': ('Monopoly',)}
-#
-# def normalizeAllGames():
-#     gameCounts = calcGameCounts()
-#     pprint(gameCounts)
-#     print("\n\n\n---------------------------------------------------------------\n\n\n")
-#     knownReplacements = {}
-#     lowercaseGames = {}
-#     for game, alias in gameAliases.items():
-#         assert game.lower() not in lowercaseGames.keys()
-#         knownReplacements[game] = list(alias)
-#         lowercaseGames[game.lower()] = game
-#     replacedGames = {}
-#     for game in gameCounts.keys():
-#         #if gameCounts[game] == 1:
-#         #    continue
-#         trueGame = None
-#         for key in knownReplacements.keys():
-#             if any((game == alias for alias in knownReplacements[key])):
-#                 trueGame = key
-#                 break
-#         if trueGame is None:
-#             trueGame = game
-#         else:
-#             print("game, trueGame:", game, trueGame)
-#             replacedGames[game] = trueGame
-#             continue
-#             
-#         #if any((any((game == alias for alias in knownReplacements[key])) for key in knownReplacements.keys())):
-#             #game is already a known alias
-#         #    continue
-#         lowergame = game.lower()
-#         if lowergame in lowercaseGames.keys():
-#             altgame = lowercaseGames[lowergame]
-#             if altgame == game:
-#                 continue
-#             if gameCounts[game] > gameCounts[altgame]:
-#                 aliases = knownReplacements[altgame]
-#                 aliases.append(altgame)
-#                 del knownReplacements[altgame]
-#                 knownReplacements[game] = aliases
-#             elif gameCounts[altgame] > gameCounts[game]:
-#                 knownReplacements[altgame].append(game)
-#             else:
-#                 raise Exception(f"Two capitalizations have the same count, cannot determine which is correct: {game}; {altgame}")
-#         #else:
-#         elif gameCounts[game] > 1:
-#             knownReplacements[game] = []
-#             lowercaseGames[lowergame] = game
-#     print("\n\n\n---------------------------------------------------------------\n\n\nreplacedGames:")
-#     pprint(replacedGames, width=200)
-#     print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
-#     pprint(knownReplacements, width=200)
-#     print("\n\n\n---------------------------------------------------------------\n\n\n")
-#     for game in (game for game in gameCounts.keys() if gameCounts[game]==1):
-#         matches = []
-#         lowergame = game.lower()
-#         lowergameParts = lowergame.split(' ')
-#         for knownGame, knownAliases in knownReplacements.items():
-#             knownGameLower = knownGame.lower()
-#             knownGameParts = knownGameLower.split(' ')
-#             if all((part in lowergameParts for part in knownGameParts)) and knownGameLower in lowergame:
-#                 difference = lowergame.replace(knownGameLower, '').strip()
-#                 if not difference.isdigit():
-#                     matches.append(knownGame)
-#                     continue
-#             for knownAlias in knownAliases:
-#                 aliasLower = knownAlias.lower()
-#                 aliasParts = aliasLower.split(' ')
-#                 if all((part in lowergameParts for part in aliasParts)) and aliasLower in lowergame:
-#                     difference = lowergame.replace(aliasLower, '').strip()
-#                     if not difference.isdigit():
-#                         matches.append(knownGame)
-#         if len(matches) > 0:
-#             print("game, matches:", game, matches)
-#             #longestIndex = 0
-#             #for index in range(1, len(matches)):
-#             #    if len(matches[index]) > len(matches[longestIndex])
-#             #        longestIndex = index
-#             def locateIndex(x):
-#                 index = game.lower().find(x.lower())
-#                 if index != -1:
-#                     return index
-#                 if x in knownReplacements.keys():
-#                     for alias in knownReplacements[x]:
-#                         index = alias.lower().find(x.lower())
-#                         if index != -1:
-#                             return index
-#                 return -1
-#             longestMatch = sorted(matches, key=lambda x:(0-locateIndex(x), len(x)))[-1]
-#             #longestMatch = sorted(matches, key=lambda x:(game.lower().index(x.lower()), len(x)))[-1]
-#             #assert len(matches) == 1
-#             knownReplacements[longestMatch].append(game)
-#     for key in list(knownReplacements.keys()):
-#         if len(knownReplacements[key])==0:
-#             del knownReplacements[key]
-#     print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
-#     pprint(knownReplacements, width=200)
-#     def normalizeGame(originalGame:str):
-#         for game, aliases in knownReplacements.items():
-#             if originalGame == game or originalGame in aliases:
-#                 return game
-#     for streamer, sessions in allStreamerSessions.items():
-#         print(f"Normalizing games for streamer {streamer}")
-#         for session in sessions:
-#             ...
-#
-# pprint(sorted(calcGameTimes().items(), key=lambda x:x[1]))
-# normalizeAllGames()
 
-# %% [markdown]
-# gameAliases = {'Among Us':('Town of Us', r"TOWN OF US PROXY CHAT | Among Us w/ Friends"),
-#                'Tabletop Simulator': ('Board Games',),
-#                'Suika Game': ('Suika',),
-#                'Monopoly Plus': ('Monopoly',)}
-#
-# def normalizeAllGamesV2():
-#     gameCounts = calcGameCounts()
-#     pprint(gameCounts)
-#     print("\n\n\n---------------------------------------------------------------\n\n\n")
-#     replacements = {}
+# %%
 
-# %% [markdown]
-# basepath = '/mnt/pool2/media/Twitch Downloads/'
-# localBasepath = '/mnt/scratch1/'
-# outputDirectory = "Rendered Multiviews"
-#
-# globalAllStreamers = [name for name in os.listdir(basepath) if
-#                       (name not in ("NA", outputDirectory) and 
-#                        os.path.isdir(os.path.join(basepath, name)))]
-#     #mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
-#     #secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
-#
-# streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'APlatypus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'ArtificialActr':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'BonsaiBroz':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
-#                                 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    #'BryceMcQuaid':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'chibidoki':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Courtilly':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'CrashVS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'DooleyNotedGaming':['Jeremy'], 
-#                    'ElainaExe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'emerome':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'FlanelJoe':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'HeckMuffins':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Junkyard129':['Junkyard', 'Junk', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'KaraCorvus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Kn0vis':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Kruzadar':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'KYR_SP33DY':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm',
-#                                  'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'LarryFishburger':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'MG4R':['Greg', 'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'MicheleBoyd':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'PastaroniRavioli':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'SideArms4Reason':['https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm', #hacky override for Twitch Rivals 12/7/23
-#                                       'https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'TheRealShab':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'ToastyFPS':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'VikramAFC':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
-#                    'Your__Narrator': ['YourNarrator']}
-#
-# nongroupGames = ('Just Chatting', "I'm Only Sleeping")
-#
-# characterReplacements = {'?':'？', '/':'', '\\':''}
-#
-# threadCount = 16 #os.cpu_count()
-#
-# defaultSetPTS = "PTS-STARTPTS"
-# videoSetPTS = "N/FRAME_RATE/TB"
-# audioSetPTS = "N/SR/TB"
-# apts = defaultSetPTS
-# vpts = defaultSetPTS
-#
-# videoExt = '.mp4'
-# infoExt = '.info.json'
-# chatExt = '.rechat.twitch-gql-20221228.json'
-# otherExts = ['.description', '.jpg']
-# videoIdRegex = r"(v[\d]+)"
-#
-# DEFAULT_DATA_FILEPATH = r'./knownFiles.pickle' #r'/home/ubuntu/Documents/MultiTwitchRenderer/allTwitchFiles.pickle'
-#
-# REDUCED_MEMORY = False
-#
-# EST_TIMEZONE = timezone(timedelta(hours=-5))
-# CST_TIMEZONE = timezone(timedelta(hours=-6))
-# MST_TIMEZONE = timezone(timedelta(hours=-7))
-# PST_TIMEZONE = timezone(timedelta(hours=-8))
-# UTC_TIMEZONE = timezone(timedelta(hours=0))
-# LOCAL_TIMEZONE = CST_TIMEZONE
-# DAY_START_TIME = time(0, 0, 0, tzinfo=LOCAL_TIMEZONE)
-#
-# outputResolutions = [None, (1920,1080), (3840,1080), (3840,2160), (3840,2160), (3840,2160), (3840,2160), (4480,2520)]
-# outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "25M",       "30M",       "40M"]
-#
-# errorFilePath = r'./erroredCommands.log'
-# statusFilePath = r'./renderStatuses.pickle'
-# logFolder = r'./logs/'
-# COPY_FILES = False
-# DEFAULT_MAX_LOOKBACK=timedelta(days=30)
-#
-# minimumSessionWorkerDelay = timedelta(hours=4)
-#
-# DEFAULT_MONITOR_STREAMERS = ('ChilledChaos', )
-#
+def normalizeAllGames():
+    gameCounts = calcGameCounts()
+    pprint(gameCounts)
+    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    knownReplacements = {}
+    lowercaseGames = {}
+    for game, alias in gameAliases.items():
+        assert game.lower() not in lowercaseGames.keys()
+        knownReplacements[game] = list(alias)
+        lowercaseGames[game.lower()] = game
+    replacedGames = {}
+    for game in gameCounts.keys():
+        #if gameCounts[game] == 1:
+        #    continue
+        trueGame = None
+        for key in knownReplacements.keys():
+            if any((game == alias for alias in knownReplacements[key])):
+                trueGame = key
+                break
+        if trueGame is None:
+            trueGame = game
+        else:
+            print("game, trueGame:", game, trueGame)
+            replacedGames[game] = trueGame
+            continue
+            
+        #if any((any((game == alias for alias in knownReplacements[key])) for key in knownReplacements.keys())):
+            #game is already a known alias
+        #    continue
+        lowergame = game.lower()
+        if lowergame in lowercaseGames.keys():
+            altgame = lowercaseGames[lowergame]
+            if altgame == game:
+                continue
+            if gameCounts[game] > gameCounts[altgame]:
+                aliases = knownReplacements[altgame]
+                aliases.append(altgame)
+                del knownReplacements[altgame]
+                knownReplacements[game] = aliases
+            elif gameCounts[altgame] > gameCounts[game]:
+                knownReplacements[altgame].append(game)
+            else:
+                raise Exception(f"Two capitalizations have the same count, cannot determine which is correct: {game}; {altgame}")
+        #else:
+        elif gameCounts[game] > 1:
+            knownReplacements[game] = []
+            lowercaseGames[lowergame] = game
+    print("\n\n\n---------------------------------------------------------------\n\n\nreplacedGames:")
+    pprint(replacedGames, width=200)
+    print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
+    pprint(knownReplacements, width=200)
+    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    for game in (game for game in gameCounts.keys() if gameCounts[game]==1):
+        matches = []
+        lowergame = game.lower()
+        lowergameParts = lowergame.split(' ')
+        for knownGame, knownAliases in knownReplacements.items():
+            knownGameLower = knownGame.lower()
+            knownGameParts = knownGameLower.split(' ')
+            if all((part in lowergameParts for part in knownGameParts)) and knownGameLower in lowergame:
+                difference = lowergame.replace(knownGameLower, '').strip()
+                if not difference.isdigit():
+                    matches.append(knownGame)
+                    continue
+            for knownAlias in knownAliases:
+                aliasLower = knownAlias.lower()
+                aliasParts = aliasLower.split(' ')
+                if all((part in lowergameParts for part in aliasParts)) and aliasLower in lowergame:
+                    difference = lowergame.replace(aliasLower, '').strip()
+                    if not difference.isdigit():
+                        matches.append(knownGame)
+        if len(matches) > 0:
+            print("game, matches:", game, matches)
+            #longestIndex = 0
+            #for index in range(1, len(matches)):
+            #    if len(matches[index]) > len(matches[longestIndex])
+            #        longestIndex = index
+            def locateIndex(x):
+                index = game.lower().find(x.lower())
+                if index != -1:
+                    return index
+                if x in knownReplacements.keys():
+                    for alias in knownReplacements[x]:
+                        index = alias.lower().find(x.lower())
+                        if index != -1:
+                            return index
+                return -1
+            longestMatch = sorted(matches, key=lambda x:(0-locateIndex(x), len(x)))[-1]
+            #longestMatch = sorted(matches, key=lambda x:(game.lower().index(x.lower()), len(x)))[-1]
+            #assert len(matches) == 1
+            knownReplacements[longestMatch].append(game)
+    for key in list(knownReplacements.keys()):
+        if len(knownReplacements[key])==0:
+            del knownReplacements[key]
+    print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
+    pprint(knownReplacements, width=200)
+    def normalizeGame(originalGame:str):
+        for game, aliases in knownReplacements.items():
+            if originalGame == game or originalGame in aliases:
+                return game
+    #for streamer, sessions in allStreamerSessions.items():
+    #    print(f"Normalizing games for streamer {streamer}")
+        #for session in sessions:
+        #    ...
 
-# %% [markdown]
-# tempFile = allFilesByVideoId['v2017309328']
-# print(tempFile)
-# for group in tempFile.parsedChat.groups:
-#     print(group)
+#pprint(sorted(calcGameTimes().items(), key=lambda x:x[1]))
+#normalizeAllGames()
 
-# %% [markdown]
-# os.cpu_count()
-#
-# str(renderQueue.queue)
-#
-# print(renderStatuses)
 
-# %% [markdown]
-# # tileResolutionsV1 = [None,"1920:1080", "1920:1080", "1280:720", "960:540", "768:432", "640:360", "640:360"]
-# outputResolutionsV1 = [None, "1920:1080", "3840:1080", "3840:2160", "3840:2160", "3840:2160", "3840:2160", "4480:2520"]
-#
-# def generateTilingFiltergraphSingleSegment(startTimes:list, duration):
-#     numTiles = len(startTimes)
-#     if numTiles < 2:
-#         raise Exception("Too few tiles")
-#     #elif numTiles == 2:
-#     #    return "[0:v][1:v]hstack=inputs=2[v]"
-#     tileWidth = calcTileWidth(numTiles)
-#     scale = tileResolutionsV1[tileWidth]
-#     filters = [f"[{n}:v] trim={startTimes[n]}:{startTimes[n]+duration}, setpts={vpts}, scale={scale}:force_original_aspect_ratio=decrease:eval=frame,pad={scale}:-1:-1:color=black [V{n}]" for n in range(numTiles)]
-#     def generateLayout():
-#         def generateLE(tileNum): # generateLayoutElement
-#             x = tileNum % tileWidth
-#             y = tileNum // tileWidth
-#             def generateLEC(coord, letter): # generateLayoutElementComponent
-#                 if coord == 0:
-#                     return "0"
-#                 return "+".join([f"{letter}{n}" for n in range(coord)])
-#             return f"{generateLEC(x,'w')}_{generateLEC(y,'h')}"
-#         return "|".join([generateLE(n) for n in range(numTiles)])
-#     filters.append(f"[{']['.join([f'V{n}' for n in range(numTiles)])}]{'x' if numTiles>2 else 'h'}stack=inputs={numTiles}:{generateLayout()}{':fill=black' if tileWidth**2!=numTiles else ''}[vout]")
-#     filters.extend([f"[{n}:a] atrim={startTimes[n]}:{startTimes[n]+duration}, asetpts={apts} [A{n}]" for n in range(numTiles)])
-#     return ";".join(filters)
-#
-# def generateTilingCommandSingleSegment(inputFilesAndTimes, outputfile, duration):
-#     numTiles = len(inputFilesAndTimes)
-#     if numTiles < 2:
-#         raise Exception("Too few tiles")
-#     inputOptions = reduce(list.__add__, [['-i', file] for file, _ in inputFilesAndTimes])
-#     streamMappings = reduce(list.__add__, [["-map", f"[A{n}]"] for n in range(len(inputFilesAndTimes))])
-#     fullOptions = reduce(list.__add__, [["ffmpeg"],
-#         inputOptions,
-#         ['-filter_complex', generateTilingFiltergraphSingleSegment([x[1] for x in inputFilesAndTimes], duration), '-map', '[vout]'],
-#         streamMappings,
-#         ["-c:v","libx264","-s", "3840x2160" if numTiles > 2 else "3840x1080", outputfile]])
-#     return fullOptions
-#
-#
-# #print(generateTilingFiltergraphSingleSegment([15.321,6754.825,7.129], 30))
-# print(generateTilingCommandSingleSegment([['/inputs/video1.mp4', 15.321], ['/inputs/video2.mp4',6754.825], ['/inputs/video3.mp4',7.129]], '/segments/segment1.mkv', 30))
+# %%
 
-# %% [markdown]
-# mainStreamerSessions = []
-# for streamer in mainStreamers:
-#     streamerPath = os.path.join(basepath,streamer,'S1')
-#     for filename in sorted(os.listdir(streamerPath)):
-#         filepath = os.path.join(streamerPath, filename)
-#         if os.path.isfile(filepath) and filename.endswith('info.json'):
-#             with open(filepath) as file:
-#                 infodict = json.load(file)
-#             starttime = infodict['timestamp']
-#             chapters = infodict['chapters']
-#             #print(starttime, chapters)
-#             for chapter in chapters:
-#                 chapterstart = int(starttime + chapter['start_time'])
-#                 chapterend = int(starttime + chapter['end_time'])
-#                 if chapterstart != chapterend:
-#                     game = chapter['title']
-#                     print(chapterstart, chapterend, game, streamer, sep=' ;; ')
-#                     mainStreamerSessions.append({
-#                         'start':chapterstart,
-#                         'end':chapterend,
-#                         'title':game,
-#                         'streamer':streamer
-#                     })
-#                     mainStreamerSesions
-#
-# def titlesMatch(title1, title2):
-#     return title1.lower() == title2.lower()
-#
-# def calculateOverlap(start1:int|float, end1:int|float, start2:int|float, end2:int|float):
-#     overlapStart = max(start1, start2)
-#     overlapEnd = min(end1, end2)
-#     overlapLength = overlapEnd - overlapStart
-#     shorterLength = min(end1-start1, end2-start2)
-#     return overlapLength / float(shorterLength)
-#
-# secondarySessions={}
-# def toKey(start,end,title, streamer):
-#     return f"{streamer}-{start}-{end}-{title}"
-# def addSecondarySession(key,value):
-#     if key not in secondarySessions:
-#         secondarySessions[key] = [value]
-#     else:
-#         secondarySessions[key].append(value)
-# for streamer in secondaryStreamers:
-#     streamerPath = os.path.join(basepath, streamer, 'S1')
-#     for filename in os.listdir(streamerPath):
-#         filepath = os.path.join(streamerPath, filename)
-#         if os.path.isfile(filepath) and filename.endswith('info.json'):
-#             with open(filepath) as file:
-#                 infodict = json.load(file)
-#             starttime = infodict['timestamp']
-#             chapters = infodict['chapters']
-#             #print(starttime, chapters)
-#             for chapter in chapters:
-#                 chapterstart = int(starttime + chapter['start_time'])
-#                 chapterend = int(starttime + chapter['end_time'])
-#                 if chapterstart != chapterend:
-#                     game = chapter['title']
-#                     print(chapterstart, chapterend, game, streamer, sep=' ;; ')
-#                     for mainSession in (x for x in mainStreamerSessions if titlesMatch(x['title'], game)):
-#                         if mainSession['start'] <= chapterend and mainSession['end'] >= chapterstart:
-#                             key = toKey(mainSession['start'], mainSession['end'], mainSession['title'], mainSession['streamer'])
-#                             try:
-#                                 addSecondarySession(key, {'start':chapterstart, 'end':chapterend, 'title':game,'streamer':streamer,
-#                                                  'overlap':calculateOverlap(mainSession['start'], mainSession['end'],
-#                                                                            chapterstart, chapterend)})
-#                             except Exception as ex:
-#                                 print(mainSession)
-#                                 print(chapter)
-#                                 raise ex
-
-# %% [markdown]
-# print([[key, value]#[x for x in value if x['overlap']>=0.8]]
-#        for key, value
-#        in secondarySessions.items()
-#        if key.endswith('Among Us')])
-
-# %% [markdown]
-# import os, subprocess, json
-#
-# properties = {}
-#
-# ignoredProperties = set()
-#
-# def addProperty(name, value):
-#     if name in ignoredProperties:
-#         return
-#     if name not in properties.keys():
-#         properties[name] = set()
-#     if len(properties[name]) > 100:
-#         ignoredProperties.add(name)
-#         print(f"Adding {name} to the ignored properties list")
-#         del properties[name]
-#         return
-#     try:
-#         properties[name].add(value)
-#     except TypeError:
-#         print(f"Property {name} is an unhashable type, ignoring")
-#         ignoredProperties.add(name)
-#         del properties[name]
-#
-# def getVideoFileProperties(filepath):
-#     assert os.path.isabs(filepath)
-#     cproc = subprocess.run(['ffprobe', '-show_streams', '-of', 'json', '-i', filepath], capture_output=True)
-#     result = cproc.stdout.decode()
-#     parsed = json.loads(result)
-#     return parsed
-#
-# for root, dirs, files in os.walk("/mnt/pool2/media/Twitch Downloads/"):
-#     for file in sorted(os.path.join(root, x) for x in files if x[-4:] in (".mp4", ".mkv"))[:5]:
-#         print(file)
-#         cproc = subprocess.run(['ffprobe', '-show_streams', '-of', 'json', '-i', file], capture_output=True)
-#         result = cproc.stdout.decode()
-#         parsed = json.loads(result)
-#         #print(result)
-#         #print(parsed)
-#         try:
-#             streams = parsed['streams']
-#             video_streams = [x for x in streams if x['codec_type'] == "video"]
-#             assert len(video_streams) == 1
-#             video_info = video_streams[0]
-#             for key in video_info.keys():
-#                 addProperty(key, video_info[key])
-#             print(video_info['width'], video_info['height'])#, video_info, sep="\n", end="\n\n\n\n")
-#             #print(properties)
-#         except Exception as e:
-#             print(result)
-#             raise e
-# print(properties)
+def normalizeAllGamesV2():
+    gameCounts = calcGameCounts()
+    pprint(gameCounts)
+    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    replacements = {}
 
 # %%
