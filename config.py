@@ -84,7 +84,8 @@ audioSetPTS = "N/SR/TB"
 apts = defaultSetPTS
 vpts = defaultSetPTS
 
-videoExt = '.mp4'
+#videoExt = '.mp4'
+videoExts = ['.mp4', '.mkv']
 infoExt = '.info.json'
 chatExt = '.rechat.twitch-gql-20221228.json'
 otherExts = ['.description', '.jpg']

@@ -87,7 +87,7 @@ class SourceFile:
         if self.videoFile == videoFile:
             return
         assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
-        assert videoFile.endswith(videoExt) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
+        assert any((videoFile.endswith(videoExt) for videoExt in videoExts)) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
         self.videoFile = videoFile
         self.downloadTime = convertToDatetime(os.path.getmtime(videoFile))
     def setChatFile(self, chatFile):
@@ -396,7 +396,7 @@ def scanFiles(log=False):
         newStreamerFiles = []
         streamerBasePath = os.path.join(basepath, streamer, 'S1')
         count = 0
-        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExt, infoExt, chatExt)))):
+        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExts + [infoExt, chatExt])))):
             filepath = os.path.join(streamerBasePath, filename)
             if filepath in allScannedFiles:
                 continue
@@ -411,7 +411,7 @@ def scanFiles(log=False):
                 print('.', end='')
             file = None
             if videoId not in allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
-                if filename.endswith(videoExt):
+                if any((filename.endswith(videoExt) for videoExt in videoExts)):
                     file = SourceFile(streamer, videoId, videoFile=filepath)
                     #filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
@@ -424,7 +424,7 @@ def scanFiles(log=False):
                 newStreamerFiles.append(file)
             else:
                 file = allFilesByVideoId[videoId] if videoId in allFilesByVideoId.keys() else newFilesByVideoId[videoId]
-                if filename.endswith(videoExt):
+                if any((filename.endswith(videoExt) for videoExt in videoExts)):
                     file.setVideoFile(filepath)
                     #filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
@@ -2526,8 +2526,8 @@ def editQueueItem(queueEntry):
                 continue
             elif valueInput.lower() in quitOptions:
                 return None
-            elif not any((valueInput.endswith(ext) for ext in videoExtensions)):
-                print(f"Output path must be that of a video file - must end with one of: {', '.join(videoExtensions)}")
+            elif not any((valueInput.endswith(ext) for ext in videoExts)):
+                print(f"Output path must be that of a video file - must end with one of: {', '.join(videoExts)}")
                 continue
             else:
                 outputPath = os.path.join(basepath, valueInput)
