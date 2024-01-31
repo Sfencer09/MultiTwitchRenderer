@@ -302,6 +302,7 @@ HWACCEL_VALUES = {
         #'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
         'scale_filter': '_npp',
         'pad_filter': '_opencl',
+        'upload_filter': '_cuda',
         'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
         'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
         'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
@@ -310,6 +311,7 @@ HWACCEL_VALUES = {
         #'support_mask': HW_DECODE|HW_ENCODE,
         'scale_filter': None,
         'pad_filter': None,
+        'upload_filter': '',
         'decode_input_options': ('-hwaccel', 'd3d11va'), #('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
         'scale_input_options': None,
         'encode_codecs': ('h264_amf', 'hevc_amf'),
@@ -318,6 +320,7 @@ HWACCEL_VALUES = {
         #'support_mask': HW_DECODE|HW_ENCODE,
         'scale_filter': None,
         'pad_filter': None,
+        'upload_filter': '',
         'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
         'scale_input_options': None,
         'encode_codecs': ('h264_qsv', 'hevc_qsv'),
@@ -1122,7 +1125,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     threadOptions = ['-threads', str(threadCount),
                  '-filter_threads', str(threadCount),
                  '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
-    uploadFilter = "hwupload_cuda" #HWACCEL_VALUES[HWACCEL_BRAND]
+    uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
     downloadFilter= "hwdownload,format=pix_fmts=yuv420p"
     timeFilter = f"setpts={vpts}"
     
