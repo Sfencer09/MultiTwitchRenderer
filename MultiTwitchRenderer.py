@@ -1892,12 +1892,16 @@ if COPY_FILES:
     activeCopyTask = None
 def copyWorker():
     copyLog = copyText.addLine
+    queueEmpty = False
     while True:
         if copyQueue.empty():
-            #print("Copy queue empty, sleeping")
-            ttime.sleep(120)
+            if not queueEmpty:
+                print("Copy queue empty, sleeping")
+                queueEmpty = True
+            ttime.sleep(10)
             continue
             #return
+        queueEmpty = False
         copyQueueLock.acquire() #block if user is editing queue
         priority, task = copyQueue.get(block=False)
         copyQueueLock.release()
@@ -1954,12 +1958,16 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
                  overwrite_output=DEFAULT_OVERWRITE_OUTPUT):
     renderLog = renderText.addLine
+    queueEmpty = False
     while True:
         #sessionText, copyText, renderText = bufferedTexts
         if renderQueue.empty():
-            #print("Render queue empty, sleeping")
+            if not queueEmpty:
+                print("Render queue empty, sleeping")
+                queueEmpty = True
             ttime.sleep(10)
             continue
+        queueEmpty = False
         renderQueueLock.acquire() #block if user is editing queue
         priority, task = renderQueue.get(block=False)
         renderQueueLock.release()
@@ -2131,50 +2139,61 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
         #loadFiledata(dataFilepath)
         initialize()
     scanForExistingVideos()
+    changeCount = 0
+    prevChangeCount = 0
     while True:
         oldFileCount = len(allFilesByVideoId)
         scanFiles(renderConfig.logLevel>0)
         newFileCount = len(allFilesByVideoId)
         if oldFileCount != newFileCount:
+            changeCount += 1
             saveFiledata(dataFilepath)
         latestDownloadTime = max((x.downloadTime for x in allFilesByVideoId.values()))
         currentTime = datetime.now(timezone.utc)
-        sessionLog(f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
+        if changeCount != prevChangeCount:
+            sessionLog(f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
         timeSinceLastDownload = currentTime - latestDownloadTime
-        sessionLog(f'Time since last download= {str(timeSinceLastDownload)}')
+        if changeCount != prevChangeCount:
+            sessionLog(f'Time since last download= {str(timeSinceLastDownload)}')
         if __debug__ or timeSinceLastDownload > minimumSessionWorkerDelay:
             streamingDays = getAllStreamingDaysByStreamer()
             for streamer in monitorStreamers:
                 allDays = streamingDays[streamer] #already sorted with the newest first
-                sessionLog(f'Latest streaming days for {streamer}: {allDays[:25]}')
+                if changeCount != prevChangeCount:
+                    sessionLog(f'Latest streaming days for {streamer}: {allDays[:25]}')
                 for day in allDays:
                     dt = convertToDatetime(day)
                     if maxLookback is not None and datetime.now() - dt > maxLookback:
-                        sessionLog("Reached max lookback, stopping")
+                        if changeCount != prevChangeCount:
+                            sessionLog("Reached max lookback, stopping")
                         break
                     status = getRenderStatus(streamer, day)
-                    sessionLog(f'Status for {day} = {status}')
+                    if changeCount != prevChangeCount:
+                        sessionLog(f'Status for {day} = {status}')
                     if status is None:
                         #new file, build command and add to queue
                         outPath = getVideoOutputPath(streamer, day)
                         command = generateTilingCommandMultiSegment(streamer, day, renderConfig, outPath)
                         if command is None: #command cannot be made, maybe solo stream or only one
-                            sessionLog(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
+                            if changeCount != prevChangeCount:
+                                sessionLog(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
                             continue
                         item = QueueItem(streamer, day, renderConfig, outPath)
                         sessionLog(f"Adding render for streamer {streamer} from {day}")
                         (copyQueue if COPY_FILES else renderQueue).put((DEFAULT_PRIORITY, item))
                         setRenderStatus(streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
+                        changeCount += 1
                         #break #
                     elif maxLookback is None:
-                        sessionLog("Reached last rendered date for streamer, stopping\n")
+                        if changeCount != prevChangeCount:
+                            sessionLog("Reached last rendered date for streamer, stopping\n")
                         break
         else:
             sessionLog("Files are too new, waiting longer...")
-        
+        prevChangeCount = changeCount
+        #if __debug__:
+        #    break
         ttime.sleep(60*60)#*24)
-        if __debug__:
-            break
 
 
 # %%
