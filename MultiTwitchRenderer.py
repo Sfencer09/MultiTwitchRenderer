@@ -743,7 +743,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     if logLevel >= 1:
         print("\n\n\nStep 5: ", allInputStreamers, secondaryStreamers)
     if len(allInputStreamers)==1:
-        print("Only one streamer found, nothing to render!")
+        if logLevel >= 1:
+            print("Only one streamer found, nothing to render!")
         return None
 
     #6. For each streamer in #5, build an array of pairs of start & end timestamps for sessions from #3 while
@@ -853,7 +854,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     mainStreamerGames = set((session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in nongroupGames))
     for streamerIndex in range(1, len(allInputStreamers)):
         if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
-            excludeTrimStreamerIndices.append(streamerIndex)
+            if allInputStreamers[streamerIndex] != 'BonzaiBroz': #can have one brother in the session but not be the same as the one streaming
+                excludeTrimStreamerIndices.append(streamerIndex)
             #If the trimming process would remove /all/ segments for the given streamer, exclude the streamer from
             # trimming because they probably just have a different game name listed
     if logLevel >= 2:
@@ -2023,6 +2025,10 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                                 continue
                         else:
                             currentCommand[-1] = insertSuffix(trueOutpath, '.temp')
+                    else: #overwrite_intermediate
+                        currentOutpath = currentCommand[-1]
+                        if currentOutpath.startswith(localBasepath):
+                            tempFiles.append(currentOutpath)
                     #if task.renderConfig.logLevel > 0:
                     renderLog(f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...")
 
@@ -2064,8 +2070,9 @@ def renderWorker(stats_period=30, #30 seconds between encoding stats printing
                         renderLog(f" Render to {trueOutpath} complete!")
                     else:
                         renderLog(f" Render to {currentCommand[-1]} complete!")
-        
         if not hasError:
+            print("Render task finished, cleaning up temp files:")
+            print(tempFiles)
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
             if COPY_FILES:
                 for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
@@ -2318,7 +2325,7 @@ def readStreamer(allStreamersList=None, inputText = "Enter streamer name, or 'li
         if isMatch.lower().startswith('y'):
             return closestMatch
 
-def readExcludeStreamers():
+def readExcludeStreamers(): #TODO: rename to be more generic
     print("Selecting streamers to exclude, or empty input when done entering")
     streamerExclusions = {}
     while True:
@@ -2393,7 +2400,8 @@ def readExcludeStreamers():
             streamerExclusions[parsedStreamer] = excludedGames
     return streamerExclusions
 
-renderConfigSchemaManualHandles = {'excludeStreamers': readExcludeStreamers}
+renderConfigSchemaManualHandles = {'excludeStreamers': readExcludeStreamers,
+                                   'includeStreamers': readExcludeStreamers}
 
 def readRenderConfig(initialRenderConfig = None):
     renderConfig = initialRenderConfig
@@ -2661,6 +2669,7 @@ class BufferedText(urwid.Text):
             formatted_line = f'[{self.label}{ttime.time()-START_TIME}] {line}'
             self.buffer.insert(0, formatted_line)
             self.set_text('\n'.join(self.buffer))
+            global mainloopMessageBus
             #mainloopMessageBus.write(1)
             os.write(mainloopMessageBus, self.label.encode('utf-8'))
         finally:
@@ -2719,6 +2728,8 @@ class PagedMenu(urwid.WidgetWrap):
     def __init__(self, caption, choices, pageHeight=10, pageWidth=3, *args, **kwargs):
         super().__init__(MenuButton(
             [caption, "\N{HORIZONTAL ELLIPSIS}"], self.open_menu))
+        self.menu = None
+        self.listbox = None
         self.line = urwid.Divider('\N{LOWER ONE QUARTER BLOCK}')
         self.nextPageOption = MenuButton('Next page', self.next_page)
         self.prevPageOption = MenuButton('Previous page', self.prev_page)
@@ -2731,7 +2742,7 @@ class PagedMenu(urwid.WidgetWrap):
         self.kwargs = kwargs
     def _get_current_page(self):
         if callable(self.choices):
-            options = self.choices(*args, **kwargs)
+            options = self.choices(*self.args, **self.kwargs)
         else:
             options = self.choices
         page = options[self.pageNum*self.pageSize : (self.pageNum+1)*self.pageSize]
@@ -2740,8 +2751,8 @@ class PagedMenu(urwid.WidgetWrap):
     def open_menu(self, button):
         currentPage = self._get_current_page()
         self.listbox = urwid.Pile(urwid.SimpleFocusListWalker([
-            urwid.AttrMap(urwid.Text(["\n  ", caption]), 'heading'),
-            urwid.AttrMap(line, 'line'),
+            urwid.AttrMap(urwid.Text(["\n  ", self.caption]), 'heading'),
+            urwid.AttrMap(self.line, 'line'),
             urwid.Divider()] + currentPage + [ActionChoice('Close menu', closeTopBox),
                                           urwid.Divider()]))
         self.menu = urwid.AttrMap(self.listbox, 'options')
@@ -2881,6 +2892,8 @@ def mainStart():
     def messageBusReceiverV2(data:bytes):
         #ignore data, simply use it as a callback to trigger draw_screen()
         mainloop.draw_screen()
+
+    global mainloopMessageBus
     mainloopMessageBus = mainloop.watch_pipe(messageBusReceiverV2)
     global URWID
     if ENABLE_URWID:
