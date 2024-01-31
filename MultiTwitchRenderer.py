@@ -2205,8 +2205,8 @@ commandArray = []
 
 def endRendersAndExit():
     print('Shutting down, please wait at least 15 seconds before manually killing...')
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     if activeRenderSubprocess is not None:
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
         print("Terminating render thread")
         activeRenderSubprocess.terminate()
         activeRenderSubprocess.wait(10)
@@ -2214,9 +2214,9 @@ def endRendersAndExit():
             print("Terminating render thread did not complete within 10 seconds, killing instead")
             activeRenderSubprocess.kill()
             activeRenderSubprocess.wait()
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
         if activeRenderSubprocess.poll is not None:
             print("Active render stopped successfully")
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     print("Stopping!")
     sys.exit(0)
 commandArray.append(Command(endRendersAndExit, 'Exit program'))
@@ -2931,8 +2931,10 @@ def mainStart():
 
 # %%
 renderThread = threading.Thread(target=renderWorker)
+renderThread.daemon = True
 if COPY_FILES:
     copyThread = threading.Thread(target=copyWorker)
+    copyThread.daemon = True
 
 
 if __name__=='__main__':
@@ -2950,6 +2952,7 @@ if __name__=='__main__':
         #renderThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig':defaultSessionRenderConfig,
                                                                        'maxLookback':timedelta(days=DEFAULT_LOOKBACK_DAYS)})
+        sessionThread.daemon = True
         sessionThread.start()
         if ENABLE_URWID:
             mainStart()
