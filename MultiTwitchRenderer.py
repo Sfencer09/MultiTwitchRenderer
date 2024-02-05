@@ -44,14 +44,25 @@ if not sys.version_info >= (3, 7, 0):
     raise EnvironmentError(
         "Python version too low, relies on ordered property of dicts")
 
-configPath = './Documents/MultiTwitchRenderer/config.py' if __debug__ else './config.py'
+configPath = './config.py'
 HW_DECODE = 1
 HW_INPUT_SCALE = 2
 HW_OUTPUT_SCALE = 4
 HW_ENCODE = 8
 
-with open(configPath) as configFile:
+
+#with open(configPath) as configFile:
+try:
+    configFile = open(configPath)
     exec(configFile.read())
+    configFile.close()
+except:
+    from config import *
+    # above import statement is just to make the IDE happy, since it can't see
+    # the result of exec(configFile.read()). Using an import would result in
+    # the compiled executable using the config it was compiled with, rather than
+    # the user's actual config.py file
+    raise Exception("Could not load config.py")
 
 
 def getVideoInfo(videoFile: str):
@@ -2639,9 +2650,8 @@ def readStreamer(allStreamersList=None, inputText="Enter streamer name, or 'list
         closestMatch, ratio = fuzzproc.extractOne(userInput, allStreamersList)
         if ratio < 50:
             print("Could not parse streamer name, please try again")
-            if requireVideos:
-                print(
-                    "(If the streamer name is valid, they may not have any known videos)")
+            #if requireVideos:
+            print("(If the streamer name is valid, they may not have any known videos)")
             continue
         isMatch = input(
             f"Streamer '{userInput}' not found, did you mean '{closestMatch}'? ({str(ratio)}% match) (y/n) ")
