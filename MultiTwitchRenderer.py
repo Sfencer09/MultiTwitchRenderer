@@ -18,7 +18,6 @@ import urwid  # , os, threading, functools
 import os
 import subprocess
 import json
-import time
 import math
 import pickle
 import re
