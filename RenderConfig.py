@@ -1,5 +1,6 @@
 import json
 import subprocess
+from typing import Dict
 
 from schema import Schema, Or, And, Optional, Use
 
@@ -14,6 +15,7 @@ HW_ENCODE = 8
 
 
 trueStrings = ('t', 'y', 'true', 'yes')
+
 
 def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
@@ -113,7 +115,6 @@ else:
     ACTIVE_HWACCEL_VALUES = None
 
 
-
 defaultRenderConfig = RENDER_CONFIG_DEFAULTS
 try:
     with open('./renderConfig.json') as renderConfigJsonFile:
@@ -179,6 +180,25 @@ renderConfigSchema = Schema({
 
 
 class RenderConfig:
+    drawLabels: bool
+    startTimeMode: str
+    endTimeMode: str
+    logLevel: int
+    sessionTrimLookback: int
+    sessionTrimLookahead: int
+    sessionTrimLookbackSeconds: int
+    sessionTrimLookaheadSeconds: int
+    minGapSize: int
+    outputCodec: str
+    encodingSpeedPreset: str
+    useHardwareAcceleration: int
+    maxHwaccelFiles: int
+    minimumTimeInVideo: int
+    cutMode: str
+    useChat: bool
+    includeStreamers: None | Dict[str, None | Dict[str, None | str]]
+    excludeStreamers: None | Dict[str, None | Dict[str, None | str]]
+
     def __init__(self, **kwargs):
         values = renderConfigSchema.validate(kwargs)
         if values['outputCodec'] in hardwareOutputCodecs:

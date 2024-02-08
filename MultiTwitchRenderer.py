@@ -14,6 +14,7 @@
 # ---
 
 # %%
+from typing import Dict, List, Set
 import urwid
 import os
 import math
@@ -1226,18 +1227,18 @@ def loadFiledata(filepath: str):  # suppresses all errors
             print("Starting pickle load...")
             pickleData = pickle.load(file)
             global allFilesByVideoId  # allFilesByVideoId = pickle.load(file)
-            allFilesByVideoId = pickleData
+            allFilesByVideoId: Dict[str, SourceFile] = pickleData
             # allFilesByVideoId = {} #string:SourceFile
             global allFilesByStreamer
-            allFilesByStreamer = {}  # string:[SourceFile]
+            allFilesByStreamer: Dict[str, SourceFile] = {}  # string:[SourceFile]
             global allStreamersWithVideos
-            allStreamersWithVideos = []
+            allStreamersWithVideos: List[str] = []
             global allStreamerSessions
-            allStreamerSessions = {}
+            allStreamerSessions: Dict[str, List[Session]] = {}
             global allScannedFiles
-            allScannedFiles = set()
+            allScannedFiles: Set[str] = set()
             global filesBySourceVideoPath
-            fileBySourceVideoPath = {}
+            filesBySourceVideoPath: Dict[str, SourceFile] = {}
             for file in allFilesByVideoId.values():
                 filesBySourceVideoPath[file.videoFile] = file
             for file in sorted(allFilesByVideoId.values(), key=lambda x: x.startTimestamp):
