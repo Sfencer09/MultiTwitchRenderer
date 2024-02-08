@@ -14,10 +14,9 @@
 # ---
 
 # %%
-import urwid  # , os, threading, functools
+import urwid
 import os
 import subprocess
-import json
 import math
 import pickle
 import re
@@ -28,9 +27,9 @@ import random
 import sys
 import signal
 import gc
-from datetime import datetime, timezone, time, timedelta
-from schema import Schema, Or, And, Optional, Use
-from fuzzysearch import find_near_matches
+from .SourceFile import SourceFile, getVideoInfo
+from .ParsedChat import convertToDatetime
+from datetime import datetime, timezone, timedelta
 from thefuzz import process as fuzzproc
 from functools import reduce, partial
 from pprint import pprint
@@ -44,11 +43,6 @@ if not sys.version_info >= (3, 7, 0):
         "Python version too low, relies on ordered property of dicts")
 
 configPath = './config.py'
-HW_DECODE = 1
-HW_INPUT_SCALE = 2
-HW_OUTPUT_SCALE = 4
-HW_ENCODE = 8
-
 
 #with open(configPath) as configFile:
 try:
@@ -63,213 +57,10 @@ except:
     # the user's actual config.py file
     raise Exception("Could not load config.py")
 
-
-def getVideoInfo(videoFile: str):
-    probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
-                                  '-print_format', 'json=c=1',
-                                  '-show_format', '-show_streams',
-                                  videoFile], capture_output=True)
-    # print(probeResult)
-    if probeResult.returncode != 0:
-        return None
-    info = json.loads(probeResult.stdout.decode())
-    return info
-
-
-class SourceFile:
-    def __init__(self, streamer, videoId, *, videoFile=None, infoFile=None, chatFile=None):
-        assert videoFile is None or os.path.isabs(videoFile)
-        assert infoFile is None or os.path.isabs(infoFile)
-        self.streamer = streamer
-        self.videoId = videoId
-        self.videoFile = None
-        if videoFile is not None:
-            self.setVideoFile(videoFile)
-        self.localVideoFile = None
-        self.videoInfo = None
-        self.infoFile = None
-        if infoFile is not None:
-            self.setInfoFile(infoFile)
-        self.chatFile = None
-        self.parsedChat = None
-        if chatFile is not None:
-            self.setChatFile(chatFile)
-
-    def __repr__(self):
-        return f"SourceFile(streamer=\"{self.streamer}\", videoId=\"{self.videoId}\", videoFile=\"{self.videoFile}\", infoFile=\"{self.infoFile}\", chatFile=\"{self.chatFile}\")"
-
-    def isComplete(self):
-        return self.videoFile is not None and self.infoFile is not None
-
-    def setInfoFile(self, infoFile):
-        if self.infoFile == infoFile:
-            return
-        assert self.infoFile is None, f"Cannot overwrite existing info file {self.chatFile} with new file {infoFile}"
-        assert infoFile.endswith(infoExt) and os.path.isfile(
-            infoFile) and os.path.isabs(infoFile)
-        self.infoFile = infoFile
-        with open(infoFile) as file:
-            self.infoJson = trimInfoDict(json.load(file))
-        self.duration = self.infoJson['duration']
-        self.startTimestamp = self.infoJson['timestamp']
-        self.endTimestamp = self.duration + self.startTimestamp
-
-    def setVideoFile(self, videoFile):
-        if self.videoFile == videoFile:
-            return
-        assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
-        assert any((videoFile.endswith(videoExt) for videoExt in videoExts)
-                   ) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
-        self.videoFile = videoFile
-        self.downloadTime = convertToDatetime(os.path.getmtime(videoFile))
-
-    def setChatFile(self, chatFile):
-        if self.chatFile == chatFile:
-            return
-        assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
-        assert chatFile.endswith(chatExt) and os.path.isfile(
-            chatFile) and os.path.isabs(chatFile)
-        self.chatFile = chatFile
-        if self.streamer in streamersParseChatList:
-            self.parsedChat = ParsedChat(self, chatFile)
-
-    def getVideoFileInfo(self):
-        if self.videoInfo is None:
-            self.videoInfo = getVideoInfo(
-                self.videoFile if self.localVideoFile is None else self.localVideoFile)
-        return self.videoInfo
-
-
-class ParsedChat:
-    def __init__(self, parentFile: SourceFile, chatFile: str):
-        self.parentFile = parentFile
-        with open(chatFile) as chatFileContents:
-            chatJson = json.load(chatFileContents)
-        # print(chatFile)
-        nightbotGroupComments = []
-        groupEditComments = []
-        groups = []
-        lastCommandComment = None
-        # self.chatJson = chatJson
-        # print(f"Parsed {len(chatJson)} comments")
-        for comment in chatJson:
-            commenter = comment['commenter']
-            user = commenter['displayName'] if commenter is not None else None
-            messageFragments = comment['message']['fragments']
-            if len(messageFragments) == 0:
-                continue
-            firstMessageFrag = messageFragments[0]['text']
-            fullMessage = " ".join((frag['text'] for frag in messageFragments))
-            offset = comment['contentOffsetSeconds']
-            timestamp = comment['createdAt']
-            if user == 'Nightbot':
-                if lastCommandComment is not None and offset - lastCommandComment['contentOffsetSeconds'] < 4:
-                    nightbotGroupComments.append(comment)
-                    group = parsePlayersFromGroupMessage(fullMessage)
-                    # print(fullMessage)
-                    # print(group)
-                    if self.parentFile.streamer in group:
-                        group.remove(self.parentFile.streamer)
-                    convertedTime = datetime.fromisoformat(timestamp)
-                    # if len(groups) == 0 or set(group) != set(groups[-1].group):
-                    groups.append({'group': group, 'time': convertedTime})
-                lastCommandComment = None
-            else:
-                if firstMessageFrag.lower().strip() in ('!who', '!group'):
-                    lastCommandComment = comment
-                else:
-                    sub = re.sub(r'\s+', ' ', fullMessage.lower())
-                    if (any((badge['setID'] == 'moderator' for badge in comment['message']['userBadges'])) and
-                            (sub.startswith('!editcom !group') or sub.startswith('!commands edit !group'))):
-                        groupEditComments.append(comment)
-                        newCommandText = fullMessage[6 +
-                                                     fullMessage.lower().index('!group'):]
-                        group = parsePlayersFromGroupMessage(newCommandText)
-                        if self.parentFile.streamer in group:
-                            group.remove(self.parentFile.streamer)
-                        # print(fullMessage)
-                        # print(newCommandText)
-                        # print(sorted(group), end='\n\n')
-                        convertedTime = datetime.fromisoformat(timestamp)
-                        groups.append({'group': group, 'time': convertedTime})
-        self.nightbotGroupComments = nightbotGroupComments
-        self.groupEditComments = groupEditComments
-        self.groups = groups
-
-    def getGroupAtTimestamp(self, timestamp: int | float | str | datetime):
-        dt = convertToDatetime(timestamp)
-        lastMatch = []
-        for group in self.groups:
-            if group.time < dt:
-                lastMatch = group.group
-            else:
-                break
-        return lastMatch
-
-    def getAllPlayersOverRange(self, startTimestamp: int | float | str | datetime, endTimestamp: int | float | str | datetime):
-        start = convertToDatetime(startTimestamp)
-        end = convertToDatetime(endTimestamp)
-        allPlayers = set()
-        lastMatch = []
-        for group in self.groups:
-            if len(lastMatch) == 0 and group['time'] < start:
-                # get last group before this range, in case no commands are found
-                lastMatch = group['group']
-            if start < group['time'] < end:
-                allPlayers.update(group['group'])  # command is within range,
-        return allPlayers if len(allPlayers) > 0 else lastMatch
-
-
-class Session:
-    def __init__(self, file: SourceFile, game: str, startTimestamp: int | float, endTimestamp: int | float):
-        self.startTimestamp = startTimestamp
-        self.endTimestamp = endTimestamp
-        self.file = file
-        self.game = game
-
-    def hasOverlap(self: SourceFile, cmp: SourceFile, useChat=True, targetRange=None):
-        if self.startTimestamp > cmp.endTimestamp or self.endTimestamp < cmp.startTimestamp:
-            return False
-        if targetRange is None:
-            if useChat:
-                if self.file.parsedChat is not None:
-                    selfPlayers = self.file.parsedChat.getAllPlayersOverRange(
-                        self.startTimestamp-15, self.endTimestamp)
-                    if cmp.file.streamer in selfPlayers:
-                        return True
-                if cmp.file.parsedChat is not None:
-                    cmpPlayers = cmp.file.parsedChat.getAllPlayersOverRange(
-                        cmp.startTimestamp-15, self.endTimestamp)
-                    if self.file.streamer in cmpPlayers:
-                        return True
-            return self.game == cmp.game and (not useChat or (self.file.parsedChat is None and cmp.file.parsedChat is None))
-        else:
-            rangeStart, rangeEnd = targetRange
-            if self.endTimestamp < rangeStart or cmp.endTimestamp < rangeStart or self.startTimestamp > rangeEnd or cmp.startTimestamp > rangeEnd:
-                return False
-            overlapStart = max(self.startTimestamp,
-                               cmp.startTimestamp, rangeStart)
-            overlapEnd = min(self.endTimestamp, cmp.endTimestamp, rangeEnd)
-            overlapLength = overlapEnd - overlapStart
-            # if overlapLength < (rangeEnd - rangeStart) / 2:
-            #    return False
-            if useChat:
-                if self.file.parsedChat is not None:
-                    selfPlayers = self.file.parsedChat.getAllPlayersOverRange(
-                        overlapStart, overlapEnd)
-                    if cmp.file.streamer in selfPlayers:
-                        return True
-                if cmp.file.parsedChat is not None:
-                    cmpPlayers = cmp.file.parsedChat.getAllPlayersOverRange(
-                        overlapStart, overlapEnd)
-                    if self.file.streamer in cmpPlayers:
-                        return True
-            return self.game == cmp.game and (not useChat or (self.file.parsedChat is None and cmp.file.parsedChat is None))
-            # raise Exception("Not implemented yet")
-
-    def __repr__(self):
-        return f"Session(game=\"{self.game}\", startTimestamp={self.startTimestamp}, endTimestamp={self.endTimestamp}, file=\"{self.file}\")"
-
+from .SourceFile import SourceFile, getVideoInfo
+from .ParsedChat import convertToDatetime
+from .Session import Session
+from .RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
 
 print("Starting")
 
@@ -277,113 +68,6 @@ print("Starting")
 # %%
 def calcTileWidth(numTiles):
     return int(math.sqrt(numTiles-1.0))+1
-
-
-def trimInfoDict(infoDict: dict):
-    newDict = dict(infoDict)
-    del newDict['thumbnails']
-    del newDict['formats']
-    del newDict['subtitles']
-    del newDict['http_headers']
-    return newDict
-
-
-def getHasHardwareAceleration():
-    SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
-    process1 = subprocess.run(
-        [f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
-    print(process1.stdout.decode())
-    try:
-        process2 = subprocess.run(
-            ["nvidia-smi", "-q", "-d", "MEMORY,UTILIZATION"], capture_output=True)
-        nvidiaSmiOutput = process2.stdout.decode()
-        print(nvidiaSmiOutput)
-        print(process2.returncode)
-        if process2.returncode == 0:
-            encoding = False
-            decoding = False
-            rowCount = 0
-            for row in nvidiaSmiOutput.split('\n'):
-                if 'Encoder' in row:
-                    encoding = 'N/A' not in row
-                elif 'Decoder' in row:
-                    decoding = 'N/A' not in row
-                rowCount += 1
-            print(f"Row count: {rowCount}")
-            mask = SCALING
-            if decoding:
-                mask |= HW_DECODE
-            if encoding:
-                mask |= HW_ENCODE
-            return ('NVIDIA', mask)
-    except Exception as ex:
-        print(ex)
-    try:
-        process3 = subprocess.run(["rocm-smi", "--json"], capture_output=True)
-        amdSmiOutput = process3.stdout.decode()
-        print(amdSmiOutput)
-        print(process3.returncode)
-        if process3.returncode == 0:
-            print("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
-            return ('AMD', HW_DECODE | HW_ENCODE)
-    except Exception as ex:
-        print(ex)
-    return (None, 0)
-
-
-HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
-if HWACCEL_BRAND is not None:
-    print(f'{HWACCEL_BRAND} hardware video acceleration detected')
-    print(f'Functions:')
-    if HWACCEL_FUNCTIONS & HW_DECODE != 0:
-        print("    Decode")
-    if HWACCEL_FUNCTIONS & (HW_INPUT_SCALE | HW_OUTPUT_SCALE) != 0:
-        print("    Scaling")
-    if HWACCEL_FUNCTIONS & HW_ENCODE != 0:
-        print("    Encode")
-else:
-    print('No hardware video decoding detected!')
-
-
-# inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
-# inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-# if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
-#    inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
-# HWACCEL_BRAND
-HWACCEL_VALUES = {
-    'NVIDIA': {
-        # 'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
-        'scale_filter': '_npp',
-        'pad_filter': '_opencl',
-        'upload_filter': '_cuda',
-        'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
-        'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
-        'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
-    },
-    'AMD': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': None,
-        'pad_filter': None,
-        'upload_filter': '',
-        # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
-        'decode_input_options': ('-hwaccel', 'd3d11va'),
-        'scale_input_options': None,
-        'encode_codecs': ('h264_amf', 'hevc_amf'),
-    },
-    'Intel': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': None,
-        'pad_filter': None,
-        'upload_filter': '',
-        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-        'scale_input_options': None,
-        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
-    },
-}
-if HWACCEL_BRAND is not None:
-    ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
-else:
-    ACTIVE_HWACCEL_VALUES = None
 
 # def localDateFromTimestamp(timestamp:int|float):
 #    dt = datetime.fromtimestamp(timestamp, LOCAL_TIMEZONE)
@@ -393,35 +77,6 @@ else:
 # outputResolutions = [None, "1920:1080", "3840:1080", "3840:2160", "3840:2160", "3840:2160", "3840:2160", "4480:2520"]
 
 
-def parsePlayersFromGroupMessage(message: str):
-    players = []
-    messageLowercase = message.lower()
-    for streamer in globalAllStreamers:
-        fuzzymatches = find_near_matches(
-            streamer.lower(), messageLowercase, max_l_dist=len(streamer)//5)
-        if len(fuzzymatches) > 0:
-            players.append(streamer)
-        elif streamer in streamerAliases.keys():
-            for alias in streamerAliases[streamer]:
-                fuzzymatches = find_near_matches(
-                    alias.lower(), messageLowercase, max_l_dist=len(alias)//5)
-                if len(fuzzymatches) > 0:
-                    players.append(streamer)
-                    break
-    return players
-
-
-def convertToDatetime(timestamp: int | float | str | datetime):
-    if isinstance(timestamp, int) or isinstance(timestamp, float):
-        dt = datetime.fromtimestamp(timestamp, timezone.utc)
-    elif isinstance(timestamp, str):
-        dt = datetime.fromisoformat(timestamp)
-    elif isinstance(timestamp, datetime):
-        dt = timestamp
-    else:
-        raise TypeError(
-            f"Invalid type '{type(timestamp)}' for timestamp '{str(timestamp)}'")
-    return dt
 
 # print(parsePlayersFromGroupMessage('Chilled is playing with Junkyard129, Kruzadar, KYR_SP33DY, LarryFishburger, and YourNarrator!'))
 
@@ -635,101 +290,6 @@ def generateLayout(numTiles):
 
 def toFfmpegTimestamp(ts: int | float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
-
-
-trueStrings = ('t', 'y', 'true', 'yes')
-
-defaultRenderConfig = RENDER_CONFIG_DEFAULTS
-try:
-    with open('./renderConfig.json') as renderConfigJsonFile:
-        defaultRenderConfig = json.load(renderConfigJsonFile)
-except:
-    print("Coult not load renderConfig.json, using defaults from config.py")
-
-acceptedOutputCodecs = ['libx264', 'libx265']
-if ACTIVE_HWACCEL_VALUES is not None:
-    hardwareOutputCodecs = ACTIVE_HWACCEL_VALUES['encode_codecs']
-    acceptedOutputCodecs.extend(hardwareOutputCodecs)
-else:
-    hardwareOutputCodecs = []
-
-renderConfigSchema = Schema({
-    Optional('drawLabels', default=defaultRenderConfig['drawLabels']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
-    Optional('startTimeMode', default=defaultRenderConfig['startTimeMode']):
-    lambda x: x in ('mainSessionStart', 'allOverlapStart'),
-    Optional('endTimeMode', default=defaultRenderConfig['endTimeMode']):
-    lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
-    Optional('logLevel', default=defaultRenderConfig['logLevel']):
-    And(Use(int), lambda x: 0 <= x <= 4),  # max logLevel = 4
-    Optional('sessionTrimLookback', default=defaultRenderConfig['sessionTrimLookback']):
-    # TODO: convert from number of segments to number of seconds. Same for lookahead
-    Use(int),
-    Optional('sessionTrimLookahead', default=defaultRenderConfig['sessionTrimLookahead']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('sessionTrimLookbackSeconds', default=defaultRenderConfig['sessionTrimLookbackSeconds']):
-    And(Use(int), lambda x: x >= 0),  # Not implemented yet
-    Optional('sessionTrimLookaheadSeconds', default=defaultRenderConfig['sessionTrimLookaheadSeconds']):
-    And(Use(int), lambda x: x >= 0),
-    # Optional(Or(Optional('sessionTrimLookback', default=0),
-    # Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): And(int, lambda x: x>=-1),
-    # Optional(Or(Optional('sessionTrimLookahead', default=0),
-    # Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
-    Optional('minGapSize', default=defaultRenderConfig['minGapSize']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('outputCodec', default=defaultRenderConfig['outputCodec']):
-    lambda x: x in acceptedOutputCodecs,
-    Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']):
-    lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
-                    'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    Optional('useHardwareAcceleration', default=defaultRenderConfig['useHardwareAcceleration']):
-    And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
-    # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-    Optional('maxHwaccelFiles', default=defaultRenderConfig['maxHwaccelFiles']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('minimumTimeInVideo', default=defaultRenderConfig['minimumTimeInVideo']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('cutMode', default=defaultRenderConfig['cutMode']):
-    lambda x: x in ('chunked', ),  # 'trim', 'segment'),
-    Optional('useChat', default=defaultRenderConfig['useChat']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
-    # overrides chat, but will not prevent game matching
-    Optional('includeStreamers', default=None):
-    # Cannot be passed as string
-    Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
-    Optional('excludeStreamers', default=None):
-    # Cannot be passed as string
-    Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
-})
-
-
-class RenderConfig:
-    def __init__(self, **kwargs):
-        values = renderConfigSchema.validate(kwargs)
-        if values['outputCodec'] in hardwareOutputCodecs:
-            if values['useHardwareAcceleration'] & HW_ENCODE == 0:
-                raise Exception(
-                    f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {values['outputCodec']}")
-            if values['encodingSpeedPreset'] not in [f'p{i}' for i in range(1, 8)]:
-                raise Exception("Must use p1-p7 presets with hardware codecs")
-        elif values['encodingSpeedPreset'] not in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'):
-            raise Exception("Can only use p1-p7 presets with hardware codecs")
-        if values['useHardwareAcceleration'] & HW_OUTPUT_SCALE != 0:
-            if values['useHardwareAcceleration'] & HW_ENCODE == 0:
-                raise Exception(
-                    f"Hardware-accelerated output scaling must currently be used with hardware encoding")
-        if values['useHardwareAcceleration'] & HW_ENCODE != 0:
-            if values['outputCodec'] not in hardwareOutputCodecs:
-                raise Exception(
-                    f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled")
-        for key, value in values.items():
-            setattr(self, key, value)
-
-    def copy(self):
-        return RenderConfig(**self.__dict__)
-
-    def __repr__(self):
-        return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items()))})"
 
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None):
