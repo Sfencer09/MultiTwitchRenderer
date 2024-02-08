@@ -1,3 +1,4 @@
+from SharedUtils import convertToDatetime
 from .SourceFile import SourceFile
 import json
 import re
@@ -23,19 +24,6 @@ def parsePlayersFromGroupMessage(message: str):
                     players.append(streamer)
                     break
     return players
-
-def convertToDatetime(timestamp: int | float | str | datetime):
-    if isinstance(timestamp, int) or isinstance(timestamp, float):
-        dt = datetime.fromtimestamp(timestamp, timezone.utc)
-    elif isinstance(timestamp, str):
-        dt = datetime.fromisoformat(timestamp)
-    elif isinstance(timestamp, datetime):
-        dt = timestamp
-    else:
-        raise TypeError(
-            f"Invalid type '{type(timestamp)}' for timestamp '{str(timestamp)}'")
-    return dt
-
 
 class ParsedChat:
     def __init__(self, parentFile: SourceFile, chatFile: str):

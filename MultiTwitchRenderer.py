@@ -16,24 +16,17 @@
 # %%
 import urwid
 import os
-import subprocess
 import math
 import pickle
 import re
-import queue
 import threading
-import shutil
 import random
 import sys
-import signal
-import gc
-from .SourceFile import SourceFile, getVideoInfo
-from .ParsedChat import convertToDatetime
+
 from datetime import datetime, timezone, timedelta
 from thefuzz import process as fuzzproc
 from functools import reduce, partial
 from pprint import pprint
-from shlex import quote
 import time as ttime
 
 print = partial(print, flush=True)
@@ -57,10 +50,14 @@ except:
     # the user's actual config.py file
     raise Exception("Could not load config.py")
 
-from .SourceFile import SourceFile, getVideoInfo
+from .SourceFile import SourceFile, scanFiles
 from .ParsedChat import convertToDatetime
-from .Session import Session
+from .Session import Session, scanSessionsFromFile
 from .RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from .CopyWorker import copyWorker, copyQueue, copyQueueLock, activeCopyTask
+from .RenderWorker import renderWorker, renderQueue, renderQueueLock, endRendersAndExit, activeRenderTask, activeRenderTaskSubindex
+from .RenderTask import RenderTask, getRendersWithStatus, setRenderStatus, getRenderStatus, deleteRenderStatus, DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, clearErroredStatuses
+from .ParsedChat import convertToDatetime
 
 print("Starting")
 
@@ -69,195 +66,10 @@ print("Starting")
 def calcTileWidth(numTiles):
     return int(math.sqrt(numTiles-1.0))+1
 
-# def localDateFromTimestamp(timestamp:int|float):
-#    dt = datetime.fromtimestamp(timestamp, LOCAL_TIMEZONE)
-    # startDate = datetime.strftime(startTime, "%Y-%m-%d")
-
-# tileResolutions = [None,"1920:1080", "1920:1080", "1280:720", "960:540", "768:432", "640:360", "640:360"]
-# outputResolutions = [None, "1920:1080", "3840:1080", "3840:2160", "3840:2160", "3840:2160", "3840:2160", "4480:2520"]
-
-
-
-# print(parsePlayersFromGroupMessage('Chilled is playing with Junkyard129, Kruzadar, KYR_SP33DY, LarryFishburger, and YourNarrator!'))
-
-
 # 0: Build filesets for lookup and looping; pair video files with their info files (and chat files if present)
-if 'allFilesByVideoId' not in globals():
-    print('Creating data structures')
-    allFilesByVideoId = {}  # string:SourceFile
-    allFilesByStreamer = {}  # string:[SourceFile]
-    allStreamersWithVideos = []
-    allStreamerSessions = {}
-    allScannedFiles = set()
-    filesBySourceVideoPath = {}
-
-
-def scanSessionsFromFile(file: SourceFile):
-    streamer = file.streamer
-    if streamer not in allStreamerSessions.keys():
-        allStreamerSessions[streamer] = []
-    chapters = file.infoJson['chapters']
-    startTime = file.startTimestamp
-    for chapter in chapters:
-        game = chapter['title']
-        chapterStart = startTime + chapter['start_time']
-        chapterEnd = startTime + chapter['end_time']
-        session = Session(file, game, chapterStart, chapterEnd)
-        allStreamerSessions[streamer].append(session)
-
-
-def scanFiles(log=False):
-    # newFiles = set()
-    # newFilesByStreamer = dict()
-    newFilesByVideoId = dict()
-    for streamer in globalAllStreamers:
-        if log:
-            print(f"Scanning streamer {streamer} ", end='')
-        newStreamerFiles = []
-        streamerBasePath = os.path.join(basepath, streamer, 'S1')
-        count = 0
-        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExts + [infoExt, chatExt])))):
-            filepath = os.path.join(streamerBasePath, filename)
-            if filepath in allScannedFiles:
-                continue
-            filenameSegments = re.split(videoIdRegex, filename)
-            # print(filenameSegments)
-            if len(filenameSegments) < 3:
-                continue
-            assert len(filenameSegments) >= 3
-            videoId = filenameSegments[-2]
-            # print(videoId, filepath, sep=' '*8)
-            if log and count % 10 == 0:
-                print('.', end='')
-            file = None
-            if videoId not in allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
-                if any((filename.endswith(videoExt) for videoExt in videoExts)):
-                    file = SourceFile(streamer, videoId, videoFile=filepath)
-                    # filesBySourceVideoPath[filepath] = file
-                elif filename.endswith(infoExt):
-                    file = SourceFile(streamer, videoId, infoFile=filepath)
-                else:
-                    assert filename.endswith(chatExt)
-                    file = SourceFile(streamer, videoId, chatFile=filepath)
-                # allFilesByVideoId[videoId] = file
-                newFilesByVideoId[videoId] = file
-                newStreamerFiles.append(file)
-            else:
-                file = allFilesByVideoId[videoId] if videoId in allFilesByVideoId.keys(
-                ) else newFilesByVideoId[videoId]
-                if any((filename.endswith(videoExt) for videoExt in videoExts)):
-                    file.setVideoFile(filepath)
-                    # filesBySourceVideoPath[filepath] = file
-                elif filename.endswith(infoExt):
-                    file.setInfoFile(filepath)
-                else:
-                    assert filename.endswith(chatExt)
-                    file.setChatFile(filepath)
-                    # if streamer in streamersParseChatList:
-                    #    file.parsedChat = ParsedChat(filepath)
-                # if file.isComplete():
-                #    newFiles.add(file)
-            # allScannedFiles.add(filepath)
-            count += 1
-        count = 0
-        if log:
-            print()
-            # print('*', end='')
-        newCompleteFiles = []
-        for i in reversed(range(len(newStreamerFiles))):
-            file = newStreamerFiles[i]
-            if file.isComplete():
-                allScannedFiles.add(file.videoFile)
-                allScannedFiles.add(file.infoFile)
-                if file.chatFile is not None:
-                    allScannedFiles.add(file.chatFile)
-                filesBySourceVideoPath[file.videoFile] = file
-                allFilesByVideoId[file.videoId] = file
-                count += 1
-                scanSessionsFromFile(file)
-                newCompleteFiles.append(file)
-                # if file.chatFile is not None and streamer in streamersParseChatList:
-                # if file.parsedChat is None:
-                #    file.parsedChat = ParsedChat(file.chatFile)
-                #    if log and count % 10 == 0:
-                #        print('.', end='')
-                #    count += 1
-                # else:
-                #    file.parsedChat = None
-                # filesBySourceVideoPath[file.videoPath] = file
-            # else:
-                # print(f"Deleting incomplete file at index {i}: {streamerFiles[i]}")
-            #    if file.videoFile is not None:
-            #        del filesBySourceVideoPath[file.videoFile]
-            #    del allFilesByVideoId[file.videoId]
-            #    del streamerFiles[i]
-        # if log:
-        if count > 0 or log:
-            print(f"Scanned streamer {streamer} with {count} files")
-        if len(newStreamerFiles) > 0:
-            if streamer not in allFilesByStreamer.keys():
-                # allStreamersWithVideos.append(streamer)
-                allFilesByStreamer[streamer] = newCompleteFiles
-            else:  # streamer already had videos scanned in
-                allFilesByStreamer[streamer].extend(newCompleteFiles)
-    global allStreamersWithVideos
-    allStreamersWithVideos = list(allFilesByStreamer.keys())
-    if log:
-        print("Step 0: ", allStreamersWithVideos, end="\n\n\n")
-
-    # [OLD]       1. Build sorted (by start time) array of sessions by streamer
-    # for streamer in allStreamersWithVideos:
-    #    allStreamerSessions[streamer] = []
-    #    for file in allFilesByStreamer[streamer]:
-    # 1. Add new sessions for each streamer
-
-    for sessionList in allStreamerSessions.values():
-        sessionList.sort(key=lambda x: x.startTimestamp)
-    # for streamer in allStreamersWithVideos:
-    #    allStreamerSessions[streamer].sort(key=lambda x:x.startTimestamp)
-    if log:
-        print("Step 1: ", sum((len(x)
-              for x in allStreamerSessions.values())), end="\n\n\n")
-
-# class SourceFile:
-#    SourceFile(self, streamer, videoId, *, videoFile=None, infoFile=None, chatFile=None)
-#    streamer:str
-#    videoId:str
-#    videoFile:str
-#    infoFile:str
-#    infoJson:dict
-#    startTimestamp:int|float
-#    endTimestamp:int|float
-#    chatFile?:str
-#    parsedChat:ParsedChat
-# class ParsedChat:
-#    self.nightbotGroupComments:
-#    self.groupEditComments = groupEditComments
-#    self.groups = groups
-#    getGroup(self, timestamp:int|float)
-# class Session:
-#    def __init__(self, file:SourceFile, game:str, startTimestamp:int, endTimestamp:int)
-#    file:SourceFile
-#    game:str
-#    startTimestamp:int
-#    endTimestamp:int
-#    hasOverlap(self, cmp:Session, useChat:bool=True):bool
-# allFilesByVideoId:{str:SourceFile}
-# allFilesByStreamer:{str:SourceFile[]}
-# allStreamersWithVideos:str[]
-# characterReplacements:{str:str}
-# def calcTileWidth(numTiles:int):int
-# tileResolutions:str[]
-# outputResolutions:str[]
-
 
 def getVideoOutputPath(streamer, date):
     return os.path.join(basepath, outputDirectory, "S1", f"{outputDirectory} - {date} - {streamer}.mkv")
-
-
-def insertSuffix(outpath, suffix):
-    dotIndex = outpath.rindex('.')
-    return outpath[:dotIndex]+suffix+outpath[dotIndex:]
 
 
 def calcResolutions(numTiles, maxNumTiles):
@@ -1402,23 +1214,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         return filtergraphChunkedVersion()
 
 
-def extractInputFiles(ffmpegCommand):
-    isInput = False
-    files = []
-    for st in ffmpegCommand:
-        if st == '-i':
-            isInput = True
-        elif isInput:
-            if st != 'anullsrc':
-                files.append(st)
-            isInput = False
-    return files
-
-
-def formatCommand(command):
-    return ' '.join((quote(str(x)) for x in command))
-
-
 def saveFiledata(filepath: str):
     with open(filepath, 'wb') as file:
         pickle.dump(allFilesByVideoId, file)
@@ -1533,144 +1328,6 @@ if COPY_FILES:
     assert localBasepath.strip(' /\\') != basepath.strip(' /\\')
 
 
-class QueueItem:
-    def __init__(self, mainStreamer, fileDate, renderConfig: RenderConfig, outputPath=None):
-        self.fileDate = fileDate
-        self.mainStreamer = mainStreamer
-        self.renderConfig = renderConfig
-        self.outputPath = outputPath
-        # self.commandArray = commandArray
-        # self.outputPath = [command for command in commandArray if 'ffmpeg' in command[0]][-1][-1]
-        # allInputFiles = [filepath for command in commandArray for filepath in extractInputFiles(command) if type(filepath)==str and 'anullsrc' not in filepath]
-        # print(commandArray)
-        # allOutputFiles = set([command[-1] for command in commandArray])
-        # self.sourceFiles = [filesBySourceVideoPath[filepath] for filepath in allInputFiles if filepath not in allOutputFiles]
-        # self.intermediateFiles = set([command[-1] for command in commandArray[:-1]])
-
-    def __lt__(self, cmp):
-        return self.fileDate > cmp.fileDate
-
-    def __gt__(self, cmp):
-        return self.fileDate < cmp.fileDate
-
-    def __lte__(self, cmp):
-        return self.fileDate >= cmp.fileDate
-
-    def __gte__(self, cmp):
-        return self.fileDate <= cmp.fileDate
-
-    def __str__(self):
-        return f"{self.mainStreamer} {self.fileDate}"
-
-    def __repr__(self):
-        return f"QueueItem(mainStreamer={self.mainStreamer}, fileDate={self.fileDate}, renderConfig={self.renderConfig}, outputPath={self.outputPath})"
-
-
-renderStatuses = {}
-if os.path.isfile(statusFilePath):
-    with open(statusFilePath, 'rb') as statusFile:
-        renderStatuses = pickle.load(statusFile)
-        delKeys = []
-        for key, value in renderStatuses.items():
-            if value not in ("FINISHED", "ERRORED"):
-                delKeys.append(key)
-        for key in delKeys:
-            del renderStatuses[key]
-# renderStatuses = {}
-renderStatusLock = threading.Lock()
-renderQueue = queue.PriorityQueue()
-renderQueueLock = threading.Lock()
-if COPY_FILES:
-    copyQueue = queue.PriorityQueue()
-    copyQueueLock = threading.Lock()
-localFileReferenceCounts = {}
-localFileRefCountLock = threading.Lock()
-MAXIMUM_PRIORITY = 9999
-DEFAULT_PRIORITY = 1000
-MANUAL_PRIORITY = 500
-
-
-def incrFileRefCount(filename):
-    assert filename.startswith(localBasepath)
-    localFileRefCountLock.acquire()
-    ret = 0
-    if filename not in localFileReferenceCounts.keys():
-        localFileReferenceCounts[filename] = 1
-        ret = 1
-    else:
-        localFileReferenceCounts[filename] += 1
-        ret = localFileReferenceCounts[filename]
-    localFileRefCountLock.release()
-    return ret
-
-
-def decrFileRefCount(filename):
-    assert filename.startswith(localBasepath)
-    localFileRefCountLock.acquire()
-    ret = 0
-    if filename not in localFileReferenceCounts.keys():
-        localFileReferenceCounts[filename] = 1
-        ret = 1
-    else:
-        localFileReferenceCounts[filename] += 1
-        ret = localFileReferenceCounts[filename]
-    localFileRefCountLock.release()
-    return ret
-
-
-def setRenderStatus(streamer, date, status):
-    assert status in ("RENDERING", "RENDER_QUEUE",
-                      "COPY_QUEUE", "COPYING", "FINISHED", "ERRORED")
-    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
-    assert streamer in allStreamersWithVideos
-    key = f"{streamer}|{date}"
-    renderStatusLock.acquire()
-    oldStatus = renderStatuses[key] if key in renderStatuses.keys() else None
-    renderStatuses[key] = status
-    if status in ("FINISHED", "ERRORED"):
-        with open(statusFilePath, 'wb') as statusFile:
-            pickle.dump(renderStatuses, statusFile)
-    renderStatusLock.release()
-    return oldStatus
-
-
-def getRenderStatus(streamer, date):
-    # print('grs1', date)
-    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
-    # print('grs2', streamer, allStreamersWithVideos)
-    assert streamer in allStreamersWithVideos
-    key = f"{streamer}|{date}"
-    renderStatusLock.acquire()
-    status = renderStatuses[key] if key in renderStatuses.keys() else None
-    renderStatusLock.release()
-    return status
-
-
-def deleteRenderStatus(streamer, date, *, lock=True):
-    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
-    assert streamer in allStreamersWithVideos
-    key = f"{streamer}|{date}"
-    if lock:
-        renderStatusLock.acquire()
-    if key in renderStatuses.keys():
-        currentStatus = renderStatuses[key]
-        if currentStatus in ('RENDER_QUEUE', 'COPY_QUEUE'):
-            print(
-                f"Cannot delete render status, current value is {currentStatus}")
-            if lock:
-                renderStatusLock.release()
-            return False
-        del renderStatuses[key]
-        if lock:
-            renderStatusLock.release()
-        return True
-    else:
-        print(f"Key {key} not found in render statuses")
-        if lock:
-            renderStatusLock.release()
-        return False
-
-
 def scanForExistingVideos():
     for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
         fullpath = os.path.join(basepath, outputDirectory, "S1")
@@ -1688,241 +1345,6 @@ def scanForExistingVideos():
             setRenderStatus(streamer, date, 'FINISHED')
         else:
             print(f"Streamer {streamer} not known")
-
-
-if COPY_FILES:
-    activeCopyTask = None
-
-
-def copyWorker():
-    copyLog = copyText.addLine
-    queueEmpty = False
-    while True:
-        if copyQueue.empty():
-            if not queueEmpty:
-                print("Copy queue empty, sleeping")
-                queueEmpty = True
-            ttime.sleep(10)
-            continue
-            # return
-        queueEmpty = False
-        copyQueueLock.acquire()  # block if user is editing queue
-        priority, task = copyQueue.get(block=False)
-        copyQueueLock.release()
-        assert getRenderStatus(
-            task.mainStreamer, task.fileDate) == 'COPY_QUEUE'
-        global activeCopyTask
-        activeCopyTask = task
-        setRenderStatus(task.mainStreamer, task.fileDate, 'COPYING')
-        commandArray = generateTilingCommandMultiSegment(task.mainStreamer,
-                                                         task.fileDate,
-                                                         task.renderConfig,
-                                                         task.outputPath)
-        # outputPath = [command for command in commandArray if 'ffmpeg' in command[0]][-1][-1]
-        renderCommands = [
-            command for command in commandArray if 'ffmpeg' in command[0]]
-        allInputFiles = [filepath for command in renderCommands for filepath in extractInputFiles(
-            command) if type(filepath) == str and 'anullsrc' not in filepath]
-        # print(commandArray)
-        allOutputFiles = set([command[-1] for command in renderCommands])
-        overallOutputFile = renderCommands[-1][-1]
-        sourceFiles = [filesBySourceVideoPath[filepath]
-                       for filepath in allInputFiles if filepath not in allOutputFiles]
-        # self.intermediateFiles = set([command[-1] for command in commandArray[:-1] if 'ffmpeg' in command[0]])
-        # renderCommand = list(task.commandArray)
-        for file in sourceFiles:
-            remotePath = file.videoFile
-            localPath = remotePath.replace(basepath, localBasepath)
-            if not os.path.isfile(localPath):
-                # ttime.sleep(5)
-                copyLog(f"Copying file {remotePath} to local storage")
-                # copy to temp file to avoid tripping the if condition with incomplete transfers
-                shutil.copyfile(remotePath, localPath+'.temp')
-                copyLog('File copy complete, moving to location')
-                shutil.move(localPath+'.temp', localPath)
-                copyLog('Move complete')
-            else:
-                copyLog('Local file already exists')
-            incrFileRefCount(localPath)
-            # copy file and update SourceFile object
-            file.localVideoPath = localPath
-            # add copied file to filesBySourceVideoPath
-            filesBySourceVideoPath[localPath] = file
-            # replace file path in renderCommand
-            for command in task.commandArray:
-                command[command.index(remotePath)] = localPath
-        copyLog(
-            f'Finished source file copies for render to {overallOutputFile}')
-        # item = QueueItem(streamer, day, renderConfig, outPath)
-        copyQueue.task_done()
-        queueItem = (DEFAULT_PRIORITY, QueueItem(task.mainStreamer,
-                     task.fileDate, task.renderConfig, task.outputPath))
-        renderQueueLock.acquire()  # block if user is editing queue
-        renderQueue.put(queueItem)
-        renderQueueLock.release()
-        setRenderStatus(task.mainStreamer, task.fileDate, 'RENDER_QUEUE')
-
-
-activeRenderTask = None
-activeRenderTaskSubindex = None
-activeRenderSubprocess = None
-
-
-def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
-                 overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
-                 overwrite_output=DEFAULT_OVERWRITE_OUTPUT):
-    renderLog = renderText.addLine
-    queueEmpty = False
-    while True:
-        # sessionText, copyText, renderText = bufferedTexts
-        if renderQueue.empty():
-            if not queueEmpty:
-                print("Render queue empty, sleeping")
-                queueEmpty = True
-            ttime.sleep(10)
-            continue
-        queueEmpty = False
-        renderQueueLock.acquire()  # block if user is editing queue
-        priority, task = renderQueue.get(block=False)
-        renderQueueLock.release()
-
-        assert getRenderStatus(
-            task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
-        global activeRenderTask
-        global activeRenderTaskSubindex
-        activeRenderTask = task
-        taskCommands = generateTilingCommandMultiSegment(task.mainStreamer,
-                                                         task.fileDate,
-                                                         task.renderConfig,
-                                                         task.outputPath)
-        renderCommands = [
-            command for command in taskCommands if command[0].endswith('ffmpeg')]
-        if not overwrite_output:
-            outpath = renderCommands[-1][-1]
-            count = 1
-            suffix = ""
-            while os.path.isfile(insertSuffix(outpath, suffix)):
-                suffix = f" ({count})"
-                count += 1
-            renderCommands[-1][-1] = insertSuffix(outpath, suffix)
-        finalOutpath = renderCommands[-1][-1]
-        # shutil.move(tempOutpath, insertSuffix(outpath, suffix))
-        # print(renderCommands)
-        # pathSplitIndex = outpath.rindex('.')
-        # tempOutpath = outpath[:pathSplitIndex]+'.temp'+outpath[pathSplitIndex:]
-        # tempOutpath = insertSuffix(outpath, '.temp')
-        # print(outpath, tempOutpath)
-        # renderCommands[-1][-1] = tempOutpath # output to temp file, so final filename will always be a complete file
-        for i in range(len(renderCommands)):
-            renderCommands[i].insert(-1, "-stats_period")
-            renderCommands[i].insert(-1, str(stats_period))
-            # overwrite (temp) file if it exists
-            renderCommands[i].insert(-1, '-y')
-        setRenderStatus(task.mainStreamer, task.fileDate, 'RENDERING')
-        hasError = False
-        gc.collect()
-        tempFiles = []
-        for i in range(len(taskCommands)):
-            activeRenderTaskSubindex = i
-            # TODO: add preemptive scheduling
-            with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
-                currentCommand = taskCommands[i]
-                trueOutpath = None
-                if 'ffmpeg' in currentCommand[0]:
-                    if not overwrite_intermediate:
-                        trueOutpath = currentCommand[-1]
-                        if trueOutpath != finalOutpath:
-                            assert trueOutpath.startswith(localBasepath)
-                            tempFiles.append(trueOutpath)
-                        if os.path.isfile(trueOutpath):
-                            shouldSkip = True
-                            try:
-                                videoInfo = getVideoInfo(trueOutpath)
-                                duration = int(
-                                    float(videoInfo['format']['duration']))
-                                # if duration !=
-                            except Exception as ex:
-                                # if task.renderConfig.logLevel > 0:
-                                #    print(ex)
-                                renderLog(str(ex))
-                            if shouldSkip:
-                                # if task.renderConfig.logLevel > 0:
-                                renderLog(
-                                    f"Skipping render to file {trueOutpath}, file already exists")
-                                continue
-                        else:
-                            currentCommand[-1] = insertSuffix(
-                                trueOutpath, '.temp')
-                    else:  # overwrite_intermediate
-                        currentOutpath = currentCommand[-1]
-                        if currentOutpath.startswith(localBasepath):
-                            tempFiles.append(currentOutpath)
-                    # if task.renderConfig.logLevel > 0:
-                    renderLog(
-                        f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...")
-
-                # TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
-
-                try:
-                    process = subprocess.Popen([str(command) for command in currentCommand],
-                                               stdin=subprocess.DEVNULL,
-                                               stdout=logFile,
-                                               stderr=subprocess.STDOUT)
-                    activeRenderSubprocess = process
-                    returncode = process.wait()
-                    activeRenderSubprocess = None
-                except KeyboardInterrupt:
-                    renderLog(
-                        "Keyboard interrupt detected, stopping active render!")
-                    process.kill()
-                    process.wait()
-                    renderLog("Render terminated!")
-                    return
-                except Exception as ex:
-                    renderLog(str(ex))
-                    returncode = -1
-                    activeRenderSubprocess = None
-
-                if returncode != 0:
-                    hasError = True
-                    if returncode != 130:  # ctrl-c on UNIX (?)
-                        renderLog(
-                            f" Render errored! Writing to log file {errorFilePath}")
-                        setRenderStatus(task.mainStreamer,
-                                        task.fileDate, 'ERRORED')
-                        with open(errorFilePath, 'a') as errorFile:
-                            errorFile.write(
-                                f'Errored on: {formatCommand(currentCommand)}\n')
-                            errorFile.write(f'Full command list: ')
-                            errorFile.write(' ;; '.join(
-                                (formatCommand(renderCommand) for renderCommand in renderCommands)))
-                            errorFile.write('\n\n')
-                    break
-                else:
-                    if trueOutpath is not None:
-                        shutil.move(currentCommand[-1], trueOutpath)
-                        renderLog(f" Render to {trueOutpath} complete!")
-                    else:
-                        renderLog(f" Render to {currentCommand[-1]} complete!")
-        if not hasError:
-            print("Render task finished, cleaning up temp files:")
-            print(tempFiles)
-            setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
-            if COPY_FILES:
-                for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
-                    remainingRefs = decrFileRefCount(file.localVideoPath)
-                    if remainingRefs == 0:
-                        renderLog(f"Removing local file {file}")
-                        os.remove(file)
-            # intermediateFiles = set([command[-1] for command in renderCommands[:-1] if command[0].endswith('ffmpeg')])
-            # for file in intermediateFiles:
-            for file in tempFiles:
-                renderLog(f"Removing intermediate file {file}")
-                assert basepath not in file
-                os.remove(file)
-        renderQueue.task_done()
-        if __debug__:
-            break
 
 
 def getAllStreamingDaysByStreamer():
@@ -2014,7 +1436,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                                 sessionLog(
                                     f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
                             continue
-                        item = QueueItem(streamer, day, renderConfig, outPath)
+                        item = RenderTask(streamer, day, renderConfig, outPath)
                         sessionLog(
                             f"Adding render for streamer {streamer} from {day}")
                         (copyQueue if COPY_FILES else renderQueue).put(
@@ -2044,25 +1466,6 @@ class Command:
 
 
 commandArray = []
-
-
-def endRendersAndExit():
-    print('Shutting down, please wait at least 15 seconds before manually killing...')
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    if activeRenderSubprocess is not None:
-        print("Terminating render thread")
-        activeRenderSubprocess.terminate()
-        activeRenderSubprocess.wait(10)
-        if activeRenderSubprocess.poll is None:
-            print(
-                "Terminating render thread did not complete within 10 seconds, killing instead")
-            activeRenderSubprocess.kill()
-            activeRenderSubprocess.wait()
-        if activeRenderSubprocess.poll is not None:
-            print("Active render stopped successfully")
-    signal.signal(signal.SIGINT, signal.SIG_DFL)
-    print("Stopping!")
-    sys.exit(0)
 
 
 commandArray.append(Command(endRendersAndExit, 'Exit program'))
@@ -2113,10 +1516,11 @@ commandArray.append(Command(printQueuedJobs, 'Print queued jobs'))
 
 
 def printJobsWithStatus(status):
-    renderStatusLock.acquire()
-    selectedRenders = [key.split(
-        '|') for key in renderStatuses.keys() if renderStatuses[key] == status]
-    renderStatusLock.release()
+    #renderStatusLock.acquire()
+    #selectedRenders = [key.split(
+    #    '|') for key in renderStatuses.keys() if renderStatuses[key] == status]
+    #renderStatusLock.release()
+    selectedRenders = getRendersWithStatus(status)
     streamersWithSelected = sorted(
         set([render[0] for render in selectedRenders]))
     # print(streamersWithSelected)
@@ -2148,9 +1552,9 @@ commandArray.append(
 
 
 def clearErroredJobs():
-    renderStatusLock.acquire()
-    selectedRenders = [key.split('|') for key in renderStatuses.keys(
-    ) if renderStatuses[key] == 'ERRORED']
+    #selectedRenders = [key.split('|') for key in renderStatuses.keys(
+    #) if renderStatuses[key] == 'ERRORED']
+    selectedRenders = getRendersWithStatus('ERRORED')
     streamersWithSelected = sorted(
         set([render[0] for render in selectedRenders]))
     # print(streamersWithSelected)
@@ -2173,10 +1577,9 @@ def clearErroredJobs():
     for streamer, date in selectedRenders:
         if selectedStreamer is None or streamer == selectedStreamer:
             print(f"Clearing error status for {streamer} {date}")
-            deleteRenderStatus(streamer, date, lock=False)
-    with open(statusFilePath, 'wb') as statusFile:
-        pickle.dump(renderStatuses, statusFile)
-    renderStatusLock.release()
+            #deleteRenderStatus(streamer, date, lock=False)
+            clearErroredStatuses(streamer)
+    
 
 
 commandArray.append(Command(clearErroredJobs, 'Clean up errored jobs'))
@@ -2399,7 +1802,7 @@ def inputManualJob(initialRenderConfig=None):
     renderConfig = readRenderConfig()
     if renderConfig is None:
         return None
-    item = QueueItem(mainStreamer, fileDate, renderConfig, outputPath)
+    item = RenderTask(mainStreamer, fileDate, renderConfig, outputPath)
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate,
                     'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
@@ -2461,7 +1864,7 @@ def editQueueItem(queueEntry):
             return ...
         else:
             print(f"Invalid option: '{userInput}'")
-    newItem = QueueItem(mainStreamer, fileDate, renderConfig, outputPath)
+    newItem = RenderTask(mainStreamer, fileDate, renderConfig, outputPath)
     return (priority, newItem)
 
 
@@ -2859,10 +2262,10 @@ def mainStart():
 
 
 # %%
-renderThread = threading.Thread(target=renderWorker)
+renderThread = threading.Thread(target=renderWorker, kwargs={'renderLog':renderText.addLine})
 renderThread.daemon = True
 if COPY_FILES:
-    copyThread = threading.Thread(target=copyWorker)
+    copyThread = threading.Thread(target=copyWorker, kwargs={'copyLog':copyText.addLine})
     copyThread.daemon = True
 
 
