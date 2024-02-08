@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import json
+from typing import Dict, List, Set
 
 from Session import scanSessionsFromFile
 from .ParsedChat import ParsedChat, convertToDatetime
@@ -12,12 +13,12 @@ if __debug__:
 
 if 'allFilesByVideoId' not in globals():
     print('Creating data structures')
-    allFilesByVideoId = {}  # string:SourceFile
-    allFilesByStreamer = {}  # string:[SourceFile]
-    allStreamersWithVideos = []
-    allStreamerSessions = {}
-    allScannedFiles = set()
-    filesBySourceVideoPath = {}
+    allFilesByVideoId: Dict[str, SourceFile] = {}  # string:SourceFile
+    allFilesByStreamer: Dict[str, SourceFile] = {}  # string:[SourceFile]
+    allStreamersWithVideos: List[str] = []
+    allStreamerSessions: Dict[str, List[Session]] = {}
+    allScannedFiles: Set[str] = set()
+    filesBySourceVideoPath: Dict[str, SourceFile] = {}
 
 def getVideoInfo(videoFile: str):
     probeResult = subprocess.run(['ffprobe', '-v', 'quiet',

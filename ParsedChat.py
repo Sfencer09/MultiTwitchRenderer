@@ -1,3 +1,4 @@
+from typing import List
 from SharedUtils import convertToDatetime
 from .SourceFile import SourceFile
 import json
@@ -81,17 +82,17 @@ class ParsedChat:
         self.groupEditComments = groupEditComments
         self.groups = groups
 
-    def getGroupAtTimestamp(self, timestamp: int | float | str | datetime):
+    def getGroupAtTimestamp(self, timestamp: int | float | str | datetime) -> List[str]:
         dt = convertToDatetime(timestamp)
         lastMatch = []
         for group in self.groups:
-            if group.time < dt:
-                lastMatch = group.group
+            if group['time'] < dt:
+                lastMatch = group['group']
             else:
                 break
         return lastMatch
 
-    def getAllPlayersOverRange(self, startTimestamp: int | float | str | datetime, endTimestamp: int | float | str | datetime):
+    def getAllPlayersOverRange(self, startTimestamp: int | float | str | datetime, endTimestamp: int | float | str | datetime) -> List[str]:
         start = convertToDatetime(startTimestamp)
         end = convertToDatetime(endTimestamp)
         allPlayers = set()

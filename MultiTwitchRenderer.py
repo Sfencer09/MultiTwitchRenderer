@@ -14,7 +14,7 @@
 # ---
 
 # %%
-from typing import Dict, List, Set
+from typing import List
 import urwid
 import os
 import math

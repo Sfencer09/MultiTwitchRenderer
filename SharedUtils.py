@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import List
 
 def convertToDatetime(timestamp: int | float | str | datetime):
     if isinstance(timestamp, int) or isinstance(timestamp, float):
@@ -13,12 +14,12 @@ def convertToDatetime(timestamp: int | float | str | datetime):
     return dt
 
 
-def insertSuffix(outpath, suffix):
+def insertSuffix(outpath:str, suffix:str):
     dotIndex = outpath.rindex('.')
     return outpath[:dotIndex] + suffix + outpath[dotIndex:]
 
 
-def extractInputFiles(ffmpegCommand):
+def extractInputFiles(ffmpegCommand: List[str]):
     isInput = False
     files = []
     for st in ffmpegCommand:

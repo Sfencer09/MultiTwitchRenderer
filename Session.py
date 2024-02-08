@@ -1,7 +1,4 @@
 
-if __debug__:
-    from .config import *
-
 from .SourceFile import SourceFile, allStreamerSessions
 
 
@@ -26,7 +23,7 @@ class Session:
         self.file = file
         self.game = game
 
-    def hasOverlap(self: SourceFile, cmp: SourceFile, useChat=True, targetRange=None):
+    def hasOverlap(self, cmp: 'Session', useChat=True, targetRange=None) -> bool:
         if self.startTimestamp > cmp.endTimestamp or self.endTimestamp < cmp.startTimestamp:
             return False
         if targetRange is None:
