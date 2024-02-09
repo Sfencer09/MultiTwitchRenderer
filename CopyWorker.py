@@ -1,4 +1,5 @@
 
+from functools import partial
 import queue
 import shutil
 import threading
@@ -20,7 +21,7 @@ if COPY_FILES:
     copyQueue = queue.PriorityQueue()
     copyQueueLock = threading.Lock()
 
-def copyWorker(copyLog=print):
+def copyWorker(copyLog=partial(print, flush=True)):
     #copyLog = copyText.addLine
     queueEmpty = False
     while True:

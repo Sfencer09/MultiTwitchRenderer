@@ -5,8 +5,7 @@ from typing import Dict
 from schema import Schema, Or, And, Optional, Use
 
 
-if __debug__:
-    from .config import *
+import config
 
 HW_DECODE = 1
 HW_INPUT_SCALE = 2
@@ -20,7 +19,7 @@ trueStrings = ('t', 'y', 'true', 'yes')
 def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
     process1 = subprocess.run(
-        [f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
+        [f"{config.ffmpegPath}ffmpeg", "-version"], capture_output=True)
     print(process1.stdout.decode())
     try:
         process2 = subprocess.run(
@@ -115,7 +114,7 @@ else:
     ACTIVE_HWACCEL_VALUES = None
 
 
-defaultRenderConfig = RENDER_CONFIG_DEFAULTS
+defaultRenderConfig = config.RENDER_CONFIG_DEFAULTS
 try:
     with open('./renderConfig.json') as renderConfigJsonFile:
         defaultRenderConfig = json.load(renderConfigJsonFile)
@@ -200,7 +199,7 @@ class RenderConfig:
     excludeStreamers: None | Dict[str, None | Dict[str, None | str]]
 
     def __init__(self, **kwargs):
-        values = renderConfigSchema.validate(kwargs)
+        values:dict = renderConfigSchema.validate(kwargs)
         if values['outputCodec'] in hardwareOutputCodecs:
             if values['useHardwareAcceleration'] & HW_ENCODE == 0:
                 raise Exception(

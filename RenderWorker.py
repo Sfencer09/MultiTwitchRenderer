@@ -1,3 +1,4 @@
+from functools import partial
 import shutil
 import time as ttime
 import signal
@@ -32,7 +33,7 @@ def formatCommand(command):
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
                  overwrite_output=DEFAULT_OVERWRITE_OUTPUT,
-                 renderLog=print):
+                 renderLog=partial(print, flush=True)):
     #renderLog = renderText.addLine
     queueEmpty = False
     while True:

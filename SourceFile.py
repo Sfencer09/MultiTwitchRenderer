@@ -1,15 +1,16 @@
 from datetime import datetime
 import os
+import pickle
 import re
 import subprocess
 import json
 from typing import Dict, List, Set
 
-from Session import scanSessionsFromFile
-from .ParsedChat import ParsedChat, convertToDatetime
+import config
 
-if __debug__:
-    from .config import *
+from .Session import Session, scanSessionsFromFile
+from .ParsedChat import ParsedChat, convertToDatetime
+from .SourceFile import SourceFile
 
 if 'allFilesByVideoId' not in globals():
     print('Creating data structures')
@@ -60,7 +61,7 @@ class SourceFile:
         if infoFile is not None:
             self.setInfoFile(infoFile)
         self.chatFile:str|None = None
-        self.parsedChat:str|None = None
+        self.parsedChat:ParsedChat|None = None
         if chatFile is not None:
             self.setChatFile(chatFile)
 
@@ -74,7 +75,7 @@ class SourceFile:
         if self.infoFile == infoFile:
             return
         assert self.infoFile is None, f"Cannot overwrite existing info file {self.chatFile} with new file {infoFile}"
-        assert infoFile.endswith(infoExt) and os.path.isfile(
+        assert infoFile.endswith(config.infoExt) and os.path.isfile(
             infoFile) and os.path.isabs(infoFile)
         self.infoFile = infoFile
         with open(infoFile) as file:
@@ -87,7 +88,7 @@ class SourceFile:
         if self.videoFile == videoFile:
             return
         assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
-        assert any((videoFile.endswith(videoExt) for videoExt in videoExts)
+        assert any((videoFile.endswith(videoExt) for videoExt in config.videoExts)
                    ) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
         self.videoFile = videoFile
         self.downloadTime = convertToDatetime(os.path.getmtime(videoFile))
@@ -96,10 +97,10 @@ class SourceFile:
         if self.chatFile == chatFile:
             return
         assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
-        assert chatFile.endswith(chatExt) and os.path.isfile(
+        assert chatFile.endswith(config.chatExt) and os.path.isfile(
             chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
-        if self.streamer in streamersParseChatList:
+        if self.streamer in config.streamersParseChatList:
             self.parsedChat = ParsedChat(self, chatFile)
 
     def getVideoFileInfo(self):
@@ -113,17 +114,17 @@ def scanFiles(log=False):
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
-    for streamer in globalAllStreamers:
+    for streamer in config.globalAllStreamers:
         if log:
             print(f"Scanning streamer {streamer} ", end='')
-        newStreamerFiles = []
-        streamerBasePath = os.path.join(basepath, streamer, 'S1')
+        newStreamerFiles:List[SourceFile] = []
+        streamerBasePath = os.path.join(config.basepath, streamer, 'S1')
         count = 0
-        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExts + [infoExt, chatExt])))):
+        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (config.videoExts + [config.infoExt, config.chatExt])))):
             filepath = os.path.join(streamerBasePath, filename)
             if filepath in allScannedFiles:
                 continue
-            filenameSegments = re.split(videoIdRegex, filename)
+            filenameSegments = re.split(config.videoIdRegex, filename)
             # print(filenameSegments)
             if len(filenameSegments) < 3:
                 continue
@@ -134,13 +135,13 @@ def scanFiles(log=False):
                 print('.', end='')
             file = None
             if videoId not in allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
-                if any((filename.endswith(videoExt) for videoExt in videoExts)):
+                if any((filename.endswith(videoExt) for videoExt in config.videoExts)):
                     file = SourceFile(streamer, videoId, videoFile=filepath)
                     # filesBySourceVideoPath[filepath] = file
-                elif filename.endswith(infoExt):
+                elif filename.endswith(config.infoExt):
                     file = SourceFile(streamer, videoId, infoFile=filepath)
                 else:
-                    assert filename.endswith(chatExt)
+                    assert filename.endswith(config.chatExt)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
                 # allFilesByVideoId[videoId] = file
                 newFilesByVideoId[videoId] = file
@@ -148,13 +149,13 @@ def scanFiles(log=False):
             else:
                 file = allFilesByVideoId[videoId] if videoId in allFilesByVideoId.keys(
                 ) else newFilesByVideoId[videoId]
-                if any((filename.endswith(videoExt) for videoExt in videoExts)):
+                if any((filename.endswith(videoExt) for videoExt in config.videoExts)):
                     file.setVideoFile(filepath)
                     # filesBySourceVideoPath[filepath] = file
-                elif filename.endswith(infoExt):
+                elif filename.endswith(config.infoExt):
                     file.setInfoFile(filepath)
                 else:
-                    assert filename.endswith(chatExt)
+                    assert filename.endswith(config.chatExt)
                     file.setChatFile(filepath)
                     # if streamer in streamersParseChatList:
                     #    file.parsedChat = ParsedChat(filepath)
@@ -221,3 +222,78 @@ def scanFiles(log=False):
     if log:
         print("Step 1: ", sum((len(x)
               for x in allStreamerSessions.values())), end="\n\n\n")
+
+def saveFiledata(filepath: str):
+    with open(filepath, 'wb') as file:
+        pickle.dump(allFilesByVideoId, file)
+        print("Pickle dump successful")
+
+
+def loadFiledata(filepath: str):  # suppresses all errors
+    try:
+        with open(filepath, 'rb') as file:
+            print("Starting pickle load...")
+            pickleData = pickle.load(file)
+            global allFilesByVideoId  # allFilesByVideoId = pickle.load(file)
+            allFilesByVideoId = pickleData
+            # allFilesByVideoId = {} #string:SourceFile
+            global allFilesByStreamer
+            allFilesByStreamer = {}  # string:[SourceFile]
+            global allStreamersWithVideos
+            allStreamersWithVideos = []
+            global allStreamerSessions
+            allStreamerSessions = {}
+            global allScannedFiles
+            allScannedFiles = set()
+            global filesBySourceVideoPath
+            filesBySourceVideoPath = {}
+            for file in allFilesByVideoId.values():
+                filesBySourceVideoPath[file.videoFile] = file
+            for file in sorted(allFilesByVideoId.values(), key=lambda x: x.startTimestamp):
+                if file.streamer not in allStreamersWithVideos:
+                    allFilesByStreamer[file.streamer] = []
+                    allStreamersWithVideos.append(file.streamer)
+                scanSessionsFromFile(file)
+                allFilesByStreamer[file.streamer].append(file)
+                allScannedFiles.add(file.videoFile)
+                allScannedFiles.add(file.infoFile)
+                if file.chatFile is not None:
+                    allScannedFiles.add(file.chatFile)
+            print("Pickle load successful")
+    except Exception as ex:
+        print("Pickle load failed! Exception:", ex)
+
+
+def initialize():
+    global allFilesByVideoId
+    if len(allFilesByVideoId) == 0:
+        loadFiledata(config.DEFAULT_DATA_FILEPATH)
+    oldCount = len(allFilesByVideoId)
+    scanFiles(log=True)
+    if len(allFilesByVideoId) != oldCount:
+        saveFiledata(config.DEFAULT_DATA_FILEPATH)
+
+
+def reinitialize():
+    global allFilesByVideoId
+    allFilesByVideoId = {}
+    loadFiledata(config.DEFAULT_DATA_FILEPATH)
+    initialize()
+
+
+def reloadAndSave():
+    global allFilesByVideoId  # allFilesByVideoId = pickle.load(file)
+    allFilesByVideoId = {}
+    # allFilesByVideoId = {} #string:SourceFile
+    global allFilesByStreamer
+    allFilesByStreamer = {}  # string:[SourceFile]
+    global allStreamersWithVideos
+    allStreamersWithVideos = []
+    global allStreamerSessions
+    allStreamerSessions = {}
+    global allScannedFiles
+    allScannedFiles = set()
+    global filesBySourceVideoPath
+    filesBySourceVideoPath = {}
+    scanFiles(log=True)
+    saveFiledata(config.DEFAULT_DATA_FILEPATH)

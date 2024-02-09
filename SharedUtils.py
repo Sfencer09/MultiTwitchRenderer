@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
+import os
 from typing import List
+
+import config
 
 def convertToDatetime(timestamp: int | float | str | datetime):
     if isinstance(timestamp, int) or isinstance(timestamp, float):
@@ -34,3 +37,6 @@ def extractInputFiles(ffmpegCommand: List[str]):
 # def localDateFromTimestamp(timestamp:int|float):
 #    dt = datetime.fromtimestamp(timestamp, LOCAL_TIMEZONE)
     # startDate = datetime.strftime(startTime, "%Y-%m-%d")
+
+def getVideoOutputPath(streamer, date):
+    return os.path.join(config.basepath, config.outputDirectory, "S1", f"{config.outputDirectory} - {date} - {streamer}.mkv")

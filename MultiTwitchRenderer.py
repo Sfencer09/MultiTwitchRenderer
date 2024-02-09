@@ -18,13 +18,11 @@ from typing import List
 import urwid
 import os
 import math
-import pickle
-import re
 import threading
 import random
 import sys
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from thefuzz import process as fuzzproc
 from functools import reduce, partial
 from pprint import pprint
@@ -36,29 +34,30 @@ if not sys.version_info >= (3, 7, 0):
     raise EnvironmentError(
         "Python version too low, relies on ordered property of dicts")
 
-configPath = './config.py'
+#configPath = './config.py'
 
 #with open(configPath) as configFile:
-try:
-    configFile = open(configPath)
-    exec(configFile.read())
-    configFile.close()
-except:
-    from config import *
+#try:
+#    configFile = open(configPath)
+#    exec(configFile.read())
+#    configFile.close()
+#except:
+    #from config import *
     # above import statement is just to make the IDE happy, since it can't see
     # the result of exec(configFile.read()). Using an import would result in
     # the compiled executable using the config it was compiled with, rather than
     # the user's actual config.py file
-    raise Exception("Could not load config.py")
-
-from .SourceFile import SourceFile, scanFiles
-from .ParsedChat import convertToDatetime
-from .Session import Session, scanSessionsFromFile
-from .RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
-from .CopyWorker import copyWorker, copyQueue, copyQueueLock, activeCopyTask
-from .RenderWorker import renderWorker, renderQueue, renderQueueLock, endRendersAndExit, activeRenderTask, activeRenderTaskSubindex
-from .RenderTask import RenderTask, getRendersWithStatus, setRenderStatus, getRenderStatus, deleteRenderStatus, DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, clearErroredStatuses
-from .ParsedChat import convertToDatetime
+#    raise Exception("Could not load config.py")
+import config
+from SourceFile import SourceFile, allStreamersWithVideos, allStreamerSessions
+from ParsedChat import convertToDatetime
+from RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from CopyWorker import copyWorker, copyQueue, copyQueueLock, activeCopyTask
+from RenderWorker import renderWorker, renderQueue, renderQueueLock, endRendersAndExit, activeRenderTask, activeRenderTaskSubindex
+from RenderTask import RenderTask, getRendersWithStatus, setRenderStatus, getRenderStatus, deleteRenderStatus, DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, clearErroredStatuses
+from ParsedChat import convertToDatetime
+from SessionWorker import getAllStreamingDaysByStreamer, sessionWorker
+from SharedUtils import getVideoOutputPath
 
 print("Starting")
 
@@ -69,14 +68,11 @@ def calcTileWidth(numTiles):
 
 # 0: Build filesets for lookup and looping; pair video files with their info files (and chat files if present)
 
-def getVideoOutputPath(streamer, date):
-    return os.path.join(basepath, outputDirectory, "S1", f"{outputDirectory} - {date} - {streamer}.mkv")
-
 
 def calcResolutions(numTiles, maxNumTiles):
     tileWidth = calcTileWidth(numTiles)
     maxTileWidth = calcTileWidth(maxNumTiles)
-    maxOutputResolution = outputResolutions[maxTileWidth]
+    maxOutputResolution = config.outputResolutions[maxTileWidth]
     scaleFactor = min(
         maxOutputResolution[0] // (16*tileWidth), maxOutputResolution[1] // (9*tileWidth))
     tileX = scaleFactor * 16
@@ -105,7 +101,7 @@ def toFfmpegTimestamp(ts: int | float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
 
-def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None):
+def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None) -> List[List[str]]:
     otherStreamers = [
         name for name in allStreamersWithVideos if name != mainStreamer]
     if outputFile is None:
@@ -132,13 +128,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(
-        datetime.fromisoformat(targetDate), DAY_START_TIME)
+        datetime.fromisoformat(targetDate), config.DAY_START_TIME)
     targetDateEndTime = targetDateStartTime + timedelta(days=1)
     if logLevel >= 1:
         print(targetDate, targetDateStartTime, targetDateEndTime)
         print('other streamers', otherStreamers)
     mainSessionsOnTargetDate = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
-        x.startTimestamp, tz=UTC_TIMEZONE) <= targetDateEndTime, allStreamerSessions[mainStreamer]))
+        x.startTimestamp, tz=config.UTC_TIMEZONE) <= targetDateEndTime, allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError(
             "Selected streamer does not have any sessions on the target date")
@@ -326,7 +322,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     excludeTrimStreamerIndices = []
     mainStreamerGames = set(
-        (session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in nongroupGames))
+        (session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
     for streamerIndex in range(1, len(allInputStreamers)):
         if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
             # can have one brother in the session but not be the same as the one streaming
@@ -356,7 +352,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 print('rowGames', rowGames)
             # print(segmentSessionMatrix[i-sessionTrimLookback])
             acceptedGames = set((session.game for row in segmentSessionMatrix[includeRowStart:includeRowEnd]
-                                if row[0] is not None for session in row[0] if session.game not in nongroupGames))
+                                if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
             if logLevel >= 2:
                 print('acceptedGames', acceptedGames)  # , end=' ')
             # main streamer has no sessions for segment, extend from previous segment with sessions
@@ -591,7 +587,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                          for row in segmentFileMatrix]
     maxSegmentTiles = max(segmentTileCounts)
     maxTileWidth = calcTileWidth(maxSegmentTiles)
-    outputResolution = outputResolutions[maxTileWidth]
+    outputResolution = config.outputResolutions[maxTileWidth]
     outputResolutionStr = f"{str(outputResolution[0])}:{str(outputResolution[1])}"
     outputMapOptions = ['-map', '[vout]']
     outputMetadataOptions = []
@@ -612,7 +608,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                              "-preset", encodingSpeedPreset,
                              "-crf", "22",
                              ))
-        if REDUCED_MEMORY:
+        if config.REDUCED_MEMORY:
             codecOptions.extend('-rc-lookahead', '20', '-g', '60')
     elif outputCodec in ('libx265', 'hevc_nvenc'):
         codecOptions.extend((
@@ -620,14 +616,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             "-crf", "26",
             "-tag:v", "hvc1"
         ))
-        if REDUCED_MEMORY:
+        if config.REDUCED_MEMORY:
             print("Reduced memory mode not available yet for libx265 codec")
-    threadOptions = ['-threads', str(threadCount),
-                     '-filter_threads', str(threadCount),
-                     '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
+    threadOptions = ['-threads', str(config.threadCount),
+                     '-filter_threads', str(config.threadCount),
+                     '-filter_complex_threads', str(config.threadCount)] if useHardwareAcceleration else []
     uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
     downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
-    timeFilter = f"setpts={vpts}"
+    timeFilter = f"setpts=PTS-STARTPTS"
 
     # 14. For each row of #8:
     # filtergraphStringSegments = []
@@ -747,7 +743,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                                                     f", hwdownload,format=pix_fmts=yuv420p") if useHwFilterAccel and (needToScale or not isSixteenByNine) else ('', '')
                     scaleFilter = f", scale{'_npp' if useHwFilterAccel else ''}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame" if needToScale else ''
                     padFilter = f", pad{'_opencl' if useHwFilterAccel else ''}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
-                    videoFiltergraph = f"[{inputVSegName}] setpts={vpts}{uploadFilter}{scaleFilter}{padFilter}{downloadFilter}{labelFilter} [{outputVSegName}]"
+                    videoFiltergraph = f"[{inputVSegName}] setpts=PTS-STARTPTS{uploadFilter}{scaleFilter}{padFilter}{downloadFilter}{labelFilter} [{outputVSegName}]"
                     # if :
                     #    videoFiltergraph = f"[{inputVSegName}] setpts={vpts}, hwupload_cuda, scale_npp={tileResolution}:force_original_aspect_ratio=decrease:format=yuv420p:eval=frame, pad_opencl={tileResolution}:-1:-1:color=black, hwdownload, format=pix_fmts=yuv420p{labelFilter}, [{outputVSegName}]"
                     # else:
@@ -814,7 +810,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             pprint(filtergraphParts)
         # print(nullVSinkFiltergraphs, nullASinkFiltergraphs, segmentFiltergraphs)
         completeFiltergraph = " ; ".join(filtergraphParts)
-        return [reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
+        return [reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
                 inputOptions,
                 threadOptions,
                 ['-filter_complex', completeFiltergraph],
@@ -863,7 +859,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     inputIndex = inputFileIndexes[file]
                     videoSegmentName = f"seg{segIndex}V{streamerIndex}"
                     audioSegmentName = f"seg{segIndex}A{streamerIndex}"
-                    audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
+                    audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts=PTS-STARTPTS [{audioSegmentName}]"
                     fileInfo = inputVideoInfo[inputIndex]
                     videoStreamInfo = [
                         stream for stream in fileInfo['streams'] if stream['codec_type'] == 'video'][0]
@@ -958,7 +954,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         #    for fss in filtergraphStringSegments:
         #        print(fss)
         completeFiltergraph = " ; ".join(filtergraphParts)
-        return [reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
+        return [reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
                 inputOptions,
                 threadOptions,
                 ['-filter_complex', completeFiltergraph],
@@ -975,7 +971,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         print("CHUNKED", numSegments)
         commandList = []
         intermediateFilepaths = [os.path.join(
-            localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
+            config.localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
         audioFiltergraphParts = []
         for segIndex in range(numSegments):
             filtergraphParts = []
@@ -1154,7 +1150,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     print("\n\n\nStep 13c: ", filtergraphString,
                           segmentResolution, outputResolutionStr, numRowSegments)
             # print(filtergraphParts)
-            commandList.append(reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
+            commandList.append(reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
                                                      rowInputOptions,
                                                      threadOptions,
                                                      ['-filter_complex',
@@ -1189,7 +1185,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     os.remove(self.filepath)
         lcf = LazyConcatFile(
             "file '" + "'\nfile '".join(intermediateFilepaths)+"'")
-        commandList.append(reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
+        commandList.append(reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
                                                  ['-f', 'concat',
                                                   '-safe', '0',
                                                   '-i', lcf,
@@ -1215,49 +1211,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         return filtergraphChunkedVersion()
 
 
-def saveFiledata(filepath: str):
-    with open(filepath, 'wb') as file:
-        pickle.dump(allFilesByVideoId, file)
-        print("Pickle dump successful")
-
-
-def loadFiledata(filepath: str):  # suppresses all errors
-    try:
-        with open(filepath, 'rb') as file:
-            print("Starting pickle load...")
-            pickleData = pickle.load(file)
-            global allFilesByVideoId  # allFilesByVideoId = pickle.load(file)
-            allFilesByVideoId: Dict[str, SourceFile] = pickleData
-            # allFilesByVideoId = {} #string:SourceFile
-            global allFilesByStreamer
-            allFilesByStreamer: Dict[str, SourceFile] = {}  # string:[SourceFile]
-            global allStreamersWithVideos
-            allStreamersWithVideos: List[str] = []
-            global allStreamerSessions
-            allStreamerSessions: Dict[str, List[Session]] = {}
-            global allScannedFiles
-            allScannedFiles: Set[str] = set()
-            global filesBySourceVideoPath
-            filesBySourceVideoPath: Dict[str, SourceFile] = {}
-            for file in allFilesByVideoId.values():
-                filesBySourceVideoPath[file.videoFile] = file
-            for file in sorted(allFilesByVideoId.values(), key=lambda x: x.startTimestamp):
-                if file.streamer not in allStreamersWithVideos:
-                    allFilesByStreamer[file.streamer] = []
-                    allStreamersWithVideos.append(file.streamer)
-                scanSessionsFromFile(file)
-                allFilesByStreamer[file.streamer].append(file)
-                allScannedFiles.add(file.videoFile)
-                allScannedFiles.add(file.infoFile)
-                if file.chatFile is not None:
-                    allScannedFiles.add(file.chatFile)
-            print("Pickle load successful")
-    except Exception as ex:
-        print("Pickle load failed! Exception:", ex)
-
 
 def calcGameCounts():
     allGames = {}
+    global allFilesByStreamer
     for streamer in sorted(allFilesByStreamer.keys()):
         for file in allFilesByStreamer[streamer]:
             chapters = file.infoJson['chapters']
@@ -1285,178 +1242,14 @@ def calcGameTimes():
     return allGames
 
 
-def initialize():
-    global allFilesByVideoId
-    if len(allFilesByVideoId) == 0:
-        loadFiledata(DEFAULT_DATA_FILEPATH)
-    oldCount = len(allFilesByVideoId)
-    scanFiles(log=True)
-    if len(allFilesByVideoId) != oldCount:
-        saveFiledata(DEFAULT_DATA_FILEPATH)
-
-
-def reinitialize():
-    global allFilesByVideoId
-    allFilesByVideoId = {}
-    loadFiledata(DEFAULT_DATA_FILEPATH)
-    initialize()
-
-
-def reloadAndSave():
-    global allFilesByVideoId
-    allFilesByVideoId = {}  # string:SourceFile
-    global allFilesByStreamer
-    allFilesByStreamer = {}  # string:[SourceFile]
-    global allStreamersWithVideos
-    allStreamersWithVideos = []
-    global allStreamerSessions
-    allStreamerSessions = {}
-    global allScannedFiles
-    allScannedFiles = set()
-    global filesBySourceVideoPath
-    fileBySourceVideoPath = {}
-    scanFiles(log=True)
-    saveFiledata(DEFAULT_DATA_FILEPATH)
-
-
 # %%
 # Threading time!
 # import types
 # import atexit
 
-os.makedirs(logFolder, exist_ok=True)
-if COPY_FILES:
-    assert localBasepath.strip(' /\\') != basepath.strip(' /\\')
-
-
-def scanForExistingVideos():
-    for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
-        fullpath = os.path.join(basepath, outputDirectory, "S1")
-        nameparts = file.split(' - ')
-        assert len(nameparts) == 3  # and nameparts[0] == outputDirectory
-        date = nameparts[1]
-        streamerAndExt = nameparts[2]
-        parts = streamerAndExt.split('.')
-        if any((part == 'temp' for part in parts)):
-            continue  # temp file, ignore
-        # streamer name will never have a space, so anything can be added between the streamer name and the extension and be ignored
-        streamer = parts[0].split(' ')[0]
-        print(f"Scanned streamer {streamer} and date {date} from file {file}")
-        if streamer in allStreamersWithVideos:
-            setRenderStatus(streamer, date, 'FINISHED')
-        else:
-            print(f"Streamer {streamer} not known")
-
-
-def getAllStreamingDaysByStreamer():
-    daysByStreamer = {}
-    for streamer in sorted(allFilesByStreamer.keys()):
-        days = set()
-        for file in allFilesByStreamer[streamer]:
-            chapters = file.infoJson['chapters']
-            fileStartTimestamp = file.startTimestamp
-            for chapter in chapters:
-                startTime = datetime.fromtimestamp(
-                    fileStartTimestamp+chapter['start_time'], LOCAL_TIMEZONE)
-                startDate = datetime.strftime(startTime, "%Y-%m-%d")
-                days.add(startDate)
-                # endTime = datetime.fromtimestamp(fileStartTimestamp+chapter['end_time'], LOCAL_TIMEZONE)
-                # endDate = datetime.strftime(endTime, "%Y-%m-%d")
-                # days.add(endDate)
-        daysByStreamer[streamer] = list(days)
-        daysByStreamer[streamer].sort(reverse=True)
-    return daysByStreamer
-
-# drawLabels=False, startTimeMode='mainSessionStart', endTimeMode='mainSessionEnd', logLevel=2, #max logLevel = 4
-# sessionTrimLookback=1, #sessionTrimLookahead=-1, minGapSize=0, outputCodec='libx264',
-# encodingSpeedPreset='medium', useHardwareAcceleration=0, #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale, bit 3(4)=(unsupported) encode
-# maxHwaccelFiles=0, minimumTimeInVideo=900, cutMode='chunked', useChat=True, ffmpegPath=''
-
-
-def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
-                  maxLookback: timedelta = DEFAULT_MAX_LOOKBACK,
-                  dataFilepath=DEFAULT_DATA_FILEPATH,
-                  renderConfig=RenderConfig()):
-    # drawLabels=False,
-    # startTimeMode='mainSessionStart',
-    # endTimeMode='mainSessionEnd',
-    # logLevel=0,
-    # sessionTrimLookback=1,
-    # sessionTrimLookahead=3,
-    # minimumTimeInVideo=1200,
-    # minGapSize=900)):
-    sessionLog = sessionText.addLine
-    global allFilesByVideoId
-    if len(allFilesByVideoId) == 0:
-        # loadFiledata(dataFilepath)
-        initialize()
-    scanForExistingVideos()
-    changeCount = 0
-    prevChangeCount = 0
-    while True:
-        oldFileCount = len(allFilesByVideoId)
-        scanFiles(renderConfig.logLevel > 0)
-        newFileCount = len(allFilesByVideoId)
-        if oldFileCount != newFileCount:
-            changeCount += 1
-            saveFiledata(dataFilepath)
-        latestDownloadTime = max(
-            (x.downloadTime for x in allFilesByVideoId.values()))
-        currentTime = datetime.now(timezone.utc)
-        if changeCount != prevChangeCount:
-            sessionLog(
-                f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
-        timeSinceLastDownload = currentTime - latestDownloadTime
-        if changeCount != prevChangeCount:
-            sessionLog(
-                f'Time since last download= {str(timeSinceLastDownload)}')
-        if __debug__ or timeSinceLastDownload > minimumSessionWorkerDelay:
-            streamingDays = getAllStreamingDaysByStreamer()
-            for streamer in monitorStreamers:
-                # already sorted with the newest first
-                allDays = streamingDays[streamer]
-                if changeCount != prevChangeCount:
-                    sessionLog(
-                        f'Latest streaming days for {streamer}: {allDays[:25]}')
-                for day in allDays:
-                    dt = convertToDatetime(day)
-                    if maxLookback is not None and datetime.now() - dt > maxLookback:
-                        if changeCount != prevChangeCount:
-                            sessionLog("Reached max lookback, stopping")
-                        break
-                    status = getRenderStatus(streamer, day)
-                    if changeCount != prevChangeCount:
-                        sessionLog(f'Status for {day} = {status}')
-                    if status is None:
-                        # new file, build command and add to queue
-                        outPath = getVideoOutputPath(streamer, day)
-                        command = generateTilingCommandMultiSegment(
-                            streamer, day, renderConfig, outPath)
-                        if command is None:  # command cannot be made, maybe solo stream or only one
-                            if changeCount != prevChangeCount:
-                                sessionLog(
-                                    f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
-                            continue
-                        item = RenderTask(streamer, day, renderConfig, outPath)
-                        sessionLog(
-                            f"Adding render for streamer {streamer} from {day}")
-                        (copyQueue if COPY_FILES else renderQueue).put(
-                            (DEFAULT_PRIORITY, item))
-                        setRenderStatus(
-                            streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
-                        changeCount += 1
-                        # break #
-                    elif maxLookback is None:
-                        if changeCount != prevChangeCount:
-                            sessionLog(
-                                "Reached last rendered date for streamer, stopping\n")
-                        break
-        else:
-            sessionLog("Files are too new, waiting longer...")
-        prevChangeCount = changeCount
-        # if __debug__:
-        #    break
-        ttime.sleep(60*60)  # *24)
+os.makedirs(config.logFolder, exist_ok=True)
+if config.COPY_FILES:
+    assert config.localBasepath.strip(' /\\') != config.basepath.strip(' /\\')
 
 
 # %%
@@ -1491,7 +1284,7 @@ commandArray.append(Command(startRenderThread, 'Start render thread'))
 def printActiveJobs():
     print(f"Active render job:",
           "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
-    if COPY_FILES:
+    if config.COPY_FILES:
         print(f"Active copy job:",
               "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
 
@@ -1505,7 +1298,7 @@ def printQueuedJobs():
     else:
         for queueItem in sorted(renderQueue.queue):
             print(queueItem)
-    if COPY_FILES:
+    if config.COPY_FILES:
         if len(copyQueue.queue) == 0:
             print("Copy queue: empty")
         else:
@@ -1806,8 +1599,8 @@ def inputManualJob(initialRenderConfig=None):
     item = RenderTask(mainStreamer, fileDate, renderConfig, outputPath)
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate,
-                    'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
-    (copyQueue if COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
+                    'COPY_QUEUE' if config.COPY_FILES else 'RENDER_QUEUE')
+    (copyQueue if config.COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
 
 
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
@@ -1846,18 +1639,18 @@ def editQueueItem(queueEntry):
                 continue
         elif userInput.lower() == 'o':
             print(
-                f"Enter new output path (relative to {basepath}), blank to cancel:")
-            valueInput = input(basepath)
+                f"Enter new output path (relative to {config.basepath}), blank to cancel:")
+            valueInput = input(config.basepath)
             if len(valueInput) == 0:
                 continue
             elif valueInput.lower() in quitOptions:
                 return None
-            elif not any((valueInput.endswith(ext) for ext in videoExts)):
+            elif not any((valueInput.endswith(ext) for ext in config.videoExts)):
                 print(
-                    f"Output path must be that of a video file - must end with one of: {', '.join(videoExts)}")
+                    f"Output path must be that of a video file - must end with one of: {', '.join(config.videoExts)}")
                 continue
             else:
-                outputPath = os.path.join(basepath, valueInput)
+                outputPath = os.path.join(config.basepath, valueInput)
         elif userInput.lower() == 'f':
             break
         elif userInput.lower() == 'd':
@@ -1872,7 +1665,7 @@ def editQueueItem(queueEntry):
 def editQueue():
     selectedQueue = None
     selectedQueueLock = None
-    if COPY_FILES:
+    if config.COPY_FILES:
         print("Select queue:\nR) Render queue\nC) Copy queue")
         while selectedQueue is None:
             userInput = input(" >> ")
@@ -2000,11 +1793,11 @@ class BufferedText(urwid.Text):
 
 
 btLabels = ['S', 'R']
-if COPY_FILES:
+if config.COPY_FILES:
     btLabels.insert(1, 'C')
 bufferedTexts = [BufferedText(label=label) for label in btLabels]
 
-if COPY_FILES:
+if config.COPY_FILES:
     sessionText, copyText, renderText = bufferedTexts
 else:
     sessionText, renderText = bufferedTexts
@@ -2228,7 +2021,7 @@ vbox = urwid.Pile([columns, ('pack', divider), ('pack', top)])
 
 # %%
 
-URWID = ENABLE_URWID
+URWID = config.ENABLE_URWID
 
 
 def mainStart():
@@ -2247,7 +2040,7 @@ def mainStart():
     global mainloopMessageBus
     mainloopMessageBus = mainloop.watch_pipe(messageBusReceiverV2)
     global URWID
-    if ENABLE_URWID:
+    if config.ENABLE_URWID:
         try:
             mainloop.run()
         except TypeError as ex:
@@ -2265,7 +2058,7 @@ def mainStart():
 # %%
 renderThread = threading.Thread(target=renderWorker, kwargs={'renderLog':renderText.addLine})
 renderThread.daemon = True
-if COPY_FILES:
+if config.COPY_FILES:
     copyThread = threading.Thread(target=copyWorker, kwargs={'copyLog':copyText.addLine})
     copyThread.daemon = True
 
@@ -2280,14 +2073,14 @@ if __name__ == '__main__':
     # initialize()
     if not __debug__:
         print("Deployment mode")
-        if COPY_FILES:
+        if config.COPY_FILES:
             copyThread.start()
         # renderThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig': defaultSessionRenderConfig,
-                                                                       'maxLookback': timedelta(days=DEFAULT_LOOKBACK_DAYS)})
+                                                                       'maxLookback': timedelta(days=config.DEFAULT_LOOKBACK_DAYS)})
         sessionThread.daemon = True
         sessionThread.start()
-        if ENABLE_URWID:
+        if config.ENABLE_URWID:
             mainStart()
         else:
             commandWorker()
@@ -2318,7 +2111,7 @@ def normalizeAllGames():
     print("\n\n\n---------------------------------------------------------------\n\n\n")
     knownReplacements = {}
     lowercaseGames = {}
-    for game, alias in gameAliases.items():
+    for game, alias in config.gameAliases.items():
         assert game.lower() not in lowercaseGames.keys()
         knownReplacements[game] = list(alias)
         lowercaseGames[game.lower()] = game
