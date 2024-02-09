@@ -90,8 +90,8 @@ HWACCEL_VALUES = {
     },
     'AMD': {
         # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': None,
-        'pad_filter': None,
+        'scale_filter': '',
+        'pad_filter': '',
         'upload_filter': '',
         # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
         'decode_input_options': ('-hwaccel', 'd3d11va'),
@@ -100,18 +100,26 @@ HWACCEL_VALUES = {
     },
     'Intel': {
         # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': None,
-        'pad_filter': None,
+        'scale_filter': '',
+        'pad_filter': '',
         'upload_filter': '',
         'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
         'scale_input_options': None,
         'encode_codecs': ('h264_qsv', 'hevc_qsv'),
     },
+    None: {
+        'scale_filter': '',
+        'pad_filter': '',
+        'upload_filter': '',
+        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
+        'scale_input_options': None,
+        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+    }
 }
-if HWACCEL_BRAND is not None:
-    ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
-else:
-    ACTIVE_HWACCEL_VALUES = None
+#if HWACCEL_BRAND is not None:
+ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
+#else:
+#    ACTIVE_HWACCEL_VALUES = None
 
 
 defaultRenderConfig = config.RENDER_CONFIG_DEFAULTS
