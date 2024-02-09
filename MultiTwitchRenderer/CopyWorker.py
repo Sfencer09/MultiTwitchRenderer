@@ -3,7 +3,7 @@ from functools import partial
 import queue
 import shutil
 import threading
-import time as ttime
+import time 
 import os
 
 from SharedUtils import extractInputFiles
@@ -36,7 +36,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
             if not queueEmpty:
                 print("Copy queue empty, sleeping")
                 queueEmpty = True
-            ttime.sleep(10)
+            time.sleep(10)
             continue
             # return
         queueEmpty = False
@@ -68,7 +68,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
             remotePath = file.videoFile
             localPath = remotePath.replace(config.basepath, config.localBasepath)
             if not os.path.isfile(localPath):
-                # ttime.sleep(5)
+                # time.sleep(5)
                 copyLog(f"Copying file {remotePath} to local storage")
                 # copy to temp file to avoid tripping the if condition with incomplete transfers
                 shutil.copyfile(remotePath, localPath+'.temp')

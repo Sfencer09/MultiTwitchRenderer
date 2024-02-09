@@ -1,8 +1,8 @@
 import urwid
 import os
 import threading
-import time as ttime
-START_TIME = ttime.time()
+import time 
+START_TIME = time.time()
 
 
 class BufferedText(urwid.Text):
@@ -25,7 +25,7 @@ class BufferedText(urwid.Text):
         try:
             while len(self.buffer) >= self.buffer_length:
                 del self.buffer[-1]
-            formatted_line = f'[{self.label}{ttime.time()-START_TIME}] {line}'
+            formatted_line = f'[{self.label}{time.time()-START_TIME}] {line}'
             self.buffer.insert(0, formatted_line)
             self.set_text('\n'.join(self.buffer))
             global mainloopMessageBus

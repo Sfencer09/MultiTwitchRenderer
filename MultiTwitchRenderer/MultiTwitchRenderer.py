@@ -6,10 +6,8 @@ import random
 import sys
 
 from datetime import datetime, timedelta
-from thefuzz import process as fuzzproc
 from functools import reduce, partial
 from pprint import pprint
-import time as ttime
 
 print = partial(print, flush=True)
 

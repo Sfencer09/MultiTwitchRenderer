@@ -1,6 +1,6 @@
 import urwid
 
-from . import MenuButton
+import MenuButton
 
 class ActionChoice(urwid.WidgetWrap):
     def __init__(self, caption, callback):

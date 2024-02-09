@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import os
-import time as ttime
+import time 
 
 from SharedUtils import convertToDatetime, getVideoOutputPath
 
@@ -140,4 +140,4 @@ def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
         prevChangeCount = changeCount
         if __debug__:
             break
-        ttime.sleep(60*60)  # *24)
+        time.sleep(60*60)  # *24)

@@ -3,7 +3,7 @@ from functools import partial
 import os
 from typing import List
 from thefuzz import process as fuzzproc
-import time as ttime
+import time 
 from SharedUtils import getVideoOutputPath
 
 import config
@@ -344,7 +344,7 @@ def inputManualJob(initialRenderConfig=None):
             fileDate = dates[int(userInput)-1]
         except:
             print("Invalid input!")
-            ttime.sleep(2)
+            time.sleep(2)
             fileDate = None
     currentStatus = getRenderStatus(mainStreamer, fileDate)
     print(f"Got {mainStreamer} {fileDate}, current status {currentStatus}")

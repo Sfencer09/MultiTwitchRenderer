@@ -1,6 +1,6 @@
 from functools import partial
 import shutil
-import time as ttime
+import time 
 import signal
 import queue
 import threading
@@ -49,7 +49,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
             if not queueEmpty:
                 print("Render queue empty, sleeping")
                 queueEmpty = True
-            ttime.sleep(10)
+            time.sleep(10)
             continue
         queueEmpty = False
         renderQueueLock.acquire()  # block if user is editing queue

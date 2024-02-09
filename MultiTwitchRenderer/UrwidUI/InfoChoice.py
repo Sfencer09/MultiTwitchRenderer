@@ -1,7 +1,7 @@
 from typing import Any
 import urwid
 
-from . import MenuButton
+import MenuButton
 
 
 class InfoChoice(urwid.WidgetWrap):
