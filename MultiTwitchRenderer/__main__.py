@@ -1,16 +1,22 @@
+import __init__
 from datetime import timedelta
 import threading
 import sys
 import os
-from CommandWorker import commandWorker
-from MultiTwitchRenderer import calcGameCounts
-from SessionWorker import sessionWorker
-from UrwidUI.UrwidMain import urwidUiMain
+
+print(sys.executable)
+sys.path.append(os.path.dirname(sys.executable))
+#sys.path.append("./MultiTwichRender")
 
 import config
 
+import __init__
+from UrwidUI.UrwidMain import urwidUiMain
 from RenderConfig import RenderConfig
 from RenderWorker import renderWorker, renderThread
+from CommandWorker import commandWorker
+from SharedUtils import calcGameCounts
+from SessionWorker import sessionWorker
 if config.COPY_FILES:
     from CopyWorker import copyWorker, copyThread
 

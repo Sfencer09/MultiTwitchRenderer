@@ -1,24 +1,7 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.16.0
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
 
-# %%
 from typing import List
-import urwid
 import os
 import math
-import threading
 import random
 import sys
 
@@ -30,19 +13,21 @@ import time as ttime
 
 print = partial(print, flush=True)
 
+print(sys.executable)
+sys.path.append(os.path.dirname(sys.executable))
+
 import config
+
 import scanned
 
 from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
 from RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
-from ParsedChat import convertToDatetime
 from SharedUtils import calcGameCounts, getVideoOutputPath
 
 print("Starting")
 
 
-# %%
 def calcTileWidth(numTiles):
     return int(math.sqrt(numTiles-1.0))+1
 

@@ -1,13 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
 
-excludeFiles = ['allTwitchFiles.pickle', 'allTwitchFiles.pickle.v1', 'config.py']
+datas = []
+binaries = []
+hiddenimports = []
+tmp_ret = collect_all('MultiTwitchRenderer')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+excludeFiles = ['knownFiles.pickle', 'config.py']
 
 a = Analysis(
-    ['MultiTwitchRenderer.py'],
-    pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[],
+    ['MultiTwitchRenderer/__main__.py'],
+    pathex=['/home/ubuntu/Documents/MultiTwitchRenderer/MultiTwitchRenderer'],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -25,7 +25,12 @@ if config.COPY_FILES:
 def copyWorker(copyLog=partial(print, flush=True)):
     #copyLog = copyText.addLine
     queueEmpty = False
-    from MultiTwitchRenderer import generateTilingCommandMultiSegment
+    try: # This try catch is here so I don't have to finish fixing whatever is f*cked up with my PyInstaller setup
+        from MultiTwitchRenderer.MultiTwitchRenderer import generateTilingCommandMultiSegment
+        #This will work if it is in the PyInstaller package
+    except:
+        # But if it's not, and we're just running it in VSCode, then this import will take over instead.
+        from MultiTwitchRenderer import generateTilingCommandMultiSegment
     while True:
         if copyQueue.empty():
             if not queueEmpty:

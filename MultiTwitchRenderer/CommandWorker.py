@@ -11,7 +11,7 @@ import scanned
 from RenderWorker import endRendersAndExit, renderThread, activeRenderTask, activeRenderTaskSubindex, renderQueue, renderQueueLock
 if config.COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
-from MultiTwitchRenderer import calcGameCounts
+from SharedUtils import calcGameCounts
 from RenderConfig import RenderConfig
 from RenderTask import DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, RenderTask, clearErroredStatuses, deleteRenderStatus, getRenderStatus, getRendersWithStatus, setRenderStatus
 from SessionWorker import getAllStreamingDaysByStreamer
