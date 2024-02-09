@@ -1,6 +1,7 @@
 from datetime import timedelta
 import threading
 import sys
+import os
 from CommandWorker import commandWorker
 from MultiTwitchRenderer import calcGameCounts
 from SessionWorker import sessionWorker
@@ -13,7 +14,9 @@ from RenderWorker import renderWorker, renderThread
 if config.COPY_FILES:
     from CopyWorker import copyWorker, copyThread
 
-#URWID = config.ENABLE_URWID
+os.makedirs(config.logFolder, exist_ok=True)
+if config.COPY_FILES:
+    assert config.localBasepath.strip(' /\\') != config.basepath.strip(' /\\')
 
 if config.ENABLE_URWID:
     import UrwidUI.UrwidMain
@@ -30,8 +33,6 @@ else:
         copyThread.daemon = True
 
 def mainStart():
-    
-    global URWID
     if config.ENABLE_URWID:
         try:
             urwidUiMain()
@@ -77,7 +78,7 @@ if __name__ == '__main__':
         # copyWorker()
         # print(getAllStreamingDaysByStreamer()['ChilledChaos'])
         # commandWorker()
-        mainStart()
+        #mainStart()
         allGames = calcGameCounts()
         for game in sorted(allGames.keys(), key=lambda x: (allGames[x], x)):
             print(game, allGames[game])

@@ -7,10 +7,10 @@ import time as ttime
 from SharedUtils import getVideoOutputPath
 
 import config
+import scanned
 from RenderWorker import endRendersAndExit, renderThread, activeRenderTask, activeRenderTaskSubindex, renderQueue, renderQueueLock
 if config.COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
-from SourceFile import allStreamersWithVideos
 from MultiTwitchRenderer import calcGameCounts
 from RenderConfig import RenderConfig
 from RenderTask import DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, RenderTask, clearErroredStatuses, deleteRenderStatus, getRenderStatus, getRendersWithStatus, setRenderStatus
@@ -149,7 +149,7 @@ quitOptions = ('quit', 'exit', 'q')
 def readStreamer(allStreamersList=None, inputText="Enter streamer name, or 'list' to list valid names. 'q' to exit/cancel: "):
     # print(allStreamersWithVideos)
     if allStreamersList is None:
-        allStreamersList = allStreamersWithVideos
+        allStreamersList = scanned.allStreamersWithVideos
     print("Available streamers:", allStreamersList)
     while True:
         print(inputText)

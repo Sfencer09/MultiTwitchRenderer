@@ -3,12 +3,10 @@ import threading
 import pickle
 import os
 
-#if __debug__:
-#    from .config import *
 import config
+import scanned
 
 from RenderConfig import RenderConfig
-from SourceFile import allStreamersWithVideos
 
 class RenderTask:
     def __init__(self, mainStreamer:str, fileDate:str, renderConfig: RenderConfig, outputPath:str=None):
@@ -98,7 +96,7 @@ def setRenderStatus(streamer:str, date:str, status:str):
     assert status in ("RENDERING", "RENDER_QUEUE",
                       "COPY_QUEUE", "COPYING", "FINISHED", "ERRORED")
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
-    assert streamer in allStreamersWithVideos
+    assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"
     with renderStatusLock:
         oldStatus = renderStatuses[key] if key in renderStatuses.keys() else None
@@ -111,8 +109,8 @@ def setRenderStatus(streamer:str, date:str, status:str):
 def getRenderStatus(streamer:str, date:str):
     # print('grs1', date)
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
-    # print('grs2', streamer, allStreamersWithVideos)
-    assert streamer in allStreamersWithVideos
+    # print('grs2', streamer, scanned.allStreamersWithVideos)
+    assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"
     renderStatusLock.acquire()
     status = renderStatuses[key] if key in renderStatuses.keys() else None
@@ -122,7 +120,7 @@ def getRenderStatus(streamer:str, date:str):
 
 def deleteRenderStatus(streamer:str, date:str, *, lock:bool=True):
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
-    assert streamer in allStreamersWithVideos
+    assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"
     if lock:
         renderStatusLock.acquire()

@@ -5,6 +5,7 @@ import re
 import subprocess
 import json
 from typing import Dict, List, Set
+import scanned
 
 import config
 
@@ -25,8 +26,8 @@ def getVideoInfo(videoFile: str):
 
 def scanSessionsFromFile(file: 'SourceFile'):
     streamer = file.streamer
-    if streamer not in allStreamerSessions.keys():
-        allStreamerSessions[streamer] = []
+    if streamer not in scanned.allStreamerSessions.keys():
+        scanned.allStreamerSessions[streamer] = []
     chapters = file.infoJson['chapters']
     startTime = file.startTimestamp
     for chapter in chapters:
@@ -34,7 +35,7 @@ def scanSessionsFromFile(file: 'SourceFile'):
         chapterStart = startTime + chapter['start_time']
         chapterEnd = startTime + chapter['end_time']
         session = Session(file, game, chapterStart, chapterEnd)
-        allStreamerSessions[streamer].append(session)
+        scanned.allStreamerSessions[streamer].append(session)
 
 
 def trimInfoDict(infoDict: dict):
@@ -126,7 +127,7 @@ def scanFiles(log=False):
         count = 0
         for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (config.videoExts + [config.infoExt, config.chatExt])))):
             filepath = os.path.join(streamerBasePath, filename)
-            if filepath in allScannedFiles:
+            if filepath in scanned.allScannedFiles:
                 continue
             filenameSegments = re.split(config.videoIdRegex, filename)
             # print(filenameSegments)
@@ -138,7 +139,7 @@ def scanFiles(log=False):
             if log and count % 10 == 0:
                 print('.', end='')
             file = None
-            if videoId not in allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
+            if videoId not in scanned.allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
                 if any((filename.endswith(videoExt) for videoExt in config.videoExts)):
                     file = SourceFile(streamer, videoId, videoFile=filepath)
                     # filesBySourceVideoPath[filepath] = file
@@ -147,11 +148,11 @@ def scanFiles(log=False):
                 else:
                     assert filename.endswith(config.chatExt)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
-                # allFilesByVideoId[videoId] = file
+                # scanned.allFilesByVideoId[videoId] = file
                 newFilesByVideoId[videoId] = file
                 newStreamerFiles.append(file)
             else:
-                file = allFilesByVideoId[videoId] if videoId in allFilesByVideoId.keys(
+                file = scanned.allFilesByVideoId[videoId] if videoId in scanned.allFilesByVideoId.keys(
                 ) else newFilesByVideoId[videoId]
                 if any((filename.endswith(videoExt) for videoExt in config.videoExts)):
                     file.setVideoFile(filepath)
@@ -175,12 +176,15 @@ def scanFiles(log=False):
         for i in reversed(range(len(newStreamerFiles))):
             file = newStreamerFiles[i]
             if file.isComplete():
-                allScannedFiles.add(file.videoFile)
-                allScannedFiles.add(file.infoFile)
+                if file.streamer not in scanned.allStreamersWithVideos:
+                    scanned.allFilesByStreamer[file.streamer] = []
+                    scanned.allStreamersWithVideos.append(file.streamer)
+                scanned.allScannedFiles.add(file.videoFile)
+                scanned.allScannedFiles.add(file.infoFile)
                 if file.chatFile is not None:
-                    allScannedFiles.add(file.chatFile)
-                filesBySourceVideoPath[file.videoFile] = file
-                allFilesByVideoId[file.videoId] = file
+                    scanned.allScannedFiles.add(file.chatFile)
+                scanned.filesBySourceVideoPath[file.videoFile] = file
+                scanned.allFilesByVideoId[file.videoId] = file
                 count += 1
                 scanSessionsFromFile(file)
                 newCompleteFiles.append(file)
@@ -197,39 +201,38 @@ def scanFiles(log=False):
                 # print(f"Deleting incomplete file at index {i}: {streamerFiles[i]}")
             #    if file.videoFile is not None:
             #        del filesBySourceVideoPath[file.videoFile]
-            #    del allFilesByVideoId[file.videoId]
+            #    del scanned.allFilesByVideoId[file.videoId]
             #    del streamerFiles[i]
         # if log:
         if count > 0 or log:
             print(f"Scanned streamer {streamer} with {count} files")
         if len(newStreamerFiles) > 0:
-            if streamer not in allFilesByStreamer.keys():
-                # allStreamersWithVideos.append(streamer)
-                allFilesByStreamer[streamer] = newCompleteFiles
+            if streamer not in scanned.allFilesByStreamer.keys():
+                # scanned.allStreamersWithVideos.append(streamer)
+                scanned.allFilesByStreamer[streamer] = newCompleteFiles
             else:  # streamer already had videos scanned in
-                allFilesByStreamer[streamer].extend(newCompleteFiles)
-    global allStreamersWithVideos
-    allStreamersWithVideos = list(allFilesByStreamer.keys())
+                scanned.allFilesByStreamer[streamer].extend(newCompleteFiles)
+    scanned.allStreamersWithVideos = list(scanned.allFilesByStreamer.keys())
     if log:
-        print("Step 0: ", allStreamersWithVideos, end="\n\n\n")
+        print("Step 0: ", scanned.allStreamersWithVideos, end="\n\n\n")
 
     # [OLD]       1. Build sorted (by start time) array of sessions by streamer
-    # for streamer in allStreamersWithVideos:
+    # for streamer in scanned.allStreamersWithVideos:
     #    allStreamerSessions[streamer] = []
     #    for file in allFilesByStreamer[streamer]:
     # 1. Add new sessions for each streamer
 
-    for sessionList in allStreamerSessions.values():
+    for sessionList in scanned.allStreamerSessions.values():
         sessionList.sort(key=lambda x: x.startTimestamp)
-    # for streamer in allStreamersWithVideos:
-    #    allStreamerSessions[streamer].sort(key=lambda x:x.startTimestamp)
+    # for streamer in scanned.allStreamersWithVideos:
+    #    scanned.allStreamerSessions[streamer].sort(key=lambda x:x.startTimestamp)
     if log:
         print("Step 1: ", sum((len(x)
-              for x in allStreamerSessions.values())), end="\n\n\n")
+              for x in scanned.allStreamerSessions.values())), end="\n\n\n")
 
 def saveFiledata(filepath: str):
     with open(filepath, 'wb') as file:
-        pickle.dump(allFilesByVideoId, file)
+        pickle.dump(scanned.allFilesByVideoId, file)
         print("Pickle dump successful")
 
 
@@ -238,75 +241,51 @@ def loadFiledata(filepath: str):  # suppresses all errors
         with open(filepath, 'rb') as file:
             print("Starting pickle load...")
             pickleData = pickle.load(file)
-            global allFilesByVideoId  # allFilesByVideoId = pickle.load(file)
-            allFilesByVideoId = pickleData
-            # allFilesByVideoId = {} #string:SourceFile
-            global allFilesByStreamer
-            allFilesByStreamer = {}  # string:[SourceFile]
-            global allStreamersWithVideos
-            allStreamersWithVideos = []
-            global allStreamerSessions
-            allStreamerSessions = {}
-            global allScannedFiles
-            allScannedFiles = set()
-            global filesBySourceVideoPath
-            filesBySourceVideoPath = {}
-            for file in allFilesByVideoId.values():
-                filesBySourceVideoPath[file.videoFile] = file
-            for file in sorted(allFilesByVideoId.values(), key=lambda x: x.startTimestamp):
-                if file.streamer not in allStreamersWithVideos:
-                    allFilesByStreamer[file.streamer] = []
-                    allStreamersWithVideos.append(file.streamer)
+            scanned.allFilesByVideoId = pickleData
+            scanned.allFilesByStreamer = {}  # string:[SourceFile]
+            scanned.allStreamersWithVideos = []
+            scanned.allStreamerSessions = {}
+            scanned.allScannedFiles = set()
+            scanned.filesBySourceVideoPath = {}
+            for file in scanned.allFilesByVideoId.values():
+                scanned.filesBySourceVideoPath[file.videoFile] = file
+            for file in sorted(scanned.allFilesByVideoId.values(), key=lambda x: x.startTimestamp):
+                if file.streamer not in scanned.allStreamersWithVideos:
+                    scanned.allFilesByStreamer[file.streamer] = []
+                    scanned.allStreamersWithVideos.append(file.streamer)
                 scanSessionsFromFile(file)
-                allFilesByStreamer[file.streamer].append(file)
-                allScannedFiles.add(file.videoFile)
-                allScannedFiles.add(file.infoFile)
+                scanned.allFilesByStreamer[file.streamer].append(file)
+                scanned.allScannedFiles.add(file.videoFile)
+                scanned.allScannedFiles.add(file.infoFile)
                 if file.chatFile is not None:
-                    allScannedFiles.add(file.chatFile)
+                    scanned.allScannedFiles.add(file.chatFile)
             print("Pickle load successful")
     except Exception as ex:
         print("Pickle load failed! Exception:", ex)
 
 
 def initialize():
-    global allFilesByVideoId
-    if len(allFilesByVideoId) == 0:
+    if len(scanned.allFilesByVideoId) == 0:
         loadFiledata(config.DEFAULT_DATA_FILEPATH)
-    oldCount = len(allFilesByVideoId)
+    oldCount = len(scanned.allFilesByVideoId)
     scanFiles(log=True)
-    if len(allFilesByVideoId) != oldCount:
+    if len(scanned.allFilesByVideoId) != oldCount:
         saveFiledata(config.DEFAULT_DATA_FILEPATH)
 
 
 def reinitialize():
-    global allFilesByVideoId
-    allFilesByVideoId = {}
+    scanned.allFilesByVideoId = {}
     loadFiledata(config.DEFAULT_DATA_FILEPATH)
     initialize()
 
 
 def reloadAndSave():
-    global allFilesByVideoId  # allFilesByVideoId = pickle.load(file)
-    allFilesByVideoId = {}
-    # allFilesByVideoId = {} #string:SourceFile
-    global allFilesByStreamer
-    allFilesByStreamer = {}  # string:[SourceFile]
-    global allStreamersWithVideos
-    allStreamersWithVideos = []
-    global allStreamerSessions
-    allStreamerSessions = {}
-    global allScannedFiles
-    allScannedFiles = set()
-    global filesBySourceVideoPath
-    filesBySourceVideoPath = {}
+    scanned.allFilesByVideoId = {}
+    scanned.allFilesByStreamer = {}  # string:[SourceFile]
+    scanned.allStreamersWithVideos = []
+    scanned.allStreamerSessions = {}
+    scanned.allScannedFiles = set()
+    scanned.filesBySourceVideoPath = {}
     scanFiles(log=True)
     saveFiledata(config.DEFAULT_DATA_FILEPATH)
 
-if 'allFilesByVideoId' not in globals():
-    print('Creating data structures')
-    allFilesByVideoId: Dict[str, SourceFile] = {}  # string:SourceFile
-    allFilesByStreamer: Dict[str, SourceFile] = {}  # string:[SourceFile]
-    allStreamersWithVideos: List[str] = []
-    allStreamerSessions: Dict[str, List['Session']] = {}
-    allScannedFiles: Set[str] = set()
-    filesBySourceVideoPath: Dict[str, SourceFile] = {}

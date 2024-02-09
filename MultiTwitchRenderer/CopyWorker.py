@@ -11,10 +11,10 @@ from SharedUtils import extractInputFiles
 
 
 import config
+import scanned
 
 from RenderWorker import renderQueue, renderQueueLock
 from RenderTask import RenderTask, getRenderStatus, setRenderStatus, incrFileRefCount, DEFAULT_PRIORITY
-from SourceFile import filesBySourceVideoPath
 
 if config.COPY_FILES:
     activeCopyTask: RenderTask = None
@@ -55,7 +55,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
         # print(commandArray)
         allOutputFiles = set([command[-1] for command in renderCommands])
         overallOutputFile = renderCommands[-1][-1]
-        sourceFiles = [filesBySourceVideoPath[filepath]
+        sourceFiles = [scanned.filesBySourceVideoPath[filepath]
                        for filepath in allInputFiles if filepath not in allOutputFiles]
         # self.intermediateFiles = set([command[-1] for command in commandArray[:-1] if 'ffmpeg' in command[0]])
         # renderCommand = list(task.commandArray)
@@ -76,7 +76,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
             # copy file and update SourceFile object
             file.localVideoPath = localPath
             # add copied file to filesBySourceVideoPath
-            filesBySourceVideoPath[localPath] = file
+            scanned.filesBySourceVideoPath[localPath] = file
             # replace file path in renderCommand
             for command in task.commandArray:
                 command[command.index(remotePath)] = localPath

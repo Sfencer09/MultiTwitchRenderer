@@ -30,21 +30,13 @@ import time as ttime
 
 print = partial(print, flush=True)
 
-if not sys.version_info >= (3, 7, 0):
-    raise EnvironmentError(
-        "Python version too low, relies on ordered property of dicts")
-
 import config
+import scanned
 
-from SourceFile import SourceFile, allStreamersWithVideos, allStreamerSessions
+from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
 from RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
-if config.COPY_FILES:
-    from CopyWorker import copyWorker, copyQueue, copyQueueLock, activeCopyTask
-from RenderWorker import renderWorker, renderQueue, renderQueueLock, endRendersAndExit, activeRenderTask, activeRenderTaskSubindex
-from RenderTask import RenderTask, getRendersWithStatus, setRenderStatus, getRenderStatus, deleteRenderStatus, DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, clearErroredStatuses
 from ParsedChat import convertToDatetime
-from SessionWorker import getAllStreamingDaysByStreamer, sessionWorker
 from SharedUtils import calcGameCounts, getVideoOutputPath
 
 print("Starting")
@@ -91,7 +83,7 @@ def toFfmpegTimestamp(ts: int | float):
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None) -> List[List[str]]:
     otherStreamers = [
-        name for name in allStreamersWithVideos if name != mainStreamer]
+        name for name in scanned.allStreamersWithVideos if name != mainStreamer]
     if outputFile is None:
         outputFile = getVideoOutputPath(mainStreamer, targetDate)
     #########
@@ -122,7 +114,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         print(targetDate, targetDateStartTime, targetDateEndTime)
         print('other streamers', otherStreamers)
     mainSessionsOnTargetDate = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
-        x.startTimestamp, tz=config.UTC_TIMEZONE) <= targetDateEndTime, allStreamerSessions[mainStreamer]))
+        x.startTimestamp, tz=config.UTC_TIMEZONE) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError(
             "Selected streamer does not have any sessions on the target date")
@@ -151,11 +143,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     secondarySessionsArray = []
     inputSessionsByStreamer = {}
     inputSessionsByStreamer[mainStreamer] = mainSessionsOnTargetDate
-    for streamer in allStreamerSessions.keys():
+    for streamer in scanned.allStreamerSessions.keys():
         if streamer == mainStreamer:
             continue
         inputSessionsByStreamer[streamer] = []
-        for session in allStreamerSessions[streamer]:
+        for session in scanned.allStreamerSessions[streamer]:
             if any((session.hasOverlap(x, useChat) for x in mainSessionsOnTargetDate)):
                 if excludeStreamers is not None and streamer in excludeStreamers.keys():
                     if excludeStreamers[streamer] is None or session.game in excludeStreamers[streamer]:
@@ -415,7 +407,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                             for j in range(gapStart, i):
                                 segmentStartTime = uniqueTimestampsSorted[j]
                                 segmentEndTime = uniqueTimestampsSorted[j]
-                                missingSessions = [session for session in allStreamerSessions[streamer]
+                                missingSessions = [session for session in scanned.allStreamerSessions[streamer]
                                                    if session.startTimestamp <= segmentEndTime and session.endTimestamp >= segmentStartTime]
                                 assert len(missingSessions) <= 1 or all((missingSessions[0].file == missingSessions[k].file for k in range(
                                     1, len(missingSessions)))), str(missingSessions)
@@ -1200,21 +1192,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
 
 
-os.makedirs(config.logFolder, exist_ok=True)
-if config.COPY_FILES:
-    assert config.localBasepath.strip(' /\\') != config.basepath.strip(' /\\')
-
-
-
-
-# %%
-
-# Function to exit the program
-
-
-
-# %%
-
 def normalizeAllGames():
     gameCounts = calcGameCounts()
     pprint(gameCounts)
@@ -1328,12 +1305,8 @@ def normalizeAllGames():
 # normalizeAllGames()
 
 
-# %%
-
 def normalizeAllGamesV2():
     gameCounts = calcGameCounts()
     pprint(gameCounts)
     print("\n\n\n---------------------------------------------------------------\n\n\n")
     replacements = {}
-
-# %%

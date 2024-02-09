@@ -3,6 +3,7 @@ import os
 from typing import List
 
 import config
+import scanned
 
 def convertToDatetime(timestamp: int | float | str | datetime):
     if isinstance(timestamp, int) or isinstance(timestamp, float):
@@ -44,9 +45,9 @@ def getVideoOutputPath(streamer, date):
 
 def calcGameCounts():
     allGames = {}
-    global allFilesByStreamer
-    for streamer in sorted(allFilesByStreamer.keys()):
-        for file in allFilesByStreamer[streamer]:
+    #global allFilesByStreamer
+    for streamer in sorted(scanned.allFilesByStreamer.keys()):
+        for file in scanned.allFilesByStreamer[streamer]:
             chapters = file.infoJson['chapters']
             for chapter in chapters:
                 game = chapter['title']
@@ -59,8 +60,8 @@ def calcGameCounts():
 
 def calcGameTimes():
     allGames = {}
-    for streamer in sorted(allFilesByStreamer.keys()):
-        for file in allFilesByStreamer[streamer]:
+    for streamer in sorted(scanned.allFilesByStreamer.keys()):
+        for file in scanned.allFilesByStreamer[streamer]:
             chapters = file.infoJson['chapters']
             for chapter in chapters:
                 game = chapter['title']

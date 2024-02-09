@@ -7,8 +7,9 @@ from SharedUtils import convertToDatetime, getVideoOutputPath
 
 
 import config
+import scanned
 
-from SourceFile import allStreamersWithVideos, initialize, saveFiledata, scanFiles, allFilesByStreamer, allFilesByVideoId
+from SourceFile import initialize, saveFiledata, scanFiles
 from RenderTask import DEFAULT_PRIORITY, RenderTask, setRenderStatus, getRenderStatus
 from RenderConfig import RenderConfig
 from RenderWorker import renderQueue
@@ -28,7 +29,7 @@ def scanForExistingVideos() -> None:
         # streamer name will never have a space, so anything can be added between the streamer name and the extension and be ignored
         streamer = parts[0].split(' ')[0]
         print(f"Scanned streamer {streamer} and date {date} from file {file}")
-        if streamer in allStreamersWithVideos:
+        if streamer in scanned.allStreamersWithVideos:
             setRenderStatus(streamer, date, 'FINISHED')
         else:
             print(f"Streamer {streamer} not known")
@@ -36,9 +37,9 @@ def scanForExistingVideos() -> None:
 
 def getAllStreamingDaysByStreamer():
     daysByStreamer = {}
-    for streamer in sorted(allFilesByStreamer.keys()):
+    for streamer in sorted(scanned.allFilesByStreamer.keys()):
         days = set()
-        for file in allFilesByStreamer[streamer]:
+        for file in scanned.allFilesByStreamer[streamer]:
             chapters = file.infoJson['chapters']
             fileStartTimestamp = file.startTimestamp
             for chapter in chapters:
@@ -60,23 +61,26 @@ def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
                   renderConfig=RenderConfig(),
                   sessionLog = partial(print, flush=True)):
     #sessionLog = sessionText.addLine
-    #global allFilesByVideoId
     from MultiTwitchRenderer import generateTilingCommandMultiSegment
-    if len(allFilesByVideoId) == 0:
+    #allStreamersWithVideos = SourceFile.allStreamersWithVideos
+    #global allFilesByStreamer
+    #allFilesByStreamer = SourceFile.allFilesByStreamer
+    
+    if len(scanned.allFilesByVideoId) == 0:
         # loadFiledata(dataFilepath)
         initialize()
     scanForExistingVideos()
     changeCount = 0
     prevChangeCount = 0
     while True:
-        oldFileCount = len(allFilesByVideoId)
+        oldFileCount = len(scanned.allFilesByVideoId)
         scanFiles(renderConfig.logLevel > 0)
-        newFileCount = len(allFilesByVideoId)
+        newFileCount = len(scanned.allFilesByVideoId)
         if oldFileCount != newFileCount:
             changeCount += 1
             saveFiledata(dataFilepath)
         latestDownloadTime = max(
-            (x.downloadTime for x in allFilesByVideoId.values()))
+            (x.downloadTime for x in scanned.allFilesByVideoId.values()))
         currentTime = datetime.now(timezone.utc)
         if changeCount != prevChangeCount:
             sessionLog(
@@ -129,6 +133,6 @@ def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
         else:
             sessionLog("Files are too new, waiting longer...")
         prevChangeCount = changeCount
-        # if __debug__:
-        #    break
+        if __debug__:
+            break
         ttime.sleep(60*60)  # *24)
