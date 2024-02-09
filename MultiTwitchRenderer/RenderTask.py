@@ -1,12 +1,14 @@
 import re
 import threading
 import pickle
+import os
 
-if __debug__:
-    from .config import *
+#if __debug__:
+#    from .config import *
+import config
 
-from .RenderConfig import RenderConfig
-from .SourceFile import allStreamersWithVideos
+from RenderConfig import RenderConfig
+from SourceFile import allStreamersWithVideos
 
 class RenderTask:
     def __init__(self, mainStreamer:str, fileDate:str, renderConfig: RenderConfig, outputPath:str=None):
@@ -42,8 +44,8 @@ class RenderTask:
 
 
 renderStatuses = {}
-if os.path.isfile(statusFilePath):
-    with open(statusFilePath, 'rb') as statusFile:
+if os.path.isfile(config.statusFilePath):
+    with open(config.statusFilePath, 'rb') as statusFile:
         renderStatuses = pickle.load(statusFile)
         delKeys = []
         for key, value in renderStatuses.items():
@@ -61,11 +63,11 @@ MANUAL_PRIORITY = 500
 
 def saveRenderStatuses():
     with renderStatusLock:
-        with open(statusFilePath, 'wb') as statusFile:
+        with open(config.statusFilePath, 'wb') as statusFile:
             pickle.dump(renderStatuses, statusFile)
 
-def incrFileRefCount(filename):
-    assert filename.startswith(localBasepath)
+def incrFileRefCount(filename:str):
+    assert filename.startswith(config.localBasepath)
     localFileRefCountLock.acquire()
     ret = 0
     if filename not in localFileReferenceCounts.keys():
@@ -78,8 +80,8 @@ def incrFileRefCount(filename):
     return ret
 
 
-def decrFileRefCount(filename):
-    assert filename.startswith(localBasepath)
+def decrFileRefCount(filename:str):
+    assert filename.startswith(config.localBasepath)
     localFileRefCountLock.acquire()
     ret = 0
     if filename not in localFileReferenceCounts.keys():
@@ -92,7 +94,7 @@ def decrFileRefCount(filename):
     return ret
 
 
-def setRenderStatus(streamer, date, status):
+def setRenderStatus(streamer:str, date:str, status:str):
     assert status in ("RENDERING", "RENDER_QUEUE",
                       "COPY_QUEUE", "COPYING", "FINISHED", "ERRORED")
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
@@ -106,7 +108,7 @@ def setRenderStatus(streamer, date, status):
     return oldStatus
 
 
-def getRenderStatus(streamer, date):
+def getRenderStatus(streamer:str, date:str):
     # print('grs1', date)
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
     # print('grs2', streamer, allStreamersWithVideos)
@@ -118,7 +120,7 @@ def getRenderStatus(streamer, date):
     return status
 
 
-def deleteRenderStatus(streamer, date, *, lock=True):
+def deleteRenderStatus(streamer:str, date:str, *, lock:bool=True):
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
     assert streamer in allStreamersWithVideos
     key = f"{streamer}|{date}"

@@ -8,18 +8,8 @@ from typing import Dict, List, Set
 
 import config
 
-from .Session import Session, scanSessionsFromFile
-from .ParsedChat import ParsedChat, convertToDatetime
-from .SourceFile import SourceFile
-
-if 'allFilesByVideoId' not in globals():
-    print('Creating data structures')
-    allFilesByVideoId: Dict[str, SourceFile] = {}  # string:SourceFile
-    allFilesByStreamer: Dict[str, SourceFile] = {}  # string:[SourceFile]
-    allStreamersWithVideos: List[str] = []
-    allStreamerSessions: Dict[str, List[Session]] = {}
-    allScannedFiles: Set[str] = set()
-    filesBySourceVideoPath: Dict[str, SourceFile] = {}
+from Session import Session
+from ParsedChat import ParsedChat, convertToDatetime
 
 def getVideoInfo(videoFile: str):
     probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
@@ -31,6 +21,20 @@ def getVideoInfo(videoFile: str):
         return None
     info = json.loads(probeResult.stdout.decode())
     return info
+
+
+def scanSessionsFromFile(file: 'SourceFile'):
+    streamer = file.streamer
+    if streamer not in allStreamerSessions.keys():
+        allStreamerSessions[streamer] = []
+    chapters = file.infoJson['chapters']
+    startTime = file.startTimestamp
+    for chapter in chapters:
+        game = chapter['title']
+        chapterStart = startTime + chapter['start_time']
+        chapterEnd = startTime + chapter['end_time']
+        session = Session(file, game, chapterStart, chapterEnd)
+        allStreamerSessions[streamer].append(session)
 
 
 def trimInfoDict(infoDict: dict):
@@ -297,3 +301,12 @@ def reloadAndSave():
     filesBySourceVideoPath = {}
     scanFiles(log=True)
     saveFiledata(config.DEFAULT_DATA_FILEPATH)
+
+if 'allFilesByVideoId' not in globals():
+    print('Creating data structures')
+    allFilesByVideoId: Dict[str, SourceFile] = {}  # string:SourceFile
+    allFilesByStreamer: Dict[str, SourceFile] = {}  # string:[SourceFile]
+    allStreamersWithVideos: List[str] = []
+    allStreamerSessions: Dict[str, List['Session']] = {}
+    allScannedFiles: Set[str] = set()
+    filesBySourceVideoPath: Dict[str, SourceFile] = {}

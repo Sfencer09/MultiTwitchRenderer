@@ -1,23 +1,9 @@
 
-from .SourceFile import SourceFile, allStreamerSessions
-
-
-def scanSessionsFromFile(file: SourceFile):
-    streamer = file.streamer
-    if streamer not in allStreamerSessions.keys():
-        allStreamerSessions[streamer] = []
-    chapters = file.infoJson['chapters']
-    startTime = file.startTimestamp
-    for chapter in chapters:
-        game = chapter['title']
-        chapterStart = startTime + chapter['start_time']
-        chapterEnd = startTime + chapter['end_time']
-        session = Session(file, game, chapterStart, chapterEnd)
-        allStreamerSessions[streamer].append(session)
+#from SourceFile import SourceFile
 
 
 class Session:
-    def __init__(self, file: SourceFile, game: str, startTimestamp: int | float, endTimestamp: int | float):
+    def __init__(self, file: 'SourceFile', game: str, startTimestamp: int | float, endTimestamp: int | float):
         self.startTimestamp = startTimestamp
         self.endTimestamp = endTimestamp
         self.file = file

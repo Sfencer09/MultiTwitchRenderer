@@ -4,26 +4,28 @@ import queue
 import shutil
 import threading
 import time as ttime
+import os
 
 from SharedUtils import extractInputFiles
 
 
-if __debug__:
-    from .config import *
 
-from .RenderWorker import renderQueue, renderQueueLock
-from .RenderTask import RenderTask, getRenderStatus, setRenderStatus, incrFileRefCount, DEFAULT_PRIORITY
-from .MultiTwitchRenderer import generateTilingCommandMultiSegment
-from .SourceFile import filesBySourceVideoPath
+import config
 
-if COPY_FILES:
-    activeCopyTask = None
+from RenderWorker import renderQueue, renderQueueLock
+from RenderTask import RenderTask, getRenderStatus, setRenderStatus, incrFileRefCount, DEFAULT_PRIORITY
+from SourceFile import filesBySourceVideoPath
+
+if config.COPY_FILES:
+    activeCopyTask: RenderTask = None
+    copyThread: threading.Thread = None
     copyQueue = queue.PriorityQueue()
-    copyQueueLock = threading.Lock()
+    copyQueueLock = threading.RLock()
 
 def copyWorker(copyLog=partial(print, flush=True)):
     #copyLog = copyText.addLine
     queueEmpty = False
+    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     while True:
         if copyQueue.empty():
             if not queueEmpty:
@@ -59,7 +61,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
         # renderCommand = list(task.commandArray)
         for file in sourceFiles:
             remotePath = file.videoFile
-            localPath = remotePath.replace(basepath, localBasepath)
+            localPath = remotePath.replace(config.basepath, config.localBasepath)
             if not os.path.isfile(localPath):
                 # ttime.sleep(5)
                 copyLog(f"Copying file {remotePath} to local storage")

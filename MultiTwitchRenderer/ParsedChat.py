@@ -1,9 +1,9 @@
 from typing import List
 from SharedUtils import convertToDatetime
-from .SourceFile import SourceFile
+#from SourceFile import SourceFile
 import json
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from fuzzysearch import find_near_matches
 
 import config
@@ -26,7 +26,7 @@ def parsePlayersFromGroupMessage(message: str):
     return players
 
 class ParsedChat:
-    def __init__(self, parentFile: SourceFile, chatFile: str):
+    def __init__(self, parentFile: 'SourceFile', chatFile: str):
         self.parentFile = parentFile
         with open(chatFile) as chatFileContents:
             chatJson = json.load(chatFileContents)

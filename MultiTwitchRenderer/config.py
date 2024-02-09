@@ -78,12 +78,6 @@ characterReplacements = {'?':'？', '/':'', '\\':''}
 
 threadCount = os.cpu_count()
 
-defaultSetPTS = "PTS-STARTPTS"
-videoSetPTS = "N/FRAME_RATE/TB"
-audioSetPTS = "N/SR/TB"
-apts = defaultSetPTS
-vpts = defaultSetPTS
-
 #videoExt = '.mp4'
 videoExts = ['.mp4', '.mkv']
 infoExt = '.info.json'

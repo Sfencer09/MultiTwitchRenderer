@@ -40,3 +40,34 @@ def extractInputFiles(ffmpegCommand: List[str]):
 
 def getVideoOutputPath(streamer, date):
     return os.path.join(config.basepath, config.outputDirectory, "S1", f"{config.outputDirectory} - {date} - {streamer}.mkv")
+
+
+def calcGameCounts():
+    allGames = {}
+    global allFilesByStreamer
+    for streamer in sorted(allFilesByStreamer.keys()):
+        for file in allFilesByStreamer[streamer]:
+            chapters = file.infoJson['chapters']
+            for chapter in chapters:
+                game = chapter['title']
+                if game not in allGames.keys():
+                    allGames[game] = 1
+                else:
+                    allGames[game] += 1
+    return allGames
+
+
+def calcGameTimes():
+    allGames = {}
+    for streamer in sorted(allFilesByStreamer.keys()):
+        for file in allFilesByStreamer[streamer]:
+            chapters = file.infoJson['chapters']
+            for chapter in chapters:
+                game = chapter['title']
+                length = chapter['end_time'] - chapter['start_time']
+                if game not in allGames.keys():
+                    allGames[game] = length
+                else:
+                    allGames[game] += length
+    return allGames
+

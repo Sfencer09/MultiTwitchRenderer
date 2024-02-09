@@ -2,18 +2,18 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 import os
 import time as ttime
-from .MultiTwitchRenderer import generateTilingCommandMultiSegment
 
 from SharedUtils import convertToDatetime, getVideoOutputPath
 
 
 import config
 
-from .SourceFile import allStreamersWithVideos, initialize, saveFiledata, scanFiles, allFilesByStreamer, allFilesByVideoId
-from .RenderTask import DEFAULT_PRIORITY, RenderTask, setRenderStatus, getRenderStatus
-from .RenderConfig import RenderConfig
-from .RenderWorker import renderQueue
-from .CopyWorker import copyQueue
+from SourceFile import allStreamersWithVideos, initialize, saveFiledata, scanFiles, allFilesByStreamer, allFilesByVideoId
+from RenderTask import DEFAULT_PRIORITY, RenderTask, setRenderStatus, getRenderStatus
+from RenderConfig import RenderConfig
+from RenderWorker import renderQueue
+if config.COPY_FILES:
+    from CopyWorker import copyQueue
 
 def scanForExistingVideos() -> None:
     for file in (f for f in os.listdir(os.path.join(config.basepath, config.outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
@@ -61,6 +61,7 @@ def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
                   sessionLog = partial(print, flush=True)):
     #sessionLog = sessionText.addLine
     #global allFilesByVideoId
+    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     if len(allFilesByVideoId) == 0:
         # loadFiledata(dataFilepath)
         initialize()
