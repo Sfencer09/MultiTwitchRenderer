@@ -1,11 +1,12 @@
-from typing import Any
+from typing import Any, Callable
 import urwid
 
 from . import MenuButton
+from UrwidUI.HorizontalBoxes import openTopBox
 
 
 class InfoChoice(urwid.WidgetWrap):
-    def __init__(self, caption: str, callback: Any, text: Any):
+    def __init__(self, caption: str, callback: Callable, text: Any):
         super().__init__(
             MenuButton(caption, self.item_chosen))
         self.caption = caption
@@ -25,5 +26,6 @@ class InfoChoice(urwid.WidgetWrap):
         response = urwid.Text(message+'\n')
         done = MenuButton('Ok', self.callback)
         response_box = urwid.Pile([response, done])
-        top.open_box(urwid.AttrMap(response_box, 'options'))
+        openTopBox(urwid.AttrMap(response_box, 'options'))
+        
 

@@ -1,9 +1,13 @@
+from typing import Callable
 import urwid
+
+from MultiTwitchRenderer.UrwidUI.HorizontalBoxes import closeTopBox, openTopBox
+from MultiTwitchRenderer.UrwidUI.UrwidUtils import expandChoices
 
 from . import MenuButton, ActionChoice
 
 class PagedMenu(urwid.WidgetWrap):
-    def __init__(self, caption, choices, pageHeight=10, pageWidth=3, *args, **kwargs):
+    def __init__(self, caption: str, choices: Callable|list|tuple, pageHeight=10, pageWidth=3, *choices_args, **choices_kwargs):
         super().__init__(MenuButton(
             [caption, "\N{HORIZONTAL ELLIPSIS}"], self.open_menu))
         self.menu = None
@@ -16,14 +20,11 @@ class PagedMenu(urwid.WidgetWrap):
         self.pageWidth = pageWidth
         self.pageHeight = pageHeight
         self.pageSize = pageWidth * pageHeight
-        self.args = args
-        self.kwargs = kwargs
+        self.choices_args = choices_args
+        self.choices_kwargs = choices_kwargs
 
     def _get_current_page(self):
-        if callable(self.choices):
-            options = self.choices(*self.args, **self.kwargs)
-        else:
-            options = self.choices
+        options = expandChoices(self.choices, *self.choices_args, **self.choices_kwargs)
         page = options[self.pageNum *
                        self.pageSize: (self.pageNum+1)*self.pageSize]
         return page
@@ -36,16 +37,18 @@ class PagedMenu(urwid.WidgetWrap):
             urwid.Divider()] + currentPage + [ActionChoice('Close menu', closeTopBox),
                                               urwid.Divider()]))
         self.menu = urwid.AttrMap(self.listbox, 'options')
-        top.open_box(self.menu)
+        openTopBox(self.menu)
 
     def next_page(self):
         self.pageNum += 1
-        top.close_box()
+        #top.close_box()
+        closeTopBox()
         self.open_menu(None)
         # top.open_box(self.menu)
 
     def prev_page(self):
         self.pageNum -= 1
-        top.close_box()
+        #top.close_box()
+        closeTopBox()
         self.open_menu(None)
         # top.open_box(self.menu)

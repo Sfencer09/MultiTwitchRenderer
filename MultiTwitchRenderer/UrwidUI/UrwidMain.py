@@ -47,7 +47,7 @@ def urwidUiMain():
 
     divider = urwid.Divider('=')
 
-    menu_top = SubMenu('Main Menu', [
+    menu_top:SubMenu = SubMenu('Main Menu', [
         # SubMenu('Applications', [
         #    SubMenu('Accessories', [
         #        InfoChoice('Text Editor', closeTopBox, 'Text Editor'),
@@ -88,9 +88,9 @@ def urwidUiMain():
         ('selected', 'white', 'dark blue')]
     
 
-    HorizontalBoxes.top_menu.open_box(menu_top.menu)
+    HorizontalBoxes.openTopBox(menu_top.menu)
 
-    vbox = urwid.Pile([columns, ('pack', divider), ('pack', HorizontalBoxes.top_menu)])
+    vbox = urwid.Pile([columns, ('pack', divider), ('pack', HorizontalBoxes.getTopMenu())])
 
     # urwid.MainLoop(urwid.Filler(top, 'middle', 10), palette).run()
 

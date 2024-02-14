@@ -6,6 +6,12 @@ focus_map = {
     'line': 'focus line'}
 
 
+def closeTopBox(button) -> None:
+    top_menu.close_box()
+
+def openTopBox(box) -> None:
+    top_menu.open_box(box)
+
 class HorizontalBoxes(urwid.Columns):
     def __init__(self):
         super().__init__([], dividechars=1)
@@ -22,7 +28,7 @@ class HorizontalBoxes(urwid.Columns):
             del self.contents[self.focus_position:]
         self.focus_position = len(self.contents) - 1
 
-def closeTopBox(button):
-    top_menu.close_box()
+def getTopMenu() -> HorizontalBoxes:
+    return top_menu
 
 top_menu = HorizontalBoxes()
