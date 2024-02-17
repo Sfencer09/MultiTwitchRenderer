@@ -22,6 +22,7 @@ from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
 from RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
 from SharedUtils import calcGameCounts, getVideoOutputPath
+from Session import Session
 
 print("Starting")
 
@@ -63,6 +64,24 @@ def generateLayout(numTiles):
 def toFfmpegTimestamp(ts: int | float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
+def printSegmentMatrix(segmentSessionMatrix: List[List[None|List[Session]]], uniqueTimestampsSorted: List[int|float], allInputStreamers: List[str], showGameChanges=True):
+    print("\n\n")
+    for i in range(len(segmentSessionMatrix)):
+        if showGameChanges and i > 0:
+            prevRowGames = [
+                session.game for session in segmentSessionMatrix[i-1][0]]
+            currRowGames = [
+                session.game for session in segmentSessionMatrix[i][0]]
+            # if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
+            if any((game not in currRowGames for game in prevRowGames)):
+                print('-'*(2*len(allInputStreamers)+1))
+        print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
+                convertToDatetime(
+                    uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
+                convertToDatetime(
+                    uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]),
+                str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
+                str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6], sep=',')
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None) -> List[List[str]]:
     otherStreamers = [
@@ -254,26 +273,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     if logLevel >= 1:
         print("\n\nStep 9:")
 
-    def printSegmentMatrix(showGameChanges=True):
-        if logLevel >= 1:
-            print("\n\n")
-            for i in range(len(segmentSessionMatrix)):
-                if showGameChanges and i > 0:
-                    prevRowGames = [
-                        session.game for session in segmentSessionMatrix[i-1][0]]
-                    currRowGames = [
-                        session.game for session in segmentSessionMatrix[i][0]]
-                    # if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
-                    if any((game not in currRowGames for game in prevRowGames)):
-                        print('-'*(2*len(allInputStreamers)+1))
-                print(f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}]", i,
-                      convertToDatetime(
-                          uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i]),
-                      convertToDatetime(
-                          uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0]),
-                      str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
-                      str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6], sep=',')
-    printSegmentMatrix(showGameChanges=True)
+    if logLevel >= 1:
+        printSegmentMatrix(segmentSessionMatrix, uniqueTimestampsSorted, allInputStreamers, showGameChanges=True)
     # for i in range(len(segmentFileMatrix)):
     #    if segmentSessionMatrix[i][0] is None:
     #        tempMainGames = set()
@@ -283,173 +284,180 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #    print(tempMainGames, tempGames, str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6],
     #          str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
 
-    excludeTrimStreamerIndices = []
-    mainStreamerGames = set(
-        (session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
-    for streamerIndex in range(1, len(allInputStreamers)):
-        if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
-            # can have one brother in the session but not be the same as the one streaming
-            if allInputStreamers[streamerIndex] != 'BonzaiBroz':
-                excludeTrimStreamerIndices.append(streamerIndex)
-            # If the trimming process would remove /all/ segments for the given streamer, exclude the streamer from
-            # trimming because they probably just have a different game name listed
-    if logLevel >= 2:
-        print('Excluding from trimming:', excludeTrimStreamerIndices, [
-              allInputStreamers[index] for index in excludeTrimStreamerIndices])
-
-    if logLevel >= 1:
-        print("\n\nStep 9.1:")
-    if sessionTrimLookback >= 0:
-        # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
-        for i in range(0, len(segmentFileMatrix)):
-            # print(len(segmentSessionMatrix[i-sessionTrimLookback:]))
-            includeRowStart = max(0, i-sessionTrimLookback)
-            includeRowEnd = min(len(segmentFileMatrix),
-                                i+sessionTrimLookahead+1)
-            if logLevel >= 2:
-                print(includeRowStart, sessionTrimLookback, i)
-                print(includeRowEnd, sessionTrimLookahead, i)
-            rowGames = set(
-                (session.game for session in segmentSessionMatrix[i][0] if segmentSessionMatrix[i][0] is not None))
-            if logLevel >= 2:
-                print('rowGames', rowGames)
-            # print(segmentSessionMatrix[i-sessionTrimLookback])
-            acceptedGames = set((session.game for row in segmentSessionMatrix[includeRowStart:includeRowEnd]
-                                if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
-            if logLevel >= 2:
-                print('acceptedGames', acceptedGames)  # , end=' ')
-            # main streamer has no sessions for segment, extend from previous segment with sessions
-            if len(acceptedGames) == 0 and (startTimeMode == 'allOverlapStart' or endTimeMode == 'allOverlapEnd'):
-                # expandedIncludeStart =
-                raise Exception("Needs updating")
-                if endTimeMode == 'allOverlapEnd':
-                    for j in range(i-(sessionTrimLookback+1), 0, -1):
-                        if logLevel >= 2:
-                            print(f"j={j}")
-                        if segmentSessionMatrix[j][0] is None:
-                            continue
-                        tempAcceptedGames = set(
-                            (session.game for session in segmentSessionMatrix[j][0] if session.game not in nongroupGames))
-                        if len(tempAcceptedGames) > 0:
-                            acceptedGames = tempAcceptedGames
-                            break
-            if logLevel >= 2:
-                print(acceptedGames, reduce(set.union,
-                      (set((session.game for session in sessionList))
-                       for sessionList in segmentSessionMatrix[i] if sessionList is not None),
-                      set()))
-            for streamerIndex in range(1, len(allInputStreamers)):
-                if streamerIndex in excludeTrimStreamerIndices:
-                    continue
-                sessionList = segmentSessionMatrix[i][streamerIndex]
-                if sessionList is None:
-                    continue
-                if not any((session.game in acceptedGames for session in sessionList)):
-                    segmentSessionMatrix[i][streamerIndex] = None
-                    segmentFileMatrix[i][streamerIndex] = None
-        if logLevel >= 2:
-            printSegmentMatrix(showGameChanges=True)
-    elif sessionTrimLookbackSeconds > 0 or sessionTrimLookaheadSeconds > 0:
-        # trim by seconds
-        raise Exception("Not implemented yet")
-
-    def splitRow(rowNum, timestamp):
-        assert uniqueTimestampsSorted[rowNum] < timestamp < uniqueTimestampsSorted[rowNum+1]
-        fileRowCopy = segmentFileMatrix[rowNum].copy()
-        segmentFileMatrix.insert(rowNum, fileRowCopy)
-        segmentRowCopy = [(None if sessions is None else sessions.copy())
-                          for sessions in segmentSessionMatrix[rowNum]]
-        segmentSessionMatrix.insert(rowNum, segmentRowCopy)
-        uniqueTimestampsSorted.insert(rowNum+1, timestamp)
-        numSegments += 1
-
-    # TODO: fill in short gaps (<5 min?) in secondary streamers if possible
-    if minGapSize > 0:
-        if logLevel >= 1:
-            print("\n\nStep 9.2:")
+    def trimSessionsV1():
+        excludeTrimStreamerIndices = []
+        mainStreamerGames = set(
+            (session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
         for streamerIndex in range(1, len(allInputStreamers)):
-            streamer = allInputStreamers[streamerIndex]
-            gapLength = 0
-            gapStart = -1
-            lastState = (segmentFileMatrix[0][streamerIndex] is not None)
-            for i in range(1, len(segmentFileMatrix)):
-                curState = (segmentFileMatrix[i][streamerIndex] is not None)
-                segmentDuration = uniqueTimestampsSorted[i +
-                                                         1] - uniqueTimestampsSorted[i]
-                if curState != lastState:
-                    if curState:
-                        # gap ending
-                        if gapLength < minGapSize and gapStart != -1:
-                            # assert gapStart > 0, f"i={i}, gapStart={str(gapStart)}, curState={curState}"
-                            gapStartFile = segmentFileMatrix[gapStart -
-                                                             1][streamerIndex]
-                            gapEndFile = segmentFileMatrix[i][streamerIndex]
-                            # if gapStartFile is gapEndFile:
-                            # assert gapEndTime - gapStartTime == gapLength #TODO: replace gapLength with the subtraction everywhere
-                            # gap starts and ends with the same file, can fill in gap easily
-                            for j in range(gapStart, i):
-                                segmentStartTime = uniqueTimestampsSorted[j]
-                                segmentEndTime = uniqueTimestampsSorted[j]
-                                missingSessions = [session for session in scanned.allStreamerSessions[streamer]
-                                                   if session.startTimestamp <= segmentEndTime and session.endTimestamp >= segmentStartTime]
-                                assert len(missingSessions) <= 1 or all((missingSessions[0].file == missingSessions[k].file for k in range(
-                                    1, len(missingSessions)))), str(missingSessions)
-                                if len(missingSessions) >= 1:
-                                    segmentSessionMatrix[j][streamerIndex] = missingSessions
-                                    segmentFileMatrix[j][streamerIndex] = missingSessions[0].file
-                                else:
-                                    assert len(
-                                        missingSessions) == 0 and gapStartFile is not gapEndFile
-                        gapStart = -1
-                        gapLength = 0
-                    else:
-                        # gap starting
-                        gapStart = i
-                        gapLenth = segmentDuration
-                if not curState:
-                    gapLength += segmentDuration
-                lastState = curState
+            if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
+                # can have one brother in the session but not be the same as the one streaming
+                if allInputStreamers[streamerIndex] != 'BonzaiBroz':
+                    excludeTrimStreamerIndices.append(streamerIndex)
+                # If the trimming process would remove /all/ segments for the given streamer, exclude the streamer from
+                # trimming because they probably just have a different game name listed
+        if logLevel >= 2:
+            print('Excluding from trimming:', excludeTrimStreamerIndices, [
+                allInputStreamers[index] for index in excludeTrimStreamerIndices])
 
-    if logLevel >= 2:
-        printSegmentMatrix()
-
-    # 10. Remove streamers who have less than a minimum amount of time in the video
-    if logLevel >= 1:
-        print("\n\nStep 10:")
-        print(allInputStreamers)
-        print(allInputStreamersSortKey)
-    for streamerIndex in range(len(allInputStreamers)-1, 0, -1):
-        streamer = allInputStreamers[streamerIndex]
-        streamerTotalTime = 0
-        for i in range(len(segmentSessionMatrix)):
-            if segmentSessionMatrix[i][streamerIndex] is not None:
-                streamerTotalTime += uniqueTimestampsSorted[i+1] - \
-                    uniqueTimestampsSorted[i]
         if logLevel >= 1:
-            print(streamerIndex, streamer, streamerTotalTime)
-        if streamerTotalTime < minimumTimeInVideo:
+            print("\n\nStep 9.1:")
+        if sessionTrimLookback >= 0:
+            # Remove trailing footage from secondary sessions, for instance the main streamer changes games while part of the group stays on the previous game
+            for i in range(0, len(segmentFileMatrix)):
+                # print(len(segmentSessionMatrix[i-sessionTrimLookback:]))
+                includeRowStart = max(0, i-sessionTrimLookback)
+                includeRowEnd = min(len(segmentFileMatrix),
+                                    i+sessionTrimLookahead+1)
+                if logLevel >= 2:
+                    print(includeRowStart, sessionTrimLookback, i)
+                    print(includeRowEnd, sessionTrimLookahead, i)
+                rowGames = set(
+                    (session.game for session in segmentSessionMatrix[i][0] if segmentSessionMatrix[i][0] is not None))
+                if logLevel >= 2:
+                    print('rowGames', rowGames)
+                # print(segmentSessionMatrix[i-sessionTrimLookback])
+                acceptedGames = set((session.game for row in segmentSessionMatrix[includeRowStart:includeRowEnd]
+                                    if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
+                if logLevel >= 2:
+                    print('acceptedGames', acceptedGames)  # , end=' ')
+                # main streamer has no sessions for segment, extend from previous segment with sessions
+                if len(acceptedGames) == 0 and (startTimeMode == 'allOverlapStart' or endTimeMode == 'allOverlapEnd'):
+                    # expandedIncludeStart =
+                    raise Exception("Needs updating")
+                    if endTimeMode == 'allOverlapEnd':
+                        for j in range(i-(sessionTrimLookback+1), 0, -1):
+                            if logLevel >= 2:
+                                print(f"j={j}")
+                            if segmentSessionMatrix[j][0] is None:
+                                continue
+                            tempAcceptedGames = set(
+                                (session.game for session in segmentSessionMatrix[j][0] if session.game not in nongroupGames))
+                            if len(tempAcceptedGames) > 0:
+                                acceptedGames = tempAcceptedGames
+                                break
+                if logLevel >= 2:
+                    print(acceptedGames, reduce(set.union,
+                        (set((session.game for session in sessionList))
+                        for sessionList in segmentSessionMatrix[i] if sessionList is not None),
+                        set()))
+                for streamerIndex in range(1, len(allInputStreamers)):
+                    if streamerIndex in excludeTrimStreamerIndices:
+                        continue
+                    sessionList = segmentSessionMatrix[i][streamerIndex]
+                    if sessionList is None:
+                        continue
+                    if not any((session.game in acceptedGames for session in sessionList)):
+                        segmentSessionMatrix[i][streamerIndex] = None
+                        segmentFileMatrix[i][streamerIndex] = None
+            if logLevel >= 2:
+                printSegmentMatrix(showGameChanges=True)
+        elif sessionTrimLookbackSeconds > 0 or sessionTrimLookaheadSeconds > 0:
+            # trim by seconds
+            raise Exception("Not implemented yet")
+
+        
+        # TODO: fill in short gaps (<5 min?) in secondary streamers if possible
+        if minGapSize > 0:
             if logLevel >= 1:
-                print("Removing streamer", streamer)
-            for i in range(len(segmentSessionMatrix)):
-                del segmentSessionMatrix[i][streamerIndex]
-                del segmentFileMatrix[i][streamerIndex]
-            del allInputStreamers[streamerIndex]
-            for key, val in allInputStreamersSortKey.items():
-                if val > allInputStreamersSortKey[streamer]:
-                    allInputStreamersSortKey[key] -= 1
-            del allInputStreamersSortKey[streamer]
-            del inputSessionTimestampsByStreamer[streamer]
-            secondaryStreamers.remove(streamer)
-            for session in inputSessionsByStreamer[streamer]:
-                secondarySessionsArray.remove(session)
-            del inputSessionsByStreamer[streamer]
-    if logLevel >= 1:
-        print(allInputStreamers, allInputStreamersSortKey)
+                print("\n\nStep 9.2:")
+            for streamerIndex in range(1, len(allInputStreamers)):
+                streamer = allInputStreamers[streamerIndex]
+                gapLength = 0
+                gapStart = -1
+                lastState = (segmentFileMatrix[0][streamerIndex] is not None)
+                for i in range(1, len(segmentFileMatrix)):
+                    curState = (segmentFileMatrix[i][streamerIndex] is not None)
+                    segmentDuration = uniqueTimestampsSorted[i +
+                                                            1] - uniqueTimestampsSorted[i]
+                    if curState != lastState:
+                        if curState:
+                            # gap ending
+                            if gapLength < minGapSize and gapStart != -1:
+                                # assert gapStart > 0, f"i={i}, gapStart={str(gapStart)}, curState={curState}"
+                                gapStartFile = segmentFileMatrix[gapStart -
+                                                                1][streamerIndex]
+                                gapEndFile = segmentFileMatrix[i][streamerIndex]
+                                # if gapStartFile is gapEndFile:
+                                # assert gapEndTime - gapStartTime == gapLength #TODO: replace gapLength with the subtraction everywhere
+                                # gap starts and ends with the same file, can fill in gap easily
+                                for j in range(gapStart, i):
+                                    segmentStartTime = uniqueTimestampsSorted[j]
+                                    segmentEndTime = uniqueTimestampsSorted[j]
+                                    missingSessions = [session for session in scanned.allStreamerSessions[streamer]
+                                                    if session.startTimestamp <= segmentEndTime and session.endTimestamp >= segmentStartTime]
+                                    assert len(missingSessions) <= 1 or all((missingSessions[0].file == missingSessions[k].file for k in range(
+                                        1, len(missingSessions)))), str(missingSessions)
+                                    if len(missingSessions) >= 1:
+                                        segmentSessionMatrix[j][streamerIndex] = missingSessions
+                                        segmentFileMatrix[j][streamerIndex] = missingSessions[0].file
+                                    else:
+                                        assert len(
+                                            missingSessions) == 0 and gapStartFile is not gapEndFile
+                            gapStart = -1
+                            gapLength = 0
+                        else:
+                            # gap starting
+                            gapStart = i
+                            gapLenth = segmentDuration
+                    if not curState:
+                        gapLength += segmentDuration
+                    lastState = curState
+
         if logLevel >= 2:
             printSegmentMatrix()
 
-    # 11. Combine adjacent segments that now have the same set of streamers
-        print("\n\nStep 11:")
+        # 10. Remove streamers who have less than a minimum amount of time in the video
+        if logLevel >= 1:
+            print("\n\nStep 10:")
+            print(allInputStreamers)
+            print(allInputStreamersSortKey)
+        for streamerIndex in range(len(allInputStreamers)-1, 0, -1):
+            streamer = allInputStreamers[streamerIndex]
+            streamerTotalTime = 0
+            for i in range(len(segmentSessionMatrix)):
+                if segmentSessionMatrix[i][streamerIndex] is not None:
+                    streamerTotalTime += uniqueTimestampsSorted[i+1] - \
+                        uniqueTimestampsSorted[i]
+            if logLevel >= 1:
+                print(streamerIndex, streamer, streamerTotalTime)
+            if streamerTotalTime < minimumTimeInVideo:
+                if logLevel >= 1:
+                    print("Removing streamer", streamer)
+                for i in range(len(segmentSessionMatrix)):
+                    del segmentSessionMatrix[i][streamerIndex]
+                    del segmentFileMatrix[i][streamerIndex]
+                del allInputStreamers[streamerIndex]
+                for key, val in allInputStreamersSortKey.items():
+                    if val > allInputStreamersSortKey[streamer]:
+                        allInputStreamersSortKey[key] -= 1
+                del allInputStreamersSortKey[streamer]
+                del inputSessionTimestampsByStreamer[streamer]
+                secondaryStreamers.remove(streamer)
+                for session in inputSessionsByStreamer[streamer]:
+                    secondarySessionsArray.remove(session)
+                del inputSessionsByStreamer[streamer]
+        if logLevel >= 1:
+            print(allInputStreamers, allInputStreamersSortKey)
+            if logLevel >= 2:
+                printSegmentMatrix()
+
+        # 11. Combine adjacent segments that now have the same set of streamers
+            print("\n\nStep 11:")
+        
+    def trimSessionsV2():
+        def splitRow(rowNum, timestamp):
+            assert uniqueTimestampsSorted[rowNum] < timestamp < uniqueTimestampsSorted[rowNum+1]
+            fileRowCopy = segmentFileMatrix[rowNum].copy()
+            segmentFileMatrix.insert(rowNum, fileRowCopy)
+            segmentRowCopy = [(None if sessions is None else sessions.copy())
+                            for sessions in segmentSessionMatrix[rowNum]]
+            segmentSessionMatrix.insert(rowNum, segmentRowCopy)
+            uniqueTimestampsSorted.insert(rowNum+1, timestamp)
+            numSegments += 1
+        for i in range(numSegments):
+            ...
+
+    trimSessionsV1()
     # def compressRows():
     for i in range(numSegments-1, 0, -1):
         if logLevel >= 1:
@@ -469,8 +477,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             uniqueTimestamps.remove(tempTs)
             numSegments -= 1
     # compressRows()
-
-    printSegmentMatrix()
+    printSegmentMatrix(segmentSessionMatrix, uniqueTimestampsSorted, allInputStreamers)
     for i in range(len(segmentSessionMatrix)):
         if segmentSessionMatrix[i][0] is None:
             if logLevel >= 1:
