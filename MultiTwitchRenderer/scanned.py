@@ -1,5 +1,8 @@
 from typing import Dict, List, Set
 
+from SourceFile import SourceFile
+from Session import Session
+
 # Shared state
 
 print('Creating data structures')
