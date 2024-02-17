@@ -132,6 +132,7 @@ RENDER_CONFIG_DEFAULTS = {
     'minimumTimeInVideo': 900,
     'cutMode': 'chunked',
     'useChat': True,
+    'preciseAlign': True,
 }
 # -
 
