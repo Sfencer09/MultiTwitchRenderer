@@ -6,19 +6,19 @@ import time
 from SharedUtils import convertToDatetime, getVideoOutputPath
 
 
-import config
+exec(open("config.py").read(), globals())
 import scanned
 
 from SourceFile import initialize, saveFiledata, scanFiles
 from RenderTask import DEFAULT_PRIORITY, RenderTask, setRenderStatus, getRenderStatus
 from RenderConfig import RenderConfig
 from RenderWorker import renderQueue
-if config.COPY_FILES:
+if COPY_FILES:
     from CopyWorker import copyQueue
 
 def scanForExistingVideos() -> None:
-    for file in (f for f in os.listdir(os.path.join(config.basepath, config.outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
-        fullpath = os.path.join(config.basepath, config.outputDirectory, "S1")
+    for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
+        fullpath = os.path.join(basepath, outputDirectory, "S1")
         nameparts = file.split(' - ')
         assert len(nameparts) == 3  # and nameparts[0] == outputDirectory
         date = nameparts[1]
@@ -44,7 +44,7 @@ def getAllStreamingDaysByStreamer():
             fileStartTimestamp = file.startTimestamp
             for chapter in chapters:
                 startTime = datetime.fromtimestamp(
-                    fileStartTimestamp+chapter['start_time'], config.LOCAL_TIMEZONE)
+                    fileStartTimestamp+chapter['start_time'], LOCAL_TIMEZONE)
                 startDate = datetime.strftime(startTime, "%Y-%m-%d")
                 days.add(startDate)
                 # endTime = datetime.fromtimestamp(fileStartTimestamp+chapter['end_time'], LOCAL_TIMEZONE)
@@ -55,9 +55,9 @@ def getAllStreamingDaysByStreamer():
     return daysByStreamer
 
 
-def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
-                  maxLookback: timedelta = config.DEFAULT_MAX_LOOKBACK,
-                  dataFilepath=config.DEFAULT_DATA_FILEPATH,
+def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
+                  maxLookback: timedelta = DEFAULT_MAX_LOOKBACK,
+                  dataFilepath=DEFAULT_DATA_FILEPATH,
                   renderConfig=RenderConfig(),
                   sessionLog = partial(print, flush=True)):
     #sessionLog = sessionText.addLine
@@ -94,7 +94,7 @@ def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
         if changeCount != prevChangeCount:
             sessionLog(
                 f'Time since last download= {str(timeSinceLastDownload)}')
-        if __debug__ or timeSinceLastDownload > config.minimumSessionWorkerDelay:
+        if __debug__ or timeSinceLastDownload > minimumSessionWorkerDelay:
             streamingDays = getAllStreamingDaysByStreamer()
             for streamer in monitorStreamers:
                 # already sorted with the newest first
@@ -124,10 +124,10 @@ def sessionWorker(monitorStreamers=config.DEFAULT_MONITOR_STREAMERS,
                         item = RenderTask(streamer, day, renderConfig, outPath)
                         sessionLog(
                             f"Adding render for streamer {streamer} from {day}")
-                        (copyQueue if config.COPY_FILES else renderQueue).put(
+                        (copyQueue if COPY_FILES else renderQueue).put(
                             (DEFAULT_PRIORITY, item))
                         setRenderStatus(
-                            streamer, day, "COPY_QUEUE" if config.COPY_FILES else "RENDER_QUEUE")
+                            streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
                         changeCount += 1
                         # break #
                     elif maxLookback is None:
