@@ -1,16 +1,16 @@
 # %%
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #sys.path.insert(0, os.path.abspath(os.path.join(sys.executable)))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
 
-from MultiTwitchRenderer.MultiTwitchRenderer import generateTilingCommandMultiSegment
-from MultiTwitchRenderer.ParsedChat import parsePlayersFromGroupMessage
-from MultiTwitchRenderer.RenderConfig import RenderConfig
-from MultiTwitchRenderer.RenderWorker import formatCommand
-from MultiTwitchRenderer.SharedUtils import extractInputFiles
-from MultiTwitchRenderer.SourceFile import initialize
+from MultiTwitchRenderer import generateTilingCommandMultiSegment
+from ParsedChat import parsePlayersFromGroupMessage
+from RenderConfig import RenderConfig
+from RenderWorker import formatCommand
+from SharedUtils import extractInputFiles
+from SourceFile import initialize
 
 # %%
 #reloadAndSave()

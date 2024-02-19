@@ -2,9 +2,9 @@ import urwid
 
 from . import BufferedText, SubMenu, InfoChoice, HorizontalBoxes, ActionChoice
 
-import config
+exec(open("config.py").read(), globals())
 from RenderWorker import endRendersAndExit, renderThread
-if config.COPY_FILES:
+if COPY_FILES:
     from CopyWorker import copyThread
 
 
@@ -24,14 +24,14 @@ class RenderThreadStatusString:
         started = renderThread.nativeId is not None
         return 'Render thread already started!' if started else 'Starting render thread!'
 
-if config.ENABLE_URWID:
+if ENABLE_URWID:
     btLabels = ['S', 'R']
-    if config.COPY_FILES:
+    if COPY_FILES:
         btLabels.insert(1, 'C')
 
     bufferedTexts = [BufferedText(label=label) for label in btLabels]
 
-    if config.COPY_FILES:
+    if COPY_FILES:
         sessionText, copyText, renderText = bufferedTexts
     else:
         sessionText, renderText = bufferedTexts
