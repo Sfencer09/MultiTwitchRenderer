@@ -3,7 +3,7 @@ import threading
 import pickle
 import os
 
-import config
+exec(open("config.py").read(), globals())
 import scanned
 
 from RenderConfig import RenderConfig
@@ -42,8 +42,8 @@ class RenderTask:
 
 
 renderStatuses = {}
-if os.path.isfile(config.statusFilePath):
-    with open(config.statusFilePath, 'rb') as statusFile:
+if os.path.isfile(statusFilePath):
+    with open(statusFilePath, 'rb') as statusFile:
         renderStatuses = pickle.load(statusFile)
         delKeys = []
         for key, value in renderStatuses.items():
@@ -61,11 +61,11 @@ MANUAL_PRIORITY = 500
 
 def saveRenderStatuses():
     with renderStatusLock:
-        with open(config.statusFilePath, 'wb') as statusFile:
+        with open(statusFilePath, 'wb') as statusFile:
             pickle.dump(renderStatuses, statusFile)
 
 def incrFileRefCount(filename:str):
-    assert filename.startswith(config.localBasepath)
+    assert filename.startswith(localBasepath)
     localFileRefCountLock.acquire()
     ret = 0
     if filename not in localFileReferenceCounts.keys():
@@ -79,7 +79,7 @@ def incrFileRefCount(filename:str):
 
 
 def decrFileRefCount(filename:str):
-    assert filename.startswith(config.localBasepath)
+    assert filename.startswith(localBasepath)
     localFileRefCountLock.acquire()
     ret = 0
     if filename not in localFileReferenceCounts.keys():

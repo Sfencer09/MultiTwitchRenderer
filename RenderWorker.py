@@ -12,7 +12,7 @@ from shlex import quote
 
 from RenderTask import getRenderStatus
 
-import config
+exec(open("config.py").read(), globals())
 
 
 from SharedUtils import insertSuffix
@@ -32,8 +32,8 @@ def formatCommand(command):
 
 
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
-                 overwrite_intermediate=config.DEFAULT_OVERWRITE_INTERMEDIATE,
-                 overwrite_output=config.DEFAULT_OVERWRITE_OUTPUT,
+                 overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
+                 overwrite_output=DEFAULT_OVERWRITE_OUTPUT,
                  renderLog=partial(print, flush=True)):
     #renderLog = renderText.addLine
     queueEmpty = False
@@ -95,14 +95,14 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
         for i in range(len(taskCommands)):
             activeRenderTaskSubindex = i
             # TODO: add preemptive scheduling
-            with open(os.path.join(config.logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
+            with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
                 currentCommand = taskCommands[i]
                 trueOutpath = None
                 if 'ffmpeg' in currentCommand[0]:
                     if not overwrite_intermediate:
                         trueOutpath = currentCommand[-1]
                         if trueOutpath != finalOutpath:
-                            assert trueOutpath.startswith(config.localBasepath)
+                            assert trueOutpath.startswith(localBasepath)
                             tempFiles.append(trueOutpath)
                         if os.path.isfile(trueOutpath):
                             shouldSkip = True
@@ -126,7 +126,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                                 trueOutpath, '.temp')
                     else:  # overwrite_intermediate
                         currentOutpath = currentCommand[-1]
-                        if currentOutpath.startswith(config.localBasepath):
+                        if currentOutpath.startswith(localBasepath):
                             tempFiles.append(currentOutpath)
                     # if task.renderConfig.logLevel > 0:
                     renderLog(
@@ -158,10 +158,10 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                     hasError = True
                     if returncode != 130:  # ctrl-c on UNIX (?)
                         renderLog(
-                            f" Render errored! Writing to log file {config.errorFilePath}")
+                            f" Render errored! Writing to log file {errorFilePath}")
                         setRenderStatus(task.mainStreamer,
                                         task.fileDate, 'ERRORED')
-                        with open(config.errorFilePath, 'a') as errorFile:
+                        with open(errorFilePath, 'a') as errorFile:
                             errorFile.write(
                                 f'Errored on: {formatCommand(currentCommand)}\n')
                             errorFile.write(f'Full command list: ')
@@ -179,8 +179,8 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
             print("Render task finished, cleaning up temp files:")
             print(tempFiles)
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
-            if config.COPY_FILES:
-                for file in (f for f in task.sourceFiles if f.videoFile.startswith(config.localBasepath)):
+            if COPY_FILES:
+                for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
                     remainingRefs = decrFileRefCount(file.localVideoPath)
                     if remainingRefs == 0:
                         renderLog(f"Removing local file {file}")
@@ -189,7 +189,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
             # for file in intermediateFiles:
             for file in tempFiles:
                 renderLog(f"Removing intermediate file {file}")
-                assert config.basepath not in file
+                assert basepath not in file
                 os.remove(file)
         renderQueue.task_done()
         if __debug__:

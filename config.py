@@ -14,7 +14,7 @@ mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
 globalAllStreamers = [name for name in os.listdir(basepath) if
                       (name not in ("NA", outputDirectory) and 
                        os.path.isdir(os.path.join(basepath, name)))]
-secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
+#secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
 
 streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'APlatypus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],

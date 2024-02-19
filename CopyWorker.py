@@ -10,13 +10,13 @@ from SharedUtils import extractInputFiles
 
 
 
-import config
+exec(open("config.py").read(), globals())
 import scanned
 
 from RenderWorker import renderQueue, renderQueueLock
 from RenderTask import RenderTask, getRenderStatus, setRenderStatus, incrFileRefCount, DEFAULT_PRIORITY
 
-if config.COPY_FILES:
+if COPY_FILES:
     activeCopyTask: RenderTask = None
     copyThread: threading.Thread = None
     copyQueue = queue.PriorityQueue()
@@ -66,7 +66,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
         # renderCommand = list(task.commandArray)
         for file in sourceFiles:
             remotePath = file.videoFile
-            localPath = remotePath.replace(config.basepath, config.localBasepath)
+            localPath = remotePath.replace(basepath, localBasepath)
             if not os.path.isfile(localPath):
                 # time.sleep(5)
                 copyLog(f"Copying file {remotePath} to local storage")
