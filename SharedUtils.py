@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import os
 from typing import List
 
-import config
+exec(open("config.py").read(), globals())
 import scanned
 
 def convertToDatetime(timestamp: int | float | str | datetime):
@@ -40,7 +40,7 @@ def extractInputFiles(ffmpegCommand: List[str]):
     # startDate = datetime.strftime(startTime, "%Y-%m-%d")
 
 def getVideoOutputPath(streamer, date):
-    return os.path.join(config.basepath, config.outputDirectory, "S1", f"{config.outputDirectory} - {date} - {streamer}.mkv")
+    return os.path.join(basepath, outputDirectory, "S1", f"{outputDirectory} - {date} - {streamer}.mkv")
 
 
 def calcGameCounts():

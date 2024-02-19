@@ -7,7 +7,7 @@ import json
 from typing import Dict, List, Set
 import scanned
 
-import config
+exec(open("config.py").read(), globals())
 
 from Session import Session
 from ParsedChat import ParsedChat, convertToDatetime
@@ -80,7 +80,7 @@ class SourceFile:
         if self.infoFile == infoFile:
             return
         assert self.infoFile is None, f"Cannot overwrite existing info file {self.chatFile} with new file {infoFile}"
-        assert infoFile.endswith(config.infoExt) and os.path.isfile(
+        assert infoFile.endswith(infoExt) and os.path.isfile(
             infoFile) and os.path.isabs(infoFile)
         self.infoFile = infoFile
         with open(infoFile) as file:
@@ -93,7 +93,7 @@ class SourceFile:
         if self.videoFile == videoFile:
             return
         assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
-        assert any((videoFile.endswith(videoExt) for videoExt in config.videoExts)
+        assert any((videoFile.endswith(videoExt) for videoExt in videoExts)
                    ) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
         self.videoFile = videoFile
         self.downloadTime = convertToDatetime(os.path.getmtime(videoFile))
@@ -102,10 +102,10 @@ class SourceFile:
         if self.chatFile == chatFile:
             return
         assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
-        assert chatFile.endswith(config.chatExt) and os.path.isfile(
+        assert chatFile.endswith(chatExt) and os.path.isfile(
             chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
-        if self.streamer in config.streamersParseChatList:
+        if self.streamer in streamersParseChatList:
             self.parsedChat = ParsedChat(self, chatFile)
 
     def getVideoFileInfo(self):
@@ -119,17 +119,17 @@ def scanFiles(log=False):
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
-    for streamer in config.globalAllStreamers:
+    for streamer in globalAllStreamers:
         if log:
             print(f"Scanning streamer {streamer} ", end='')
         newStreamerFiles:List[SourceFile] = []
-        streamerBasePath = os.path.join(config.basepath, streamer, 'S1')
+        streamerBasePath = os.path.join(basepath, streamer, 'S1')
         count = 0
-        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (config.videoExts + [config.infoExt, config.chatExt])))):
+        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExts + [infoExt, chatExt])))):
             filepath = os.path.join(streamerBasePath, filename)
             if filepath in scanned.allScannedFiles:
                 continue
-            filenameSegments = re.split(config.videoIdRegex, filename)
+            filenameSegments = re.split(videoIdRegex, filename)
             # print(filenameSegments)
             if len(filenameSegments) < 3:
                 continue
@@ -140,13 +140,13 @@ def scanFiles(log=False):
                 print('.', end='')
             file = None
             if videoId not in scanned.allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
-                if any((filename.endswith(videoExt) for videoExt in config.videoExts)):
+                if any((filename.endswith(videoExt) for videoExt in videoExts)):
                     file = SourceFile(streamer, videoId, videoFile=filepath)
                     # filesBySourceVideoPath[filepath] = file
-                elif filename.endswith(config.infoExt):
+                elif filename.endswith(infoExt):
                     file = SourceFile(streamer, videoId, infoFile=filepath)
                 else:
-                    assert filename.endswith(config.chatExt)
+                    assert filename.endswith(chatExt)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
                 # scanned.allFilesByVideoId[videoId] = file
                 newFilesByVideoId[videoId] = file
@@ -154,13 +154,13 @@ def scanFiles(log=False):
             else:
                 file = scanned.allFilesByVideoId[videoId] if videoId in scanned.allFilesByVideoId.keys(
                 ) else newFilesByVideoId[videoId]
-                if any((filename.endswith(videoExt) for videoExt in config.videoExts)):
+                if any((filename.endswith(videoExt) for videoExt in videoExts)):
                     file.setVideoFile(filepath)
                     # filesBySourceVideoPath[filepath] = file
-                elif filename.endswith(config.infoExt):
+                elif filename.endswith(infoExt):
                     file.setInfoFile(filepath)
                 else:
-                    assert filename.endswith(config.chatExt)
+                    assert filename.endswith(chatExt)
                     file.setChatFile(filepath)
                     # if streamer in streamersParseChatList:
                     #    file.parsedChat = ParsedChat(filepath)
@@ -266,16 +266,16 @@ def loadFiledata(filepath: str):  # suppresses all errors
 
 def initialize():
     if len(scanned.allFilesByVideoId) == 0:
-        loadFiledata(config.DEFAULT_DATA_FILEPATH)
+        loadFiledata(DEFAULT_DATA_FILEPATH)
     oldCount = len(scanned.allFilesByVideoId)
     scanFiles(log=True)
     if len(scanned.allFilesByVideoId) != oldCount:
-        saveFiledata(config.DEFAULT_DATA_FILEPATH)
+        saveFiledata(DEFAULT_DATA_FILEPATH)
 
 
 def reinitialize():
     scanned.allFilesByVideoId = {}
-    loadFiledata(config.DEFAULT_DATA_FILEPATH)
+    loadFiledata(DEFAULT_DATA_FILEPATH)
     initialize()
 
 
@@ -287,5 +287,5 @@ def reloadAndSave():
     scanned.allScannedFiles = set()
     scanned.filesBySourceVideoPath = {}
     scanFiles(log=True)
-    saveFiledata(config.DEFAULT_DATA_FILEPATH)
+    saveFiledata(DEFAULT_DATA_FILEPATH)
 

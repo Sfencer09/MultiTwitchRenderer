@@ -14,7 +14,7 @@ print = partial(print, flush=True)
 print(sys.executable)
 sys.path.append(os.path.dirname(sys.executable))
 
-import config
+exec(open("config.py").read(), globals())
 
 import scanned
 
@@ -36,7 +36,7 @@ def calcTileWidth(numTiles):
 def calcResolutions(numTiles, maxNumTiles):
     tileWidth = calcTileWidth(numTiles)
     maxTileWidth = calcTileWidth(maxNumTiles)
-    maxOutputResolution = config.outputResolutions[maxTileWidth]
+    maxOutputResolution = outputResolutions[maxTileWidth]
     scaleFactor = min(
         maxOutputResolution[0] // (16*tileWidth), maxOutputResolution[1] // (9*tileWidth))
     tileX = scaleFactor * 16
@@ -110,13 +110,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(
-        datetime.fromisoformat(targetDate), config.DAY_START_TIME)
+        datetime.fromisoformat(targetDate), DAY_START_TIME)
     targetDateEndTime = targetDateStartTime + timedelta(days=1)
     if logLevel >= 1:
         print(targetDate, targetDateStartTime, targetDateEndTime)
         print('other streamers', otherStreamers)
     mainSessionsOnTargetDate = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
-        x.startTimestamp, tz=config.UTC_TIMEZONE) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
+        x.startTimestamp, tz=UTC_TIMEZONE) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError(
             "Selected streamer does not have any sessions on the target date")
@@ -287,7 +287,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     def trimSessionsV1():
         excludeTrimStreamerIndices = []
         mainStreamerGames = set(
-            (session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
+            (session.game for row in segmentSessionMatrix if row[0] is not None for session in row[0] if session.game not in nongroupGames))
         for streamerIndex in range(1, len(allInputStreamers)):
             if not any((session.game in mainStreamerGames for row in segmentSessionMatrix if row[streamerIndex] is not None for session in row[streamerIndex])):
                 # can have one brother in the session but not be the same as the one streaming
@@ -317,7 +317,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     print('rowGames', rowGames)
                 # print(segmentSessionMatrix[i-sessionTrimLookback])
                 acceptedGames = set((session.game for row in segmentSessionMatrix[includeRowStart:includeRowEnd]
-                                    if row[0] is not None for session in row[0] if session.game not in config.nongroupGames))
+                                    if row[0] is not None for session in row[0] if session.game not in nongroupGames))
                 if logLevel >= 2:
                     print('acceptedGames', acceptedGames)  # , end=' ')
                 # main streamer has no sessions for segment, extend from previous segment with sessions
@@ -557,7 +557,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                          for row in segmentFileMatrix]
     maxSegmentTiles = max(segmentTileCounts)
     maxTileWidth = calcTileWidth(maxSegmentTiles)
-    outputResolution = config.outputResolutions[maxTileWidth]
+    outputResolution = outputResolutions[maxTileWidth]
     outputResolutionStr = f"{str(outputResolution[0])}:{str(outputResolution[1])}"
     outputMapOptions = ['-map', '[vout]']
     outputMetadataOptions = []
@@ -578,7 +578,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                              "-preset", encodingSpeedPreset,
                              "-crf", "22",
                              ))
-        if config.REDUCED_MEMORY:
+        if REDUCED_MEMORY:
             codecOptions.extend('-rc-lookahead', '20', '-g', '60')
     elif outputCodec in ('libx265', 'hevc_nvenc'):
         codecOptions.extend((
@@ -586,11 +586,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             "-crf", "26",
             "-tag:v", "hvc1"
         ))
-        if config.REDUCED_MEMORY:
+        if REDUCED_MEMORY:
             print("Reduced memory mode not available yet for libx265 codec")
-    threadOptions = ['-threads', str(config.threadCount),
-                     '-filter_threads', str(config.threadCount),
-                     '-filter_complex_threads', str(config.threadCount)] if useHardwareAcceleration else []
+    threadOptions = ['-threads', str(threadCount),
+                     '-filter_threads', str(threadCount),
+                     '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
     uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
     downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
     timeFilter = f"setpts=PTS-STARTPTS"
@@ -780,7 +780,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             pprint(filtergraphParts)
         # print(nullVSinkFiltergraphs, nullASinkFiltergraphs, segmentFiltergraphs)
         completeFiltergraph = " ; ".join(filtergraphParts)
-        return [reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
+        return [reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                 inputOptions,
                 threadOptions,
                 ['-filter_complex', completeFiltergraph],
@@ -924,7 +924,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         #    for fss in filtergraphStringSegments:
         #        print(fss)
         completeFiltergraph = " ; ".join(filtergraphParts)
-        return [reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
+        return [reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                 inputOptions,
                 threadOptions,
                 ['-filter_complex', completeFiltergraph],
@@ -941,7 +941,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         print("CHUNKED", numSegments)
         commandList = []
         intermediateFilepaths = [os.path.join(
-            config.localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
+            localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
         audioFiltergraphParts = []
         for segIndex in range(numSegments):
             filtergraphParts = []
@@ -1120,7 +1120,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     print("\n\n\nStep 13c: ", filtergraphString,
                           segmentResolution, outputResolutionStr, numRowSegments)
             # print(filtergraphParts)
-            commandList.append(reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
+            commandList.append(reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                                                      rowInputOptions,
                                                      threadOptions,
                                                      ['-filter_complex',
@@ -1155,7 +1155,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     os.remove(self.filepath)
         lcf = LazyConcatFile(
             "file '" + "'\nfile '".join(intermediateFilepaths)+"'")
-        commandList.append(reduce(list.__add__, [[f"{config.ffmpegPath}ffmpeg"],
+        commandList.append(reduce(list.__add__, [[f"{ffmpegPath}ffmpeg"],
                                                  ['-f', 'concat',
                                                   '-safe', '0',
                                                   '-i', lcf,
@@ -1188,7 +1188,7 @@ def normalizeAllGames():
     print("\n\n\n---------------------------------------------------------------\n\n\n")
     knownReplacements = {}
     lowercaseGames = {}
-    for game, alias in config.gameAliases.items():
+    for game, alias in gameAliases.items():
         assert game.lower() not in lowercaseGames.keys()
         knownReplacements[game] = list(alias)
         lowercaseGames[game.lower()] = game

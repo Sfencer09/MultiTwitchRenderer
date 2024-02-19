@@ -5,7 +5,7 @@ from typing import Dict
 from schema import Schema, Or, And, Optional, Use
 
 
-import config
+exec(open("config.py").read(), globals())
 
 HW_DECODE = 1
 HW_INPUT_SCALE = 2
@@ -19,7 +19,7 @@ trueStrings = ('t', 'y', 'true', 'yes')
 def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
     process1 = subprocess.run(
-        [f"{config.ffmpegPath}ffmpeg", "-version"], capture_output=True)
+        [f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
     print(process1.stdout.decode())
     try:
         process2 = subprocess.run(
@@ -122,7 +122,7 @@ ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
 #    ACTIVE_HWACCEL_VALUES = None
 
 
-defaultRenderConfig = config.RENDER_CONFIG_DEFAULTS
+defaultRenderConfig = RENDER_CONFIG_DEFAULTS
 try:
     with open('./renderConfig.json') as renderConfigJsonFile:
         defaultRenderConfig = json.load(renderConfigJsonFile)

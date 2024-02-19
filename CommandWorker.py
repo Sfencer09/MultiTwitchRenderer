@@ -6,10 +6,10 @@ from thefuzz import process as fuzzproc
 import time 
 from SharedUtils import getVideoOutputPath
 
-import config
+exec(open("config.py").read(), globals())
 import scanned
 from RenderWorker import endRendersAndExit, renderThread, activeRenderTask, activeRenderTaskSubindex, renderQueue, renderQueueLock
-if config.COPY_FILES:
+if COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
 from SharedUtils import calcGameCounts
 from RenderConfig import RenderConfig
@@ -46,7 +46,7 @@ commandArray.append(Command(startRenderThread, 'Start render thread'))
 def printActiveJobs():
     print(f"Active render job:",
           "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
-    if config.COPY_FILES:
+    if COPY_FILES:
         print(f"Active copy job:",
               "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
 
@@ -60,7 +60,7 @@ def printQueuedJobs():
     else:
         for queueItem in sorted(renderQueue.queue):
             print(queueItem)
-    if config.COPY_FILES:
+    if COPY_FILES:
         if len(copyQueue.queue) == 0:
             print("Copy queue: empty")
         else:
@@ -361,8 +361,8 @@ def inputManualJob(initialRenderConfig=None):
     item = RenderTask(mainStreamer, fileDate, renderConfig, outputPath)
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate,
-                    'COPY_QUEUE' if config.COPY_FILES else 'RENDER_QUEUE')
-    (copyQueue if config.COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
+                    'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
+    (copyQueue if COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
 
 
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
@@ -401,18 +401,18 @@ def editQueueItem(queueEntry):
                 continue
         elif userInput.lower() == 'o':
             print(
-                f"Enter new output path (relative to {config.basepath}), blank to cancel:")
-            valueInput = input(config.basepath)
+                f"Enter new output path (relative to {basepath}), blank to cancel:")
+            valueInput = input(basepath)
             if len(valueInput) == 0:
                 continue
             elif valueInput.lower() in quitOptions:
                 return None
-            elif not any((valueInput.endswith(ext) for ext in config.videoExts)):
+            elif not any((valueInput.endswith(ext) for ext in videoExts)):
                 print(
-                    f"Output path must be that of a video file - must end with one of: {', '.join(config.videoExts)}")
+                    f"Output path must be that of a video file - must end with one of: {', '.join(videoExts)}")
                 continue
             else:
-                outputPath = os.path.join(config.basepath, valueInput)
+                outputPath = os.path.join(basepath, valueInput)
         elif userInput.lower() == 'f':
             break
         elif userInput.lower() == 'd':
@@ -427,7 +427,7 @@ def editQueueItem(queueEntry):
 def editQueue():
     selectedQueue = None
     selectedQueueLock = None
-    if config.COPY_FILES:
+    if COPY_FILES:
         print("Select queue:\nR) Render queue\nC) Copy queue")
         while selectedQueue is None:
             userInput = input(" >> ")

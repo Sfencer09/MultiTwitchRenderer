@@ -6,18 +6,18 @@ import re
 from datetime import datetime
 from fuzzysearch import find_near_matches
 
-import config
+exec(open("config.py").read(), globals())
 
 def parsePlayersFromGroupMessage(message: str):
     players = []
     messageLowercase = message.lower()
-    for streamer in config.globalAllStreamers:
+    for streamer in globalAllStreamers:
         fuzzymatches = find_near_matches(
             streamer.lower(), messageLowercase, max_l_dist=len(streamer)//5)
         if len(fuzzymatches) > 0:
             players.append(streamer)
-        elif streamer in config.streamerAliases.keys():
-            for alias in config.streamerAliases[streamer]:
+        elif streamer in streamerAliases.keys():
+            for alias in streamerAliases[streamer]:
                 fuzzymatches = find_near_matches(
                     alias.lower(), messageLowercase, max_l_dist=len(alias)//5)
                 if len(fuzzymatches) > 0:
