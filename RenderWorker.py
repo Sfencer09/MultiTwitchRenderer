@@ -1,6 +1,6 @@
 from functools import partial
 import shutil
-import time 
+import time as ttime #avoid name conflict with import in config file
 import signal
 import queue
 import threading
@@ -37,19 +37,14 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  renderLog=partial(print, flush=True)):
     #renderLog = renderText.addLine
     queueEmpty = False
-    try: # This try catch is here so I don't have to finish fixing whatever is f*cked up with my PyInstaller setup
-        from MultiTwitchRenderer.MultiTwitchRenderer import generateTilingCommandMultiSegment
-        #This will work if it is in the PyInstaller package
-    except:
-        # But if it's not, and we're just running it in VSCode, then this import will take over instead.
-        from MultiTwitchRenderer import generateTilingCommandMultiSegment
+    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     while True:
         # sessionText, copyText, renderText = bufferedTexts
         if renderQueue.empty():
             if not queueEmpty:
                 print("Render queue empty, sleeping")
                 queueEmpty = True
-            time.sleep(10)
+            ttime.sleep(10)
             continue
         queueEmpty = False
         renderQueueLock.acquire()  # block if user is editing queue

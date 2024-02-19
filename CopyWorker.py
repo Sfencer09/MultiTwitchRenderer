@@ -3,7 +3,7 @@ from functools import partial
 import queue
 import shutil
 import threading
-import time 
+import time as ttime #avoid name conflict with import in config file
 import os
 
 from SharedUtils import extractInputFiles
@@ -36,7 +36,7 @@ def copyWorker(copyLog=partial(print, flush=True)):
             if not queueEmpty:
                 print("Copy queue empty, sleeping")
                 queueEmpty = True
-            time.sleep(10)
+            ttime.sleep(10)
             continue
             # return
         queueEmpty = False
