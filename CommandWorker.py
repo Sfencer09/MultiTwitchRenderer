@@ -6,6 +6,8 @@ from thefuzz import process as fuzzproc
 import time as ttime #avoid name conflict with import in config file
 from SharedUtils import getVideoOutputPath
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
 from RenderWorker import endRendersAndExit, renderThread, activeRenderTask, activeRenderTaskSubindex, renderQueue, renderQueueLock

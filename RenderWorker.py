@@ -12,12 +12,15 @@ from shlex import quote
 
 from RenderTask import getRenderStatus
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 
 from SharedUtils import insertSuffix
 from SourceFile import getVideoInfo
 from RenderTask import setRenderStatus, getRenderStatus, decrFileRefCount
+from MultiTwitchRenderer import generateTilingCommandMultiSegment
 
 renderThread:threading.Thread = None
 activeRenderTask = None
@@ -37,7 +40,6 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  renderLog=partial(print, flush=True)):
     #renderLog = renderText.addLine
     queueEmpty = False
-    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     while True:
         # sessionText, copyText, renderText = bufferedTexts
         if renderQueue.empty():

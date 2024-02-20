@@ -3,6 +3,8 @@ import threading
 import pickle
 import os
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
 

@@ -10,11 +10,14 @@ from SharedUtils import extractInputFiles
 
 
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
 
 from RenderWorker import renderQueue, renderQueueLock
 from RenderTask import RenderTask, getRenderStatus, setRenderStatus, incrFileRefCount, DEFAULT_PRIORITY
+from MultiTwitchRenderer import generateTilingCommandMultiSegment
 
 if COPY_FILES:
     activeCopyTask: RenderTask = None
@@ -25,12 +28,6 @@ if COPY_FILES:
 def copyWorker(copyLog=partial(print, flush=True)):
     #copyLog = copyText.addLine
     queueEmpty = False
-    try: # This try catch is here so I don't have to finish fixing whatever is f*cked up with my PyInstaller setup
-        from MultiTwitchRenderer.MultiTwitchRenderer import generateTilingCommandMultiSegment
-        #This will work if it is in the PyInstaller package
-    except:
-        # But if it's not, and we're just running it in VSCode, then this import will take over instead.
-        from MultiTwitchRenderer import generateTilingCommandMultiSegment
     while True:
         if copyQueue.empty():
             if not queueEmpty:

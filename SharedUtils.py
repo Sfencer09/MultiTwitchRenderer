@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 import os
 from typing import List
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
 

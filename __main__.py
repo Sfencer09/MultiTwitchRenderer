@@ -12,6 +12,8 @@ print(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
 #sys.path.append("./MultiTwichRenderer")
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 

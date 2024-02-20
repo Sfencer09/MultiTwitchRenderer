@@ -2,6 +2,8 @@ import urwid
 
 from . import BufferedText, SubMenu, InfoChoice, HorizontalBoxes, ActionChoice
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 from RenderWorker import endRendersAndExit, renderThread
 if COPY_FILES:

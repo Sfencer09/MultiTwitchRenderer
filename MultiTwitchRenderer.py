@@ -14,6 +14,8 @@ print = partial(print, flush=True)
 print(sys.executable)
 sys.path.append(os.path.dirname(sys.executable))
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 import scanned
