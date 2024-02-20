@@ -4,24 +4,26 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #sys.path.insert(0, os.path.abspath(os.path.join(sys.executable)))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
 
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from ParsedChat import parsePlayersFromGroupMessage
 from RenderConfig import RenderConfig
 from RenderWorker import formatCommand
 from SharedUtils import extractInputFiles
-from SourceFile import initialize
+from SourceFile import initialize, reloadAndSave
 from SessionWorker import sessionWorker
+import scanned
 
 # %%
-#reloadAndSave()
+reloadAndSave()
 
 
 #initialize()
 #loadFiledata(DEFAULT_DATA_FILEPATH+'.bak')
 #scanFiles(log=True)
 print("Initialization complete!")
+print(len(scanned.allFilesByVideoId))
 
 # %%
 
@@ -33,7 +35,7 @@ sessionWorker()
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
-                                                 RenderConfig(logLevel=3,
+                                                 RenderConfig(#logLevel=3,
                                                  #startTimeMode='allOverlapStart',
                                                  #endTimeMode='allOverlapEnd',
                                                  #useHardwareAcceleration=HW_DECODE,#|HW_INPUT_SCALE,#|HW_ENCODE,#|HW_OUTPUT_SCALE
@@ -66,7 +68,7 @@ for testCommand in testCommands:
 #print(testCommands)
 #testCommandString = formatCommand(testCommand)
 testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
-print(testCommandStrings)
+#print(testCommandStrings)
 def writeCommandStrings(commandList, testNum=None):
     if testNum is None:
         for i in range(2,1000):
