@@ -1,9 +1,12 @@
+from math import ceil
 from typing import Dict, List, Tuple
 import librosa
 import numpy as np
 from scipy import signal
 import os
 import psutil
+import warnings
+warnings.filterwarnings('ignore')
 
 import matplotlib.pyplot as plt
 from SharedUtils import insertSuffix
@@ -121,55 +124,66 @@ def histogramByBucket(arr, bucketSize = 10):
 def findAverageAudioOffset(
     within_file: str,
     find_file: str,
-    offset: float = 0,
+    initialOffset: float = 0,
     start: float = 0,
     duration: float | None = None,
     macroWindowSize: int = 3600,
-    macroStride: int = 1800,
+    macroStride: int | None = None,
     microWindowSize: int = 60,
-    microStride: float = 30,
+    microStride: float | None = 30,
 ):
     if macroWindowSize < 5 * microWindowSize:
         raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
+    if macroStride is None:
+        macroStride = macroWindowSize
+    if microStride is None:
+        microStride = microWindowSize
     withinAudioFile = extractAudio(within_file)
     findAudioFile = extractAudio(find_file)
     print("Audio extracted, memory tuple:", psutil.virtual_memory())
     y_within, sr_within = librosa.load(
         withinAudioFile,
         sr=None,
-        offset=start + (offset if offset > 0 else 0),
+        offset=start + (initialOffset if initialOffset > 0 else 0),
         duration=duration,
     )
     print("First audio loaded, memory tuple:", psutil.virtual_memory())
     y_find, _ = librosa.load(
         findAudioFile,
         sr=sr_within,
-        offset=start - (offset if offset < 0 else 0),
+        offset=start - (initialOffset if initialOffset < 0 else 0),
         # duration=window if window is not None else duration,
         duration=duration
     )
     print("Second audio loaded, memory tuple:", psutil.virtual_memory())
     withinLength = y_within.shape[0] / sr_within
     findLength = y_find.shape[0] / sr_within
+    overlapLength = min(withinLength, findLength)
     offsetsFound: Dict[str, List[float]] = dict()
     threshold = 500
     bucketSize: int = 1
     bucketSpillover: int = 1
-    for windowNum in range((findLength - microWindowSize) // microStride):
-        windowStart = windowNum * microStride * sr_within
-        windowEnd = ((windowNum * microStride) + microWindowSize) * sr_within
-        findSnippet = y_find[windowStart:windowEnd]
-        c = signal.correlate(y_within, findSnippet, mode='full', method='fft')
-        print("Signal correlated, memory tuple:", psutil.virtual_memory())
-        peak = np.argmax(c)
-        if c[peak] >= threshold:
-            offsetFound = round((peak - windowStart) / sr_within, 2)
-            offsetStr = str(int(offsetFound // bucketSize) * bucketSize)
-            print(f"Found offset {offsetFound}, putting in bucket {offsetStr}")
-            if offsetStr in offsetsFound.keys():
-                offsetsFound[offsetStr].append(offsetFound)
-            else:
-                offsetsFound[offsetStr] = [offsetFound]
+    for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
+        macroWindowStart = macroWindowNum * macroStride * sr_within
+        macroWindowEnd = ((macroWindowNum * macroStride) + macroWindowSize) * sr_within
+        print("Macro start:", macroWindowStart/sr_within, "end:", macroWindowEnd/sr_within)
+        withinSnippet = y_within[macroWindowStart : macroWindowEnd]
+        for microWindowNum in range(int(ceil((macroWindowSize - microWindowSize) / microStride))):
+            microWindowStart = macroWindowStart + (microWindowNum * microStride * sr_within)
+            microWindowEnd = macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * sr_within)
+            print("Micro start:", microWindowStart/sr_within, "end:", microWindowEnd/sr_within)
+            findSnippet = y_find[microWindowStart:microWindowEnd]
+            c = signal.correlate(y_within, findSnippet, mode='same', method='fft')
+            print("Signal correlated, memory tuple:", psutil.virtual_memory())
+            peak = np.argmax(c)
+            if c[peak] >= threshold:
+                offsetFound = round((peak - macroWindowStart) / sr_within, 2)
+                offsetStr = str(int(offsetFound // bucketSize) * bucketSize)
+                print(f"Found offset {offsetFound}, putting in bucket {offsetStr}")
+                if offsetStr in offsetsFound.keys():
+                    offsetsFound[offsetStr].append(offsetFound)
+                else:
+                    offsetsFound[offsetStr] = [offsetFound]
 
     if len(offsetsFound) == 0:
         return None
