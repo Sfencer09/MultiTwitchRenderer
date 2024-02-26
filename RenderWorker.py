@@ -33,6 +33,14 @@ renderQueueLock = threading.Lock()
 def formatCommand(command):
     return ' '.join((quote(str(x)) for x in command))
 
+def startRenderThread():
+    if not renderThreadStarted():
+        renderThread.start()
+        return True
+    return False
+
+def renderThreadStarted():
+    return renderThread is not None and renderThread.is_alive()
 
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
@@ -210,3 +218,12 @@ def endRendersAndExit():
     print("Stopping!")
     sys.exit(0)
 
+
+if ENABLE_URWID:
+    import UrwidUI.UrwidMain
+    renderThread = threading.Thread(target=renderWorker, kwargs={'renderLog':UrwidUI.UrwidMain.renderText.addLine})
+    renderThread.daemon = True
+else:
+    renderThread = threading.Thread(target=renderWorker)
+    renderThread.daemon = True
+    
