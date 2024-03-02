@@ -9,8 +9,9 @@ import subprocess
 import sys
 import os
 from shlex import quote
+from typing import Any, Tuple
 
-from RenderTask import getRenderStatus
+from RenderTask import RenderTask, getRenderStatus
 
 if __debug__:
     from config import *
@@ -23,11 +24,11 @@ from RenderTask import setRenderStatus, getRenderStatus, decrFileRefCount
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
 
 renderThread:threading.Thread = None
-activeRenderTask = None
-activeRenderTaskSubindex = None
-activeRenderSubprocess = None
+activeRenderTask:RenderTask = None
+activeRenderTaskSubindex:int = None
+activeRenderSubprocess:subprocess.Popen = None
 
-renderQueue = queue.PriorityQueue()
+renderQueue: queue.PriorityQueue[Tuple[int, RenderTask]] = queue.PriorityQueue<Tuple[int, RenderTask]>()
 renderQueueLock = threading.Lock()
 
 def formatCommand(command):
@@ -41,6 +42,9 @@ def startRenderThread():
 
 def renderThreadStarted():
     return renderThread is not None and renderThread.is_alive()
+
+def getActiveRenderTaskInfo() -> Tuple[RenderTask, int, subprocess.Popen]:
+    return (activeRenderTask, activeRenderTaskSubindex, activeRenderSubprocess)
 
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
@@ -207,12 +211,12 @@ def endRendersAndExit():
         print("Terminating render thread")
         activeRenderSubprocess.terminate()
         activeRenderSubprocess.wait(10)
-        if activeRenderSubprocess.poll is None:
+        if activeRenderSubprocess.poll() is None:
             print(
                 "Terminating render thread did not complete within 10 seconds, killing instead")
             activeRenderSubprocess.kill()
             activeRenderSubprocess.wait()
-        if activeRenderSubprocess.poll is not None:
+        if activeRenderSubprocess.poll() is not None:
             print("Active render stopped successfully")
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     print("Stopping!")

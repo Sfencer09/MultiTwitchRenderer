@@ -3,13 +3,14 @@ from functools import partial
 import os
 from typing import List
 from thefuzz import process as fuzzproc
-import time as ttime #avoid name conflict with import in config file
+import time as ttime
+from CopyWorker import getActiveCopyTaskInfo #avoid name conflict with import in config file
 
 if __debug__:
     from config import *
 exec(open("config.py").read(), globals())
 import scanned
-from RenderWorker import endRendersAndExit, activeRenderTask, activeRenderTaskSubindex, renderQueue, renderQueueLock, startRenderThread
+from RenderWorker import endRendersAndExit, renderQueue, renderQueueLock, startRenderThread, getActiveRenderTaskInfo
 if COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
 from SharedUtils import calcGameCounts
@@ -48,9 +49,11 @@ commandArray.append(Command(triggerStartRenderThread, 'Start render thread'))
 
 
 def printActiveJobs():
+    activeRenderTask, activeRenderTaskSubindex, _ = getActiveRenderTaskInfo()
     print(f"Active render job:",
           "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
     if COPY_FILES:
+        activeCopyTask = getActiveCopyTaskInfo()
         print(f"Active copy job:",
               "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
 

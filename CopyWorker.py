@@ -5,6 +5,7 @@ import shutil
 import threading
 import time as ttime #avoid name conflict with import in config file
 import os
+from typing import Tuple
 
 from SharedUtils import extractInputFiles
 
@@ -22,8 +23,11 @@ from MultiTwitchRenderer import generateTilingCommandMultiSegment
 if COPY_FILES:
     activeCopyTask: RenderTask = None
     copyThread: threading.Thread = None
-    copyQueue = queue.PriorityQueue()
+    copyQueue: queue.PriorityQueue[Tuple[int, RenderTask]] = queue.PriorityQueue<Tuple[int, RenderTask]>()
     copyQueueLock = threading.RLock()
+
+def getActiveCopyTaskInfo() -> RenderTask:
+    return activeCopyTask
 
 def copyWorker(copyLog=partial(print, flush=True)):
     #copyLog = copyText.addLine
