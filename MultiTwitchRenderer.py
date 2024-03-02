@@ -14,6 +14,8 @@ print = partial(print, flush=True)
 print(sys.executable)
 sys.path.append(os.path.dirname(sys.executable))
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 import scanned
@@ -126,9 +128,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         if logLevel >= 2:
             pprint(mainSessionsOnTargetDate)
 
-    groupsFromMainFiles = reduce(list.append,  # list.__add__,
-                                 (file.parsedChat.groups for file in set((session.file for session in mainSessionsOnTargetDate)
-                                                                         ) if file.parsedChat is not None), [])
+    #groupsFromMainFiles = reduce(list.append,  # list.__add__,
+    #                             (file.parsedChat.groups for file in set((session.file for session in mainSessionsOnTargetDate)
+    #                                                                     ) if file.parsedChat is not None), [])
+    groupsFromMainFiles = []
+    for file in set((session.file for session in mainSessionsOnTargetDate)):
+        if file.parsedChat is not None:
+            groupsFromMainFiles.extend(file.parsedChat.groups)
+    
     if logLevel >= 1:
         print("\n\nStep 2.1: ")
         pprint(groupsFromMainFiles)

@@ -7,6 +7,8 @@ import json
 from typing import Dict, List, Set
 import scanned
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 from Session import Session

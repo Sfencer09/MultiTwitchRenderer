@@ -1,9 +1,10 @@
 # %%
 import os
 import sys
-#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #sys.path.insert(0, os.path.abspath(os.path.join(sys.executable)))
-#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
 
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from ParsedChat import parsePlayersFromGroupMessage
@@ -11,15 +12,22 @@ from RenderConfig import RenderConfig
 from RenderWorker import formatCommand
 from SharedUtils import extractInputFiles
 from SourceFile import initialize
+from SessionWorker import sessionWorker
 
 # %%
 #reloadAndSave()
 
 
-initialize()
+#initialize()
 #loadFiledata(DEFAULT_DATA_FILEPATH+'.bak')
 #scanFiles(log=True)
 print("Initialization complete!")
+
+# %%
+
+sessionWorker()
+
+# %%
 
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 

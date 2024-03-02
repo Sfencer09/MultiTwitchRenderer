@@ -1,6 +1,6 @@
 from functools import partial
 import shutil
-import time 
+import time as ttime #avoid name conflict with import in config file
 import signal
 import queue
 import threading
@@ -9,27 +9,42 @@ import subprocess
 import sys
 import os
 from shlex import quote
+from typing import Any, Tuple
 
-from RenderTask import getRenderStatus
+from RenderTask import RenderTask, getRenderStatus
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 
 from SharedUtils import insertSuffix
 from SourceFile import getVideoInfo
 from RenderTask import setRenderStatus, getRenderStatus, decrFileRefCount
+from MultiTwitchRenderer import generateTilingCommandMultiSegment
 
 renderThread:threading.Thread = None
-activeRenderTask = None
-activeRenderTaskSubindex = None
-activeRenderSubprocess = None
+activeRenderTask:RenderTask = None
+activeRenderTaskSubindex:int = None
+activeRenderSubprocess:subprocess.Popen = None
 
-renderQueue = queue.PriorityQueue()
+renderQueue: queue.PriorityQueue[Tuple[int, RenderTask]] = queue.PriorityQueue<Tuple[int, RenderTask]>()
 renderQueueLock = threading.Lock()
 
 def formatCommand(command):
     return ' '.join((quote(str(x)) for x in command))
 
+def startRenderThread():
+    if not renderThreadStarted():
+        renderThread.start()
+        return True
+    return False
+
+def renderThreadStarted():
+    return renderThread is not None and renderThread.is_alive()
+
+def getActiveRenderTaskInfo() -> Tuple[RenderTask, int, subprocess.Popen]:
+    return (activeRenderTask, activeRenderTaskSubindex, activeRenderSubprocess)
 
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
@@ -37,19 +52,13 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  renderLog=partial(print, flush=True)):
     #renderLog = renderText.addLine
     queueEmpty = False
-    try: # This try catch is here so I don't have to finish fixing whatever is f*cked up with my PyInstaller setup
-        from MultiTwitchRenderer.MultiTwitchRenderer import generateTilingCommandMultiSegment
-        #This will work if it is in the PyInstaller package
-    except:
-        # But if it's not, and we're just running it in VSCode, then this import will take over instead.
-        from MultiTwitchRenderer import generateTilingCommandMultiSegment
     while True:
         # sessionText, copyText, renderText = bufferedTexts
         if renderQueue.empty():
             if not queueEmpty:
                 print("Render queue empty, sleeping")
                 queueEmpty = True
-            time.sleep(10)
+            ttime.sleep(10)
             continue
         queueEmpty = False
         renderQueueLock.acquire()  # block if user is editing queue
@@ -202,14 +211,23 @@ def endRendersAndExit():
         print("Terminating render thread")
         activeRenderSubprocess.terminate()
         activeRenderSubprocess.wait(10)
-        if activeRenderSubprocess.poll is None:
+        if activeRenderSubprocess.poll() is None:
             print(
                 "Terminating render thread did not complete within 10 seconds, killing instead")
             activeRenderSubprocess.kill()
             activeRenderSubprocess.wait()
-        if activeRenderSubprocess.poll is not None:
+        if activeRenderSubprocess.poll() is not None:
             print("Active render stopped successfully")
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     print("Stopping!")
     sys.exit(0)
 
+
+if ENABLE_URWID:
+    import UrwidUI.UrwidMain
+    renderThread = threading.Thread(target=renderWorker, kwargs={'renderLog':UrwidUI.UrwidMain.renderText.addLine})
+    renderThread.daemon = True
+else:
+    renderThread = threading.Thread(target=renderWorker)
+    renderThread.daemon = True
+    

@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 from fuzzysearch import find_near_matches
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 def parsePlayersFromGroupMessage(message: str):
