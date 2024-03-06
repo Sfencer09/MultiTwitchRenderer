@@ -42,10 +42,14 @@ def scanSessionsFromFile(file: 'SourceFile'):
 
 def trimInfoDict(infoDict: dict):
     newDict = dict(infoDict)
-    del newDict['thumbnails']
-    del newDict['formats']
-    del newDict['subtitles']
-    del newDict['http_headers']
+    if 'thumbnails' in newDict:
+        del newDict['thumbnails']
+    if 'formats' in newDict:
+        del newDict['formats']
+    if 'subtitles' in newDict:
+        del newDict['subtitles']
+    if 'http_headers' in newDict:
+        del newDict['http_headers']
     return newDict
 
 class SourceFile:
