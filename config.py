@@ -83,7 +83,7 @@ videoExts = ['.mp4', '.mkv']
 infoExt = '.info.json'
 chatExt = '.rechat.twitch-gql-20221228.json'
 otherExts = ['.description', '.jpg']
-videoIdRegex = r"(v[\d]+)"
+videoIdRegex = r"(v?[\d]{9,11})" #r"(v[\d]+)"
 
 DEFAULT_DATA_FILEPATH = r'./knownFiles.pickle' #r'/home/ubuntu/Documents/MultiTwitchRenderer/allTwitchFiles.pickle'
 
