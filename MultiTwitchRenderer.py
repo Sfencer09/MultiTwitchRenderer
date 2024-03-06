@@ -136,11 +136,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         if file.parsedChat is not None:
             groupsFromMainFiles.extend(file.parsedChat.groups)
     
+    mainFiles = set((session.file for session in mainSessionsOnTargetDate))
     if logLevel >= 1:
         print("\n\nStep 2.1: ")
         pprint(groupsFromMainFiles)
 
-        mainFiles = set((session.file for session in mainSessionsOnTargetDate))
         for mainFile in mainFiles:
             print(mainFile.infoFile)
             chat = mainFile.parsedChat
@@ -225,6 +225,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 uniqueTimestamps.add(start)
             if end < mainSessionsEndTime or endTimeMode == 'allOverlapEnd':
                 uniqueTimestamps.add(timePair[1])
+    for mainFile in mainFiles:
+        chat = mainFile.parsedChat
+        if chat is not None:
+            for group in chat.groups:
+                groupTimestamp = group['time'].timestamp()
+                if mainSessionsStartTime < groupTimestamp < mainSessionsEndTime:
+                    uniqueTimestamps.add(groupTimestamp)
     uniqueTimestampsSorted = sorted(uniqueTimestamps)
     allSessionsStartTime = uniqueTimestampsSorted[0]
     allSessionsEndTime = uniqueTimestampsSorted[-1]
