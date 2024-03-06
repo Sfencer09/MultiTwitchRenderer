@@ -7,12 +7,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
 
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
+from config import *
 from ParsedChat import parsePlayersFromGroupMessage
 from RenderConfig import RenderConfig
 from RenderWorker import formatCommand
 from SharedUtils import extractInputFiles
 from SourceFile import initialize, reloadAndSave
-from SessionWorker import sessionWorker
+from SessionWorker import getAllStreamingDaysByStreamer, sessionWorker
 import scanned
 
 # %%
@@ -34,7 +35,10 @@ sessionWorker()
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
+#testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
+testStreamer = mainStreamers[0]
+testDay = getAllStreamingDaysByStreamer()[testStreamer][0]
+testCommands = generateTilingCommandMultiSegment(testStreamer, testDay,
                                                  RenderConfig(#logLevel=3,
                                                  #startTimeMode='allOverlapStart',
                                                  #endTimeMode='allOverlapEnd',
