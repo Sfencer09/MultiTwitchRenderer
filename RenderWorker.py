@@ -28,7 +28,7 @@ activeRenderTask:RenderTask = None
 activeRenderTaskSubindex:int = None
 activeRenderSubprocess:subprocess.Popen = None
 
-renderQueue: queue.PriorityQueue[Tuple[int, RenderTask]] = queue.PriorityQueue<Tuple[int, RenderTask]>()
+renderQueue: queue.PriorityQueue[Tuple[int, RenderTask]] = queue.PriorityQueue()
 renderQueueLock = threading.Lock()
 
 def formatCommand(command):
