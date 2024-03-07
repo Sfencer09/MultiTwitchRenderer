@@ -125,6 +125,9 @@ def scanFiles(log=False):
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
+    globalAllStreamers = [name for name in os.listdir(basepath) if
+                      (name not in ("NA", outputDirectory) and 
+                       os.path.isdir(os.path.join(basepath, name)))]
     for streamer in globalAllStreamers:
         if log:
             print(f"Scanning streamer {streamer} ", end='')
