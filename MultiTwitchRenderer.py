@@ -1,5 +1,5 @@
 
-from typing import List
+from typing import Dict, List
 import os
 import math
 import random
@@ -117,7 +117,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     if logLevel >= 1:
         print(targetDate, targetDateStartTime, targetDateEndTime)
         print('other streamers', otherStreamers)
-    mainSessionsOnTargetDate = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
+    mainSessionsOnTargetDate:List[Session] = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
         x.startTimestamp, tz=UTC_TIMEZONE) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError(
@@ -149,8 +149,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     # 3. For all other streamers, build a sorted array of sessions that have matching games & have time overlap (and/or
         # appear in a !who-type command during that time if rechat is found)
-    secondarySessionsArray = []
-    inputSessionsByStreamer = {}
+    secondarySessionsArray:List[Session] = []
+    inputSessionsByStreamer:Dict[str, List[Session]] = {}
     inputSessionsByStreamer[mainStreamer] = mainSessionsOnTargetDate
     for streamer in scanned.allStreamerSessions.keys():
         if streamer == mainStreamer:
@@ -247,16 +247,16 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         # and the element in each column is either None or the indexed streamer's file(path) for that section of
         # time - should never be more than one
     numSegments = len(uniqueTimestampsSorted)-1
-    segmentFileMatrix = [[None for i in range(
+    segmentFileMatrix:List[List[None|SourceFile]] = [[None for i in range(
         len(allInputStreamers))] for j in range(numSegments)]
-    segmentSessionMatrix = [[None for i in range(
+    segmentSessionMatrix:List[List[None|List[Session]]] = [[None for i in range(
         len(allInputStreamers))] for j in range(numSegments)]
     for segIndex in range(numSegments):
         # segmentsByStreamerIndex = segmentFileMatrix[segIndex]
         segmentStartTime = uniqueTimestampsSorted[segIndex]
         segmentEndTime = uniqueTimestampsSorted[segIndex+1]  # - 1
 
-        def addOverlappingSessions(sessionsList, streamerIndex):
+        def addOverlappingSessions(sessionsList:List[Session], streamerIndex):
             for session in sessionsList:
                 overlapStart = max(segmentStartTime, session.startTimestamp)
                 overlapEnd = min(segmentEndTime, session.endTimestamp)
