@@ -1,7 +1,8 @@
-from typing import Dict, List, Set
+from typing import Dict, List, Set, TYPE_CHECKING
 
-#from SourceFile import SourceFile
-#from Session import Session
+if TYPE_CHECKING:
+    from SourceFile import SourceFile
+    from Session import Session
 
 # Shared state
 

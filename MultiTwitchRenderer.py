@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timedelta
 from functools import reduce, partial
 from pprint import pprint
+from Session import Session
 
 print = partial(print, flush=True)
 
@@ -130,7 +131,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     # 3. For all other streamers, build a sorted array of sessions that have matching games & have time overlap (and/or
         # appear in a !who-type command during that time if rechat is found)
-    secondarySessionsArray = []
+    secondarySessionsArray:List[Session] = []
     inputSessionsByStreamer = {}
     inputSessionsByStreamer[mainStreamer] = mainSessionsOnTargetDate
     for streamer in scanned.allStreamerSessions.keys():

@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 from SharedUtils import convertToDatetime
 #from SourceFile import SourceFile
 import json
@@ -36,7 +36,7 @@ class ParsedChat:
         # print(chatFile)
         nightbotGroupComments = []
         groupEditComments = []
-        groups = []
+        groups:List[Dict[str, datetime|List[str]]] = []
         lastCommandComment = None
         # self.chatJson = chatJson
         # print(f"Parsed {len(chatJson)} comments")
