@@ -1,5 +1,7 @@
+from typing import TYPE_CHECKING
 
-#from SourceFile import SourceFile
+if TYPE_CHECKING:
+    from SourceFile import SourceFile
 
 
 class Session:

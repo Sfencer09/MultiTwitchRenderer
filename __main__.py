@@ -12,13 +12,15 @@ print(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
 #sys.path.append("./MultiTwichRenderer")
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 
 #import __init__
-from UrwidUI.UrwidMain import urwidUiMain
+#from UrwidUI.UrwidMain import urwidUiMain
+import UrwidUI.UrwidMain
 from RenderConfig import RenderConfig
-from RenderWorker import renderWorker, renderThread
 from CommandWorker import commandWorker
 from SharedUtils import calcGameCounts
 from SessionWorker import sessionWorker
@@ -30,15 +32,10 @@ if COPY_FILES:
     assert localBasepath.strip(' /\\') != basepath.strip(' /\\')
 
 if ENABLE_URWID:
-    import UrwidUI.UrwidMain
-    renderThread = threading.Thread(target=renderWorker, kwargs={'renderLog':UrwidUI.UrwidMain.renderText.addLine})
-    renderThread.daemon = True
     if COPY_FILES:
         copyThread = threading.Thread(target=copyWorker, kwargs={'copyLog':UrwidUI.UrwidMain.copyText.addLine})
         copyThread.daemon = True
 else:
-    renderThread = threading.Thread(target=renderWorker)
-    renderThread.daemon = True
     if COPY_FILES:
         copyThread = threading.Thread(target=copyWorker)
         copyThread.daemon = True
@@ -46,7 +43,7 @@ else:
 def mainStart():
     if ENABLE_URWID:
         try:
-            urwidUiMain()
+            UrwidUI.UrwidMain.urwidUiMain()
         except TypeError as ex:
             if str(ex) == 'ord() expected a character, but string of length 0 found':
                 URWID = False
@@ -68,7 +65,6 @@ if __name__ == '__main__':
         print("Deployment mode")
         if COPY_FILES:
             copyThread.start()
-        # renderThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig': defaultSessionRenderConfig,
                                                                        'maxLookback': timedelta(days=DEFAULT_LOOKBACK_DAYS)})
         sessionThread.daemon = True

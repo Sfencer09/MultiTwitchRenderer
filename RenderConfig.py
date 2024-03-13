@@ -5,6 +5,8 @@ from typing import Dict
 from schema import Schema, Or, And, Optional, Use
 
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 HW_DECODE = 1

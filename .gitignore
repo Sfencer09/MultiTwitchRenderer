@@ -165,5 +165,7 @@ cython_debug/
 knownFiles.pickle*
 MultiTwitchRenderer.ipynb
 renderStatuses.pickle
-
 urwid-ui-original.py
+
+#file is a symlink
+tests/config.py

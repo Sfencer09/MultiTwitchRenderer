@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import os
-import time 
+import time as ttime #avoid name conflict with import in config file
 
 from SharedUtils import convertToDatetime, getVideoOutputPath
 
-
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
 
@@ -61,12 +62,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                   renderConfig=RenderConfig(),
                   sessionLog = partial(print, flush=True)):
     #sessionLog = sessionText.addLine
-    try: # This try catch is here so I don't have to finish fixing whatever is f*cked up with my PyInstaller setup
-        from MultiTwitchRenderer.MultiTwitchRenderer import generateTilingCommandMultiSegment
-        #This will work if it is in the PyInstaller package
-    except:
-        # But if it's not, and we're just running it in VSCode, then this import will take over instead.
-        from MultiTwitchRenderer import generateTilingCommandMultiSegment
+    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     #allStreamersWithVideos = SourceFile.allStreamersWithVideos
     #global allFilesByStreamer
     #allFilesByStreamer = SourceFile.allFilesByStreamer
@@ -140,4 +136,4 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
         prevChangeCount = changeCount
         if __debug__:
             break
-        time.sleep(60*60)  # *24)
+        ttime.sleep(60*60)  # *24)

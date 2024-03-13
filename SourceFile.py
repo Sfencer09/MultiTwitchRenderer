@@ -7,6 +7,8 @@ import json
 from typing import Dict, List, Set
 import scanned
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 
 from Session import Session
@@ -40,10 +42,14 @@ def scanSessionsFromFile(file: 'SourceFile'):
 
 def trimInfoDict(infoDict: dict):
     newDict = dict(infoDict)
-    del newDict['thumbnails']
-    del newDict['formats']
-    del newDict['subtitles']
-    del newDict['http_headers']
+    if 'thumbnails' in newDict:
+        del newDict['thumbnails']
+    if 'formats' in newDict:
+        del newDict['formats']
+    if 'subtitles' in newDict:
+        del newDict['subtitles']
+    if 'http_headers' in newDict:
+        del newDict['http_headers']
     return newDict
 
 class SourceFile:
@@ -119,6 +125,9 @@ def scanFiles(log=False):
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
+    globalAllStreamers = [name for name in os.listdir(basepath) if
+                      (name not in ("NA", outputDirectory) and 
+                       os.path.isdir(os.path.join(basepath, name)))]
     for streamer in globalAllStreamers:
         if log:
             print(f"Scanning streamer {streamer} ", end='')

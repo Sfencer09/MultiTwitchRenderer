@@ -2,8 +2,10 @@ import urwid
 
 from . import BufferedText, SubMenu, InfoChoice, HorizontalBoxes, ActionChoice
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
-from RenderWorker import endRendersAndExit, renderThread
+from RenderWorker import endRendersAndExit, renderThread, renderThreadStarted, startRenderThread
 if COPY_FILES:
     from CopyWorker import copyThread
 
@@ -15,14 +17,15 @@ def exit_program(button):
 
 
 def renderThreadChoice(key):
-    if renderThread.nativeId is None:
-        renderThread.start()
+    #if renderThread.nativeId is None:
+    #    renderThread.start()
+    startRenderThread()
 
 
 class RenderThreadStatusString:
     def __str__(self):
-        started = renderThread.nativeId is not None
-        return 'Render thread already started!' if started else 'Starting render thread!'
+        #started = renderThread.nativeId is not None
+        return 'Render thread already started!' if renderThreadStarted() else 'Starting render thread!'
 
 if ENABLE_URWID:
     btLabels = ['S', 'R']

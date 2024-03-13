@@ -3,18 +3,22 @@ from functools import partial
 import os
 from typing import List
 from thefuzz import process as fuzzproc
-import time 
-from SharedUtils import getVideoOutputPath
+import time as ttime
+from CopyWorker import getActiveCopyTaskInfo #avoid name conflict with import in config file
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
-from RenderWorker import endRendersAndExit, renderThread, activeRenderTask, activeRenderTaskSubindex, renderQueue, renderQueueLock
+from RenderWorker import endRendersAndExit, renderQueue, renderQueueLock, startRenderThread, getActiveRenderTaskInfo
 if COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
 from SharedUtils import calcGameCounts
 from RenderConfig import RenderConfig
 from RenderTask import DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, RenderTask, clearErroredStatuses, deleteRenderStatus, getRenderStatus, getRendersWithStatus, setRenderStatus
 from SessionWorker import getAllStreamingDaysByStreamer
+from SharedUtils import getVideoOutputPath
+
 
 class Command:
     def __init__(self, targetFunc, description):
@@ -27,26 +31,29 @@ commandArray:List[Command] = []
 commandArray.append(Command(endRendersAndExit, 'Exit program'))
 
 
-def startRenderThread():
+def triggerStartRenderThread():
     print("Starting render thread")
-    if renderThread is not None and not renderThread.is_alive():
-        renderThread.start()
+    #if renderThread is not None and not renderThread.is_alive():
+    #    renderThread.start()
+    startRenderThread()
     index = None
     for i in range(len(commandArray)):
-        if commandArray[i].targetFunc == startRenderThread:
+        if commandArray[i].targetFunc == triggerStartRenderThread:
             index = i
             break
     assert index is not None
     del commandArray[index]
 
 
-commandArray.append(Command(startRenderThread, 'Start render thread'))
+commandArray.append(Command(triggerStartRenderThread, 'Start render thread'))
 
 
 def printActiveJobs():
+    activeRenderTask, activeRenderTaskSubindex, _ = getActiveRenderTaskInfo()
     print(f"Active render job:",
           "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
     if COPY_FILES:
+        activeCopyTask = getActiveCopyTaskInfo()
         print(f"Active copy job:",
               "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
 
@@ -344,7 +351,7 @@ def inputManualJob(initialRenderConfig=None):
             fileDate = dates[int(userInput)-1]
         except:
             print("Invalid input!")
-            time.sleep(2)
+            ttime.sleep(2)
             fileDate = None
     currentStatus = getRenderStatus(mainStreamer, fileDate)
     print(f"Got {mainStreamer} {fileDate}, current status {currentStatus}")

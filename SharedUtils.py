@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 import os
 from typing import List
 
+if __debug__:
+    from config import *
 exec(open("config.py").read(), globals())
 import scanned
 
@@ -30,7 +32,7 @@ def extractInputFiles(ffmpegCommand: List[str]):
         if st == '-i':
             isInput = True
         elif isInput:
-            if st != 'anullsrc':
+            if isinstance(st, str) and not st.startswith('anullsrc'):
                 files.append(st)
             isInput = False
     return files

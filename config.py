@@ -11,9 +11,9 @@ outputDirectory = "Rendered Multiviews"
 ENABLE_URWID = False
 
 mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
-globalAllStreamers = [name for name in os.listdir(basepath) if
-                      (name not in ("NA", outputDirectory) and 
-                       os.path.isdir(os.path.join(basepath, name)))]
+#globalAllStreamers = [name for name in os.listdir(basepath) if
+#                      (name not in ("NA", outputDirectory) and 
+#                       os.path.isdir(os.path.join(basepath, name)))]
 #secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
 
 streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
@@ -83,7 +83,7 @@ videoExts = ['.mp4', '.mkv']
 infoExt = '.info.json'
 chatExt = '.rechat.twitch-gql-20221228.json'
 otherExts = ['.description', '.jpg']
-videoIdRegex = r"(v[\d]+)"
+videoIdRegex = r"(v?[\d]{9,11})" #r"(v[\d]+)"
 
 DEFAULT_DATA_FILEPATH = r'./knownFiles.pickle' #r'/home/ubuntu/Documents/MultiTwitchRenderer/allTwitchFiles.pickle'
 
