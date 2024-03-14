@@ -8,7 +8,6 @@ import psutil
 import warnings
 warnings.filterwarnings('ignore')
 
-import matplotlib.pyplot as plt
 from SharedUtils import insertSuffix
 from SourceFile import SourceFile
 
@@ -65,7 +64,8 @@ def extractAudio(target_file: str):
 
 __DEFAULT_DURATION = None  # 3600
 __DEFAULT_WINDOW = None
-
+""" 
+import matplotlib.pyplot as plt
 
 def findAudioOffset(
     within_file: str,
@@ -116,7 +116,7 @@ def findAudioOffset(
         f"Writing plot to {finalImagePath}, memory tuple:", psutil.virtual_memory())
     fig.savefig(finalImagePath)
 
-    return offset
+    return offset """
 
 def histogramByBucket(arr, bucketSize = 10):
     ...
