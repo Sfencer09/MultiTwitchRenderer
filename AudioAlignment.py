@@ -186,7 +186,7 @@ def findAudioOffsets(within_file: str,
                 offsetStr = str(round(foundOffset / bucketSize) * bucketSize)
                 print(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
                 if offsetStr in offsetsFound.keys():
-                    offsetsFound[offsetStr].append((foundOffset, microWindowStart))
+                    offsetsFound[offsetStr].append((foundOffset, c[peak], microWindowStart/sr_within))
                 else:
                     offsetsFound[offsetStr] = [(foundOffset, microWindowStart)]
             else:
@@ -210,6 +210,42 @@ def findAudioOffsets(within_file: str,
                 spilledOffsets[key].extend(offsetsFound[downOneKey])
     print(spilledOffsets)
     return spilledOffsets
+
+def findPopularAudioOffsets(
+    within_file: str,
+    find_file: str,
+    initialOffset: float = 0,
+    start: float = 0,
+    duration: float | None = None,
+    macroWindowSize: int = 3600,
+    macroStride: int | None = None,
+    microWindowSize: int = 60,
+    microStride: float | int | None = 30,
+    bucketSize: float | int = 1,
+    bucketSpillover: int = 0,
+    popularThreshold: int = 1, 
+):
+    allOffsets = findAudioOffsets(within_file=within_file,
+                                      find_file=find_file,
+                                      initialOffset=initialOffset,
+                                      start=start,
+                                      duration=duration,
+                                      macroWindowSize=macroWindowSize,
+                                      macroStride=macroStride,
+                                      microWindowSize=microWindowSize,
+                                      microStride=microStride,
+                                      bucketSize=bucketSize,
+                                      bucketSpillover=bucketSpillover,
+                                      )
+    offsetsByFrequency = sorted(allOffsets.keys(), key=lambda x: -len(allOffsets[x]))
+    if len(offsetsByFrequency) == 0:
+        return {}
+    popularOffsetKeys = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) > popularThreshold]
+    print("popularOffsetKeys", popularOffsetKeys)
+    popularOffsets = {}
+    for key in popularOffsetKeys:
+        popularOffsets[key] = allOffsets[key]
+    return popularOffsets
 
 
 def findAverageAudioOffset(
@@ -245,11 +281,11 @@ def findAverageAudioOffset(
     print(popularOffsets)
     mostPopularOffset = offsetsByFrequency[0]
     print(mostPopularOffset)
-    return sum((offset for offset, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
+    return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
     
 
 # First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
-def findFileOffset(
+def findAverageFileOffset(
     file1: SourceFile,
     file2: SourceFile,
     **kwargs
@@ -264,3 +300,17 @@ def findFileOffset(
         file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
     )
     return findAverageAudioOffset(file1Path, file2Path, offset, **kwargs)
+
+def findAllFileOffsets(file1: SourceFile,
+                       file2: SourceFile,
+                       **kwargs):
+    file1Start = file1.infoJson["timestamp"]
+    file2Start = file2.infoJson["timestamp"]
+    offset = file2Start - file1Start
+    file1Path = (
+        file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
+    )
+    file2Path = (
+        file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
+    )
+    return findPopularAudioOffsets(file1Path, file2Path, initialOffset=offset, **kwargs)
