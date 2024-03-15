@@ -71,8 +71,6 @@ while testCommands is None:
                                                  )#)
     dateIndex += 1
 
-saveFiledata(DEFAULT_DATA_FILEPATH)
-
 print([extractInputFiles(testCommand) for testCommand in testCommands])
 print("\n\n")
 for testCommand in testCommands:
@@ -128,6 +126,8 @@ print(testInputFiles)
 print(uniqueFiles)
 print("\n\n")
 
+saveFiledata(DEFAULT_DATA_FILEPATH)
+
 
 # %%
 def printAbove(s:str, linesAbove:int, *, printFunc=print):
@@ -140,3 +140,6 @@ def printAbove(s:str, linesAbove:int, *, printFunc=print):
 #printAbove("Overwritten!!!", 2)
 
 
+# %%
+
+import AudioAlignTests
