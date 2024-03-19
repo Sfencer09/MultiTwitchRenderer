@@ -38,8 +38,11 @@ def getAudioPath(videoPath: str):
 def readExistingAudioFiles():
     for root, _, files in os.walk(audioBasepath):
         for file in [os.path.join(root, file) for file in files]:
-            audioFiles.add(file)
-    print(audioFiles)
+            if os.path.getatime(file) < time.time() - 7 * (24 * 60 * 60):
+                os.remove(file)
+            else:
+                audioFiles.add(file)
+    #print(audioFiles)
 
 
 readExistingAudioFiles()
