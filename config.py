@@ -74,7 +74,7 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
 nongroupGames = ('Just Chatting', "I'm Only Sleeping")
 ffmpegPath='' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
 
-characterReplacements = {'?':'？', '/':'', '\\':''}
+characterReplacements = {'?':'？', '/':'', '\\':'', ':':'：'}
 
 threadCount = os.cpu_count()
 
@@ -132,7 +132,7 @@ RENDER_CONFIG_DEFAULTS = {
     'minimumTimeInVideo': 900,
     'cutMode': 'chunked',
     'useChat': True,
-    'preciseAlign': True,
+    'preciseAlign': False,
 }
 # -
 
