@@ -8,6 +8,7 @@ import numpy as np
 from scipy import signal
 import os
 import psutil
+import subprocess
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -15,7 +16,6 @@ from SharedUtils import insertSuffix
 from SourceFile import SourceFile
 
 import config
-import subprocess
 
 audioFiles = set()
 audioExt = ".m4a"
@@ -145,7 +145,7 @@ def findAudioOffsets(within_file: str,
     microWindowSize: int = 60,
     microStride: float | int | None = 30,
     bucketSize: float | int = 1,
-    bucketSpillover: int = 0,
+    bucketSpillover: int = 1,
     ):
     startTime = time.time()
     if macroWindowSize < 5 * microWindowSize:
@@ -153,9 +153,9 @@ def findAudioOffsets(within_file: str,
     if macroWindowSize < 60 * 10:
         raise ValueError("macroWindowSize must be at least 10 minutes")
     if macroStride is None:
-        macroStride = macroWindowSize // 2
+        macroStride = macroWindowSize #// 2
     if microStride is None:
-        microStride = microWindowSize // 2
+        microStride = microWindowSize / 2
     withinAudioFile = extractAudioFileFromVideo(within_file)
     findAudioFile = extractAudioFileFromVideo(find_file)
     print(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple:", psutil.virtual_memory())
@@ -181,8 +181,10 @@ def findAudioOffsets(within_file: str,
     withinLength = y_within.shape[0] / sr_within
     findLength = y_find.shape[0] / sr_within
     overlapLength = min(withinLength, findLength)
-    offsetsFound: Dict[str, List[Tuple[float, float]]] = dict()
+    offsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
     threshold = max(100, 5 * microWindowSize) #500
+    #allOffsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
+    allOffsetsFound: List[tuple] = []
     for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
         macroWindowStart = macroWindowNum * macroStride * sr_within
         macroWindowEnd = ((macroWindowNum * macroStride) + macroWindowSize) * sr_within
@@ -191,32 +193,40 @@ def findAudioOffsets(within_file: str,
         for microWindowNum in range(int(ceil((macroWindowSize - microWindowSize) / microStride))):
             microWindowStart = macroWindowStart + (microWindowNum * microStride * sr_within)
             microWindowEnd = macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * sr_within)
-            print("Micro start:", microWindowStart/sr_within, "end:", microWindowEnd/sr_within)
+            #print("Micro start:", microWindowStart/sr_within, "end:", microWindowEnd/sr_within)
             findSnippet = y_find[microWindowStart:microWindowEnd]
             c = signal.correlate(withinSnippet, findSnippet, mode='same', method='fft')
-            print("Signal correlated, memory tuple:", psutil.virtual_memory())
+            # print("Signal correlated, memory tuple:", psutil.virtual_memory())
             peak = np.argmax(c)
-            print("within shape =", withinSnippet.shape, ", find shape =", findSnippet.shape, ", c shape =", c.shape)
+            # print("within shape =", withinSnippet.shape, ", find shape =", findSnippet.shape, ", c shape =", c.shape)
             foundOffset = round(((peak + macroWindowStart - microWindowStart) / sr_within) - (microWindowSize / 2), 2)
+            offsetStr = str(round(foundOffset / bucketSize) * bucketSize)
+            offsetEntry = (foundOffset, c[peak], microWindowStart/sr_within)
             if c[peak] >= threshold:
-                offsetStr = str(round(foundOffset / bucketSize) * bucketSize)
-                print(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
+                #print(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
                 if offsetStr in offsetsFound.keys():
-                    offsetsFound[offsetStr].append((foundOffset, c[peak], microWindowStart/sr_within))
+                    offsetsFound[offsetStr].append(offsetEntry)
                 else:
-                    offsetsFound[offsetStr] = [(foundOffset, microWindowStart)]
-            else:
-                print(f"Found offset {foundOffset} with insufficient peak match (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
+                    offsetsFound[offsetStr] = [offsetEntry]
+            #else:
+                #print(f"Found offset {foundOffset} with insufficient peak match (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
+            #if offsetStr not in allOffsetsFound.keys():
+            #    allOffsetsFound[offsetStr] = [offsetEntry]
+            #else:
+            #    allOffsetsFound[offsetStr].append(offsetEntry)
+            allOffsetsFound.append(offsetEntry)
     print("Time =", time.time() - startTime, "seconds")
+    for offsetFound in offsetsFound.values():
+        offsetFound.sort(key=lambda x: x[1])
     print(offsetsFound)
-    print("\n\n\n")
-    if len(offsetsFound) == 0:
-        return None
-    spilledOffsets: Dict[str, List[float]] = dict()
+    weightedAverageOffset = sum((offset * weight for offset, weight, _ in allOffsetsFound)) / sum((weight for _, weight, _ in allOffsetsFound))
+    print("Weighted average offset:", weightedAverageOffset)
+    #print("\n\n\n")
+    spilledOffsets: Dict[str, List[Tuple[float, float, float]]] = dict()
     for key in offsetsFound.keys():
         spilledOffsets[key] = list(offsetsFound[key])
         keyInt = float(key)
-        for offset in range(0, bucketSpillover):
+        for offset in range(1, bucketSpillover+1):
             upOneKey = str(keyInt+(bucketSize*offset))
             downOneKey = str(keyInt-(bucketSize*offset))
             print(key, upOneKey, downOneKey)
