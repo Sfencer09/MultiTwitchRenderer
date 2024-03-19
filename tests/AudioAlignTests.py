@@ -13,6 +13,7 @@ sys.path.insert(
 if TYPE_CHECKING:
     from SourceFile import SourceFile
 
+
 from AudioAlignment import *
 from config import *
 import time as ttime
@@ -21,6 +22,7 @@ from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from SessionWorker import getAllStreamingDaysByStreamer
 from SharedUtils import extractInputFiles
 from SourceFile import initialize
+from RenderConfig import RenderConfig
 
 initialize()
 
@@ -52,6 +54,8 @@ allStreamingDays = getAllStreamingDaysByStreamer()
 testDay = "2024-02-20"
 def testAudioAlignmentForDate(streamer, day):
     commands = generateTilingCommandMultiSegment(streamer, day)
+    if commands is None:
+        return None
     mainFiles = set()
     secondaryFiles: Set['SourceFile'] = set()
     for command in commands:
@@ -69,10 +73,26 @@ def testAudioAlignmentForDate(streamer, day):
     for file in (scanned.filesBySourceVideoPath[f] for f in sorted(secondaryFiles)):
         offset = findAverageFileOffset(mainFile, file,
             duration = 7200,
-            macroWindowSize = 30*60,
-            macroStride = 30*60,
-            microWindowSize = 30)
+            macroWindowSize = 10*60,
+            macroStride = 10*60,
+            microWindowSize = 10)
+        print("Offset: ", offset)
         key = file.videoFile
         offsets[key] = offset
     print(ttime.time() - startTime, "seconds to run all correlations")
-    print(offsets)
+    #print(offsets)
+    return offsets
+
+#print(testAudioAlignmentForDate(testStreamer, testDay))
+outputs = {}
+#for i in range(1, 10):
+    #in allStreamingDays[testStreamer]:
+    #date = allStreamingDays[testStreamer][i]
+    #outputs[date] = testAudioAlignmentForDate(testStreamer, date)
+    
+#print(outputs)
+
+def testGenerateWithPrecision(streamer, day):
+    commands = generateTilingCommandMultiSegment(streamer, day, renderConfig=RenderConfig(preciseAlign = True))
+    print(commands)
+testGenerateWithPrecision(testStreamer, testDay)

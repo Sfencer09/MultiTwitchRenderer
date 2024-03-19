@@ -110,10 +110,12 @@ def writeCommandScript(commandList, testNum=None):
 #writeCommandScript(testCommandStrings, 11)
 
 # %%
-targetGroups = scanned.allFilesByVideoId['v2082233820'].parsedChat.groups
+#targetGroups = scanned.allFilesByVideoId['v2082233820'].parsedChat.groups
+targetGroups = scanned.allFilesByVideoId['v2076440501'].parsedChat.groups
 pprint([targetGroups[i] for i in range(len(targetGroups)) if i == 0 or set(targetGroups[i]) != set(targetGroups[i-1])])
 #print(allStreamersWithVideos)
 #parsePlayersFromGroupMessage("Chilled is playing with AstarriApple, BryceMcQuaid, CheesyBlueNips, DooleyNotedGaming (Jeremy), HeckMuffins, KaraCorvus, KYR_SP33DY, LarryFishburger, VikramAFC, X33N, and ZeRoyalViking!!  ")
+print(parsePlayersFromGroupMessage("Chilled is playing with APlatypuss(Soon), AriBunnie, AstarriApple(Soon), HeckMuffins, JonSandman, KaraCorvus, OzzaWorld(Soon), Reenyy, TayderTot, X33N, and VikramAFC!!"))
 
 # %%
 print(scanned.allFilesByVideoId['v2082233820'])
@@ -142,4 +144,4 @@ def printAbove(s:str, linesAbove:int, *, printFunc=print):
 
 # %%
 
-import AudioAlignTests
+#import AudioAlignTests
