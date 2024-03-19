@@ -299,15 +299,43 @@ def findAverageAudioOffset(
                                       bucketSize=bucketSize,
                                       bucketSpillover=bucketSpillover,
                                       )
-    offsetsByFrequency = sorted(allOffsets.keys(), key=lambda x: -len(allOffsets[x]))
-    print(offsetsByFrequency)
-    if len(offsetsByFrequency) == 0:
+    if allOffsets is None or len(allOffsets) == 0:
         return None
-    popularOffsets = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) > 1]
-    print(popularOffsets)
-    mostPopularOffset = offsetsByFrequency[0]
-    print(mostPopularOffset)
-    return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
+    offsetsByFrequency = sorted(allOffsets.keys(), key=lambda x: -len(allOffsets[x]))
+    #print("offsetsByFrequency", offsetsByFrequency)
+    print("offset lengths:", [(key, len(allOffsets[key])) for key in offsetsByFrequency])
+    reoccurringOffsets = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) > 1]
+    print("reoccurringOffsets", reoccurringOffsets)
+    if len(reoccurringOffsets) > 1:
+        occurrenceCounts = np.zeros(len(reoccurringOffsets))
+        for i in range(len(reoccurringOffsets)):
+            occurrenceCounts[i] = len(allOffsets[reoccurringOffsets[i]])
+        avg = np.average(occurrenceCounts)
+        stddev = np.std(occurrenceCounts)
+        print("avg", avg, "stddev", stddev)
+        popularOffsets = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) >= avg+stddev]
+        if len(popularOffsets) == 0:
+            return None
+        print("popularOffsets", popularOffsets)
+        mostPopularOffset = popularOffsets[0]
+        if len(popularOffsets) > 1:
+            secondMostPopularOffset = popularOffsets[1]
+            if len(allOffsets[secondMostPopularOffset]) == len(allOffsets[mostPopularOffset]):
+                if abs(float(mostPopularOffset) - float(secondMostPopularOffset)) > bucketSize:
+                    return None
+                else:
+                    #raise NotImplementedError
+                    assert len(popularOffsets) == 2 or len(allOffsets[popularOffsets[2]]) < len(allOffsets[mostPopularOffset])
+                    return None
+        #assert len(popularOffsets) <= 1 or len(allOffsets[popularOffsets[1]]) != len(allOffsets[mostPopularOffset])
+    elif len(reoccurringOffsets) == 0:
+        return None
+    else:
+        mostPopularOffset = reoccurringOffsets[0]
+    chosenOffset = allOffsets[mostPopularOffset]
+    print(mostPopularOffset, chosenOffset)
+    return sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
+    #return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
     
 
 # First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
@@ -333,10 +361,6 @@ def findAllFileOffsets(file1: SourceFile,
     file1Start = file1.infoJson["timestamp"]
     file2Start = file2.infoJson["timestamp"]
     offset = file2Start - file1Start
-    file1Path = (
-        file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
-    )
-    file2Path = (
-        file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
-    )
+    file1Path = file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
+    file2Path = file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
     return findPopularAudioOffsets(file1Path, file2Path, initialOffset=offset, **kwargs)
