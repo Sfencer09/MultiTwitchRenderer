@@ -1,6 +1,8 @@
 from math import ceil
+import threading
 import time
 from typing import Dict, List, Tuple
+from weakref import WeakValueDictionary
 import librosa
 import numpy as np
 from scipy import signal
@@ -47,8 +49,10 @@ def readExistingAudioFiles():
 
 readExistingAudioFiles()
 
+audioCacheLock = threading.RLock()
+audioCache = WeakValueDictionary()
 
-def extractAudio(target_file: str):
+def extractAudioFileFromVideo(target_file: str):
     audioPath = getAudioPath(target_file)
     if audioPath not in audioFiles:
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
@@ -65,6 +69,12 @@ def extractAudio(target_file: str):
         audioFiles.add(audioPath)
     return audioPath
 
+def extractAudioData(targetFile: str, sampleRate: int, offset: float, duration: float):
+    if targetFile not in audioCache:
+        audioCache[targetFile] = librosa.load(
+            targetFile, sr=sampleRate, offset=offset, duration=duration
+        )
+    return audioCache[targetFile]
 
 __DEFAULT_DURATION = None  # 3600
 __DEFAULT_WINDOW = None
@@ -146,25 +156,28 @@ def findAudioOffsets(within_file: str,
         macroStride = macroWindowSize // 2
     if microStride is None:
         microStride = microWindowSize // 2
-    withinAudioFile = extractAudio(within_file)
-    findAudioFile = extractAudio(find_file)
-    print("Audio extracted, memory tuple:", psutil.virtual_memory())
+    withinAudioFile = extractAudioFileFromVideo(within_file)
+    findAudioFile = extractAudioFileFromVideo(find_file)
+    print(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple:", psutil.virtual_memory())
     print("Initial offset =", initialOffset)
-    y_within, sr_within = librosa.load(
+    startTime = time.time()
+    y_within, sr_within = extractAudioData(
         withinAudioFile,
-        sr=None,
-        offset=start + (initialOffset if initialOffset > 0 else 0),
-        duration=duration,
+        None,
+        start + (initialOffset if initialOffset > 0 else 0),
+        duration,
     )
-    print("First audio loaded, memory tuple:", psutil.virtual_memory())
-    y_find, _ = librosa.load(
+    print(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple:", psutil.virtual_memory())
+    startTime = time.time()
+    y_find, _ = extractAudioData(
         findAudioFile,
-        sr=sr_within,
-        offset=start - (initialOffset if initialOffset < 0 else 0),
+        sr_within,
+        start - (initialOffset if initialOffset < 0 else 0),
         # duration=window if window is not None else duration,
-        duration=duration
+        duration
     )
-    print("Second audio loaded, memory tuple:", psutil.virtual_memory())
+    print(f"Second audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple:", psutil.virtual_memory())
+    startTime = time.time()
     withinLength = y_within.shape[0] / sr_within
     findLength = y_find.shape[0] / sr_within
     overlapLength = min(withinLength, findLength)
