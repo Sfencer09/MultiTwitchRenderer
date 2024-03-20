@@ -125,17 +125,24 @@ def findAudioOffset(
 def histogramByBucket(arr, bucketSize = 10):
     ...
 
+MAX_LOAD_DURATION = 7200
+
+DEFAULT_MACRO_WINDOW_SIZE: int = 600
+DEFAULT_MICRO_WINDOW_SIZE: int = 10
+DEFAULT_BUCKET_SIZE: float | int = 1
+DEFAULT_BUCKET_SPILLOVER: int = 1
+
 def findAudioOffsets(within_file: str,
     find_file: str,
     initialOffset: float = 0,
     start: float = 0,
     duration: float | None = None,
-    macroWindowSize: int = 3600,
+    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
     macroStride: int | None = None,
-    microWindowSize: int = 60,
-    microStride: float | int | None = 30,
-    bucketSize: float | int = 1,
-    bucketSpillover: int = 1,
+    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+    microStride: float | int | None = None,
+    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     ):
     startTime = time.time()
     if macroWindowSize < 5 * microWindowSize:
@@ -208,7 +215,7 @@ def findAudioOffsets(within_file: str,
     print("Time =", time.time() - startTime, "seconds")
     for offsetFound in offsetsFound.values():
         offsetFound.sort(key=lambda x: x[1])
-    print(offsetsFound)
+    #print(offsetsFound)
     weightedAverageOffset = sum((offset * weight for offset, weight, _ in allOffsetsFound)) / sum((weight for _, weight, _ in allOffsetsFound))
     print("Weighted average offset:", weightedAverageOffset)
     #print("\n\n\n")
@@ -224,7 +231,7 @@ def findAudioOffsets(within_file: str,
                 spilledOffsets[key].extend(offsetsFound[upOneKey])
             if downOneKey in offsetsFound.keys():
                 spilledOffsets[key].extend(offsetsFound[downOneKey])
-    print(spilledOffsets)
+    #print(spilledOffsets)
     return spilledOffsets
 
 def findPopularAudioOffsets(
@@ -233,12 +240,12 @@ def findPopularAudioOffsets(
     initialOffset: float = 0,
     start: float = 0,
     duration: float | None = None,
-    macroWindowSize: int = 3600,
+    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
     macroStride: int | None = None,
-    microWindowSize: int = 60,
-    microStride: float | int | None = 30,
-    bucketSize: float | int = 1,
-    bucketSpillover: int = 0,
+    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+    microStride: float | int | None = None,
+    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     popularThreshold: int = 1, 
 ):
     allOffsets = findAudioOffsets(within_file=within_file,
@@ -270,12 +277,12 @@ def findAverageAudioOffset(
     initialOffset: float = 0,
     start: float = 0,
     duration: float | None = None,
-    macroWindowSize: int = 3600,
+    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
     macroStride: int | None = None,
-    microWindowSize: int = 60,
-    microStride: float | int | None = 30,
-    bucketSize: float | int = 1,
-    bucketSpillover: int = 0,
+    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+    microStride: float | int | None = None,
+    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
 ):
     allOffsets = findAudioOffsets(within_file=within_file,
                                       find_file=find_file,
@@ -321,10 +328,13 @@ def findAverageAudioOffset(
     elif len(reoccurringOffsets) == 0:
         return None
     else:
+        popularOffsets = []
         mostPopularOffset = reoccurringOffsets[0]
     chosenOffset = allOffsets[mostPopularOffset]
     print(mostPopularOffset, chosenOffset)
-    return sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
+    weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
+    assert abs(weightedAverageOffset) < 120, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    return weightedAverageOffset
     #return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
     
 

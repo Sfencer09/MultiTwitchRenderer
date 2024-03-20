@@ -998,7 +998,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                                                                             secondaryFilePath,
                                                                             initialOffset=streamOffset,
                                                                             start=startOffset,
-                                                                            duration = endOffset - startOffset)
+                                                                            duration = min(AudioAlignment.MAX_LOAD_DURATION, endOffset - startOffset),
+                                                                            macroWindowSize = 10*60,
+                                                                            macroStride = 10*60,
+                                                                            microWindowSize = 10)
                         if audioOffset is not None:
                             currentFileOffsets[secondaryFilePath] = audioOffset
 

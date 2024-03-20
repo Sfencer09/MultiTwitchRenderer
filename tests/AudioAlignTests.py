@@ -4,12 +4,7 @@ from typing import Set, TYPE_CHECKING
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 # sys.path.insert(0, os.path.abspath(os.path.join(sys.executable)))
-sys.path.insert(
-    0,
-    os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "MultiTwitchRenderer")
-    ),
-)
+#sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "MultiTwitchRenderer")),)
 if TYPE_CHECKING:
     from SourceFile import SourceFile
 
