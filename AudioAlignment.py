@@ -188,8 +188,8 @@ def findAudioOffsets(within_file: str,
         print("Macro start:", macroWindowStart/sr_within, "end:", macroWindowEnd/sr_within)
         withinSnippet = y_within[macroWindowStart : macroWindowEnd]
         for microWindowNum in range(int(ceil((macroWindowSize - microWindowSize) / microStride))):
-            microWindowStart = macroWindowStart + (microWindowNum * microStride * sr_within)
-            microWindowEnd = macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * sr_within)
+            microWindowStart = int(macroWindowStart + (microWindowNum * microStride * sr_within))
+            microWindowEnd = int(macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * sr_within))
             #print("Micro start:", microWindowStart/sr_within, "end:", microWindowEnd/sr_within)
             findSnippet = y_find[microWindowStart:microWindowEnd]
             c = signal.correlate(withinSnippet, findSnippet, mode='same', method='fft')
