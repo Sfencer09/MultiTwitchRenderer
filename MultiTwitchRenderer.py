@@ -945,19 +945,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         intermediateFilepaths = [os.path.join(
             localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
         audioFiltergraphParts = []
-        fileOffsets:Dict[str, Dict[str, float]] = {'/mnt/pool2/media/Twitch Downloads/ChilledChaos/S1/ChilledChaos - 2024-02-20 - RETURN TO TOWN OF SALEM 2! ｜ Among Us After! v2068741917.mp4':
-        {'/mnt/pool2/media/Twitch Downloads/AstarriApple/S1/AstarriApple - 2024-02-20 - Coven is Town...Right？!! ＜3 [UK] v2068746308.mp4': -0.04812204406125567,
-         "/mnt/pool2/media/Twitch Downloads/CheesyBlueNips/S1/CheesyBlueNips - 2024-02-20 - 🧀TOWN OF SALEM🧀 ⧸ Mentally I'm a frog holding a knife right now !discord v2068743548.mp4": 0.8490137535947545,
-         "/mnt/pool2/media/Twitch Downloads/Courtilly/S1/Courtilly - 2024-02-20 - Town of Salem 2 -＞ Among Us (I'm a little sick so it'll be a quieter day ＜3) !merch !cookies v2068752721.mp4": -0.7911286629558933,
-         '/mnt/pool2/media/Twitch Downloads/KaraCorvus/S1/KaraCorvus - 2024-02-20 - SALEM AND AMOGIES v2068724588.mp4': -0.6405413277726538,
-         '/mnt/pool2/media/Twitch Downloads/LarryFishburger/S1/LarryFishburger - 2024-02-20 - Town of Salem 2 w. Friends ：) - !Sponsors !Socials v2068746415.mp4': -0.6510838750222967,
-         "/mnt/pool2/media/Twitch Downloads/Shubble/S1/Shubble - 2024-02-20 - it's another cold rainy day, let's huddle and do evil in ToS2 v2068736276.mp4": 0.6829517255567166,
-         '/mnt/pool2/media/Twitch Downloads/SideArms4Reason/S1/SideArms4Reason - 2024-02-20 - Wife caught w⧸ an impostor (challenge) v2068889944.mp4': -0.13733941689697096,
-         '/mnt/pool2/media/Twitch Downloads/X33N/S1/X33N - 2024-02-21 - AMONG US w⧸ @chilledchaos and MODDED CREATE ARCANE ENGINEERING v2068915586.mp4': -1.91748577342866,
-         '/mnt/pool2/media/Twitch Downloads/ZeRoyalViking/S1/ZeRoyalViking - 2024-02-20 - TOWN OF SALEM 2 RETURNS w⧸ Friends v2068738262.mp4': -0.09085588714903496,
-         "/mnt/pool2/media/Twitch Downloads/emerome/S1/emerome - 2024-02-20 - she's BIG sus... I'm gonna destroy my friends. ：) v2068745296.mp4": -0.03765078367977578
-         }}
-        #mainFiles;
+        fileOffsets:Dict[str, Dict[str, float]] = {}
         if preciseAlign:
             import AudioAlignment
             measurements:Dict[str, Dict[str, List[int, int]]] = {}
@@ -983,7 +971,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         if secondaryVideoPath not in currentMeasurements:
                             currentMeasurements[secondaryVideoPath] = [streamOffsetStart, streamOffsetEnd]
                         else:
-                            assert currentMeasurements[secondaryVideoPath][1] == streamOffsetStart
+                            #assert currentMeasurements[secondaryVideoPath][1] == streamOffsetStart, f"{currentMeasurements[secondaryVideoPath]} != {streamOffsetStart}"
+                            assert currentMeasurements[secondaryVideoPath][1] <= streamOffsetStart
                             currentMeasurements[secondaryVideoPath][1] = streamOffsetEnd
             for primaryFilePath, secondaryFilePaths in measurements.items():
                 if primaryFilePath not in fileOffsets:
