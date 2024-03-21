@@ -479,6 +479,29 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     # compressRows()
 
     printSegmentMatrix()
+    # def sortByEntryTime():
+    finalSortKeys = [-1]
+    endFactor = len(allInputStreamers) + 1
+    startFactor = endFactor * (numSegments + 1)
+    for streamerNum in range(1, len(allInputStreamers)):
+        start = None
+        end = None
+        for segmentNum in range(numSegments):
+            if start is None and segmentFileMatrix[segmentNum][streamerNum] is not None:
+                start = segmentNum
+            elif segmentFileMatrix[segmentNum][streamerNum] is None:
+                end = segmentNum
+        assert start is not None
+        if end is None:
+            end = numSegments
+        sortKey = (start * startFactor) + (end * endFactor) + streamerNum
+        finalSortKeys.append(sortKey)
+    print("Final sort keys:", finalSortKeys)
+    # Sort based on https://stackoverflow.com/a/19932054
+    _, *segmentFileMatrix = map(list, zip(*sorted(zip(finalSortKeys, *segmentFileMatrix))))
+    _, *segmentSessionMatrix = map(list, zip(*sorted(zip(finalSortKeys, *segmentSessionMatrix))))
+    
+    printSegmentMatrix()
     for i in range(len(segmentSessionMatrix)):
         if segmentSessionMatrix[i][0] is None:
             if logLevel >= 1:
