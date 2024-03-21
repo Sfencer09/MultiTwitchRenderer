@@ -8,6 +8,53 @@ if not sys.version_info >= (3, 7, 0):
     raise EnvironmentError(
         "Python version too low, relies on ordered property of dicts")
 
+import logging
+
+def addLoggingLevel(levelName, levelNum, methodName=None):
+    # Copied from https://stackoverflow.com/a/35804945
+    if not methodName:
+        methodName = levelName.lower()
+    if hasattr(logging, levelName):
+       raise AttributeError('{} already defined in logging module'.format(levelName))
+    if hasattr(logging, methodName):
+       raise AttributeError('{} already defined in logging module'.format(methodName))
+    if hasattr(logging.getLoggerClass(), methodName):
+       raise AttributeError('{} already defined in logger class'.format(methodName))
+    def logForLevel(self, message, *args, **kwargs):
+        if self.isEnabledFor(levelNum):
+            self._log(levelNum, message, args, **kwargs)
+    def logToRoot(message, *args, **kwargs):
+        logging.log(levelNum, message, *args, **kwargs)
+    logging.addLevelName(levelNum, levelName)
+    setattr(logging, levelName, levelNum)
+    setattr(logging.getLoggerClass(), methodName, logForLevel)
+    setattr(logging, methodName, logToRoot)
+    
+addLoggingLevel('TRACE', logging.DEBUG - 5)
+#addLoggingLevel('NOTIFY', logging.INFO + 5)
+addLoggingLevel('DETAIL', logging.INFO - 5)
+
+def setUpLogging():
+    count = 0
+    suffix = ""
+    fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
+    datefmt= '%m/%d/%Y %H:%M:%S'
+    while os.path.isfile(f"logs/MultiTwitchRenderer{suffix}.log") and os.path.getsize(f"logs/MultiTwitchRenderer{suffix}.log") > 0:
+        suffix = f" {count}"
+        count += 1
+    logging.basicConfig(filename = f"logs/MultiTwitchRenderer{suffix}.log",
+                        format = fmt,
+                        datefmt = datefmt,
+                        encoding='utf-8',
+                        level = logging.DEBUG)
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter(fmt, datefmt=datefmt)
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+
+setUpLogging()
+
 print(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
 #sys.path.append("./MultiTwichRenderer")
