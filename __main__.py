@@ -40,10 +40,10 @@ def setUpLogging(consoleLogLevel = logging.INFO):
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
     os.makedirs("./logs", exist_ok=True)
-    while os.path.isfile(f"logs/MultiTwitchRenderer{suffix}.log") and os.path.getsize(f"logs/MultiTwitchRenderer{suffix}.log") > 0:
+    while os.path.isfile(f"./logs/MultiTwitchRenderer{suffix}.log") and os.path.getsize(f"./logs/MultiTwitchRenderer{suffix}.log") > 0:
         suffix = f" {count}"
         count += 1
-    logging.basicConfig(filename = f"logs/MultiTwitchRenderer{suffix}.log",
+    logging.basicConfig(filename = f"./logs/MultiTwitchRenderer{suffix}.log",
                         format = fmt,
                         datefmt = datefmt,
                         encoding='utf-8',
