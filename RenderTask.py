@@ -8,6 +8,9 @@ if __debug__:
 exec(open("config.py").read(), globals())
 import scanned
 
+from MTRLogging import getLogger
+logger = getLogger('RenderTask')
+
 from RenderConfig import RenderConfig
 
 class RenderTask:
@@ -129,8 +132,7 @@ def deleteRenderStatus(streamer:str, date:str, *, lock:bool=True):
     if key in renderStatuses.keys():
         currentStatus = renderStatuses[key]
         if currentStatus in ('RENDER_QUEUE', 'COPY_QUEUE'):
-            print(
-                f"Cannot delete render status, current value is {currentStatus}")
+            logger.warning(f"Cannot delete render status, current value is {currentStatus}")
             if lock:
                 renderStatusLock.release()
             return False
@@ -139,7 +141,7 @@ def deleteRenderStatus(streamer:str, date:str, *, lock:bool=True):
             renderStatusLock.release()
         return True
     else:
-        print(f"Key {key} not found in render statuses")
+        logger.warning(f"Key {key} not found in render statuses")
         if lock:
             renderStatusLock.release()
         return False
