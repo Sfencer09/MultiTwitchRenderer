@@ -1120,12 +1120,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     elif cutMode == 'chunked':
         return filtergraphChunkedVersion()
 
-
+loggerGames = MTRLogging.getLogger('MultiTwitchRendererMain.GameNormalizer')
 
 def normalizeAllGames():
     gameCounts = calcGameCounts()
-    pprint(gameCounts)
-    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    loggerGames.debug(pformat(gameCounts))
+    loggerGames.debug("---------------------------------------------------------------")
     knownReplacements = {}
     lowercaseGames = {}
     for game, alias in gameAliases.items():
@@ -1170,11 +1170,13 @@ def normalizeAllGames():
         elif gameCounts[game] > 1:
             knownReplacements[game] = []
             lowercaseGames[lowergame] = game
-    print("\n\n\n---------------------------------------------------------------\n\n\nreplacedGames:")
-    pprint(replacedGames, width=200)
-    print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
-    pprint(knownReplacements, width=200)
-    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    loggerGames.debug("---------------------------------------------------------------")
+    loggerGames.debug("replacedGames:")
+    loggerGames.debug(pformat(replacedGames, width=200))
+    loggerGames.debug("---------------------------------------------------------------")
+    loggerGames.debug("knownReplacements:")
+    loggerGames.debug(pformat(knownReplacements, width=200))
+    loggerGames.debug("---------------------------------------------------------------")
     for game in (game for game in gameCounts.keys() if gameCounts[game] == 1):
         matches = []
         lowergame = game.lower()
@@ -1195,7 +1197,7 @@ def normalizeAllGames():
                     if not difference.isdigit():
                         matches.append(knownGame)
         if len(matches) > 0:
-            print("game, matches:", game, matches)
+            loggerGames.debug(f"game, matches: {game}, {matches}")
             # longestIndex = 0
             # for index in range(1, len(matches)):
             #    if len(matches[index]) > len(matches[longestIndex])
@@ -1219,8 +1221,9 @@ def normalizeAllGames():
     for key in list(knownReplacements.keys()):
         if len(knownReplacements[key]) == 0:
             del knownReplacements[key]
-    print("\n\n\n---------------------------------------------------------------\n\n\nknownReplacements:")
-    pprint(knownReplacements, width=200)
+    loggerGames.debug("knownReplacements:")
+    loggerGames.debug(pformat(knownReplacements, width=200))
+    loggerGames.debug("---------------------------------------------------------------")
 
     def normalizeGame(originalGame: str):
         for game, aliases in knownReplacements.items():
@@ -1237,6 +1240,7 @@ def normalizeAllGames():
 
 def normalizeAllGamesV2():
     gameCounts = calcGameCounts()
-    pprint(gameCounts)
-    print("\n\n\n---------------------------------------------------------------\n\n\n")
+    loggerGames.debug("gameCounts:")
+    loggerGames.debug(pformat(gameCounts))
+    loggerGames.debug("---------------------------------------------------------------")
     replacements = {}
