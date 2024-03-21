@@ -207,6 +207,7 @@ class RenderConfig:
     minimumTimeInVideo: int
     cutMode: str
     useChat: bool
+    preciseAlign: bool
     includeStreamers: None | Dict[str, None | Dict[str, None | str]]
     excludeStreamers: None | Dict[str, None | Dict[str, None | str]]
 
