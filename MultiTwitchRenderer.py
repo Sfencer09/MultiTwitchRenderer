@@ -4,6 +4,7 @@ import os
 import math
 import random
 import sys
+import json
 
 from datetime import datetime, timedelta
 from functools import reduce, partial
@@ -66,6 +67,26 @@ def generateLayout(numTiles):
 def toFfmpegTimestamp(ts: int | float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
+audioCacheSavePath = "./audioOffsets.json"
+audioOffsetCache:Dict[str, Dict[str, float]] = {}
+
+def loadAudioCache():
+    try:
+        global audioOffsetCache
+        audioOffsetCache = json.load(audioCacheSavePath)
+    except:
+        pass
+
+loadAudioCache()
+
+def saveAudioCache():
+    try:
+        json.dump(audioOffsetCache, audioCacheSavePath)
+    except:
+        pass
+
+import atexit
+atexit.register(saveAudioCache)
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None) -> List[List[str]]:
     otherStreamers = [
@@ -948,7 +969,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         fileOffsets:Dict[str, Dict[str, float]] = {}
         if preciseAlign:
             import AudioAlignment
-            measurements:Dict[str, Dict[str, List[int, int]]] = {}
+            measurements = audioOffsetCache #:Dict[str, Dict[str, List[int, int]]]
             for rowNum, row in enumerate(segmentFileMatrix):
                 primaryFile = row[0]
                 if primaryFile is None:
