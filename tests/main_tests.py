@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(parentDir))
 #sys.path.insert(0, os.path.abspath(os.path.join(sys.executable)))
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
 
+import __main__
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from config import *
 from ParsedChat import parsePlayersFromGroupMessage
