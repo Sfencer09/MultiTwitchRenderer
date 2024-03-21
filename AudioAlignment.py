@@ -5,6 +5,7 @@ import librosa
 import numpy as np
 from scipy import signal
 import os
+import sys
 import psutil
 import subprocess
 import warnings
@@ -13,21 +14,25 @@ warnings.filterwarnings('ignore')
 from SharedUtils import insertSuffix
 from SourceFile import SourceFile
 
-import config
+sys.path.append(os.path.dirname(sys.executable))
+
+if __debug__:
+    from config import *
+exec(open("config.py").read(), globals())
 
 audioFiles = set()
 audioExt = ".m4a"
-audioBasepath = os.path.join(config.localBasepath, "extracted-audio")
-# os.makedirs(audioBasepath, exist_ok=True)
+audioBasepath = os.path.join(localBasepath, "extracted-audio")
+os.makedirs(audioBasepath, exist_ok=True)
 
 
 def getAudioPath(videoPath: str):
-    # assert any((videoPath.endswith(videoExt) for videoExt in config.videoExts))
-    assert videoPath.startswith(config.basepath)
-    for videoExt in config.videoExts:
+    # assert any((videoPath.endswith(videoExt) for videoExt in videoExts))
+    assert videoPath.startswith(basepath)
+    for videoExt in videoExts:
         if videoPath.endswith(videoExt):
             return (
-                os.path.join(audioBasepath, videoPath.replace(config.basepath, ""))[
+                os.path.join(audioBasepath, videoPath.replace(basepath, ""))[
                     : -len(videoExt)
                 ]
                 + audioExt
@@ -53,7 +58,7 @@ def extractAudio(target_file: str):
     if audioPath not in audioFiles:
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
         extractCommand = [
-            config.ffmpegPath + "ffmpeg",
+            ffmpegPath + "ffmpeg",
             "-i",
             target_file,
             "-vn",
