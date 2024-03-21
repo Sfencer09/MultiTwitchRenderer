@@ -6,7 +6,7 @@ if TYPE_CHECKING:
 
 # Shared state
 
-print('Creating data structures')
+#print('Creating data structures')
 allFilesByVideoId: Dict[str, 'SourceFile'] = {}  # string:SourceFile
 allFilesByStreamer: Dict[str, 'SourceFile'] = {}  # string:[SourceFile]
 allStreamersWithVideos: List[str] = []

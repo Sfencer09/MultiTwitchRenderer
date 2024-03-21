@@ -17,6 +17,9 @@ from RenderWorker import renderQueue
 if COPY_FILES:
     from CopyWorker import copyQueue
 
+from MTRLogging import getLogger
+logger = getLogger('SessionWorker')
+
 def scanForExistingVideos() -> None:
     for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
         fullpath = os.path.join(basepath, outputDirectory, "S1")
@@ -29,11 +32,11 @@ def scanForExistingVideos() -> None:
             continue  # temp file, ignore
         # streamer name will never have a space, so anything can be added between the streamer name and the extension and be ignored
         streamer = parts[0].split(' ')[0]
-        print(f"Scanned streamer {streamer} and date {date} from file {file}")
+        logger.info(f"Scanned streamer {streamer} and date {date} from file {file}")
         if streamer in scanned.allStreamersWithVideos:
             setRenderStatus(streamer, date, 'FINISHED')
         else:
-            print(f"Streamer {streamer} not known")
+            logger.info(f"Streamer {streamer} not known")
 
 
 def getAllStreamingDaysByStreamer():
