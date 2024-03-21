@@ -222,8 +222,8 @@ def findAudioOffsets(within_file: str,
     for offsetFound in offsetsFound.values():
         offsetFound.sort(key=lambda x: x[1])
     #print(offsetsFound)
-    weightedAverageOffset = sum((offset * weight for offset, weight, _ in allOffsetsFound)) / sum((weight for _, weight, _ in allOffsetsFound))
-    print("Weighted average offset:", weightedAverageOffset)
+    #weightedAverageOffset = sum((offset * weight for offset, weight, _ in allOffsetsFound)) / sum((weight for _, weight, _ in allOffsetsFound))
+    #print("Weighted average offset:", weightedAverageOffset)
     #print("\n\n\n")
     spilledOffsets: Dict[str, List[Tuple[float, float, float]]] = dict()
     for key in offsetsFound.keys():
