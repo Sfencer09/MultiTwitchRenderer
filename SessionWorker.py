@@ -111,13 +111,13 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                     dt = convertToDatetime(day)
                     if maxLookback is not None and datetime.now() - dt > maxLookback:
                         if changeCount != prevChangeCount:
-                            logger.detailed("Reached max lookback, stopping")
+                            logger.detail("Reached max lookback, stopping")
                             if sessionLog is not None:
                                 sessionLog("Reached max lookback, stopping")
                         break
                     status = getRenderStatus(streamer, day)
                     if changeCount != prevChangeCount:
-                        logger.detailed(f'Status for {day} = {status}')
+                        logger.detail(f'Status for {day} = {status}')
                         if sessionLog is not None:
                             sessionLog(f'Status for {day} = {status}')
                     if status is None:
