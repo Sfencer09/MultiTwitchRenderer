@@ -50,13 +50,13 @@ def setUpLogging(consoleLogLevel = logging.INFO):
                         encoding='utf-8',
                         level = logging.DEBUG)
     console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.WARNING)
+    console.setLevel(consoleLogLevel)
     formatter = logging.Formatter(fmt, datefmt=datefmt)
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
 
 # TODO: set using command line flag rather than hard-coding level
-setUpLogging(logging.DEBUG)
+setUpLogging(logging.WARNING)
 
 def getLogger(name:str):
     logger = logging.getLogger(name)
