@@ -81,8 +81,10 @@ loadAudioCache()
 
 def saveAudioCache():
     try:
-        json.dump(audioOffsetCache, audioCacheSavePath)
-    except:
+        with open(audioCacheSavePath, 'w') as audioCacheFile:
+            json.dump(audioOffsetCache, audioCacheFile)
+    except Exception as ex:
+        print(ex)
         pass
 
 import atexit
@@ -966,10 +968,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         intermediateFilepaths = [os.path.join(
             localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
         audioFiltergraphParts = []
-        fileOffsets:Dict[str, Dict[str, float]] = {}
+        fileOffsets = audioOffsetCache #:Dict[str, Dict[str, float]]
         if preciseAlign:
             import AudioAlignment
-            measurements = audioOffsetCache #:Dict[str, Dict[str, List[int, int]]]
+            measurements:Dict[str, Dict[str, List[int, int]]] = {}
             for rowNum, row in enumerate(segmentFileMatrix):
                 primaryFile = row[0]
                 if primaryFile is None:
@@ -1014,6 +1016,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                                                                             microWindowSize = 10)
                         if audioOffset is not None:
                             currentFileOffsets[secondaryFilePath] = audioOffset
+            saveAudioCache()
 
         for segIndex in range(numSegments):
             filtergraphParts = []
