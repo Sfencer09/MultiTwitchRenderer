@@ -16,7 +16,7 @@ if __debug__:
 exec(open("config.py").read(), globals())
 
 from MTRLogging import getLogger
-logger = getLogger('RenderTask')
+logger = getLogger('RenderWorker')
 
 
 from RenderTask import RenderTask, getRenderStatus
