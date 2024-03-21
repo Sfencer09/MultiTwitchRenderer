@@ -34,6 +34,9 @@ addLoggingLevel('TRACE', logging.DEBUG - 5)
 #addLoggingLevel('NOTIFY', logging.INFO + 5)
 addLoggingLevel('DETAIL', logging.INFO - 5)
 
+logging.getLogger().trace("Trace level added!")
+logging.getLogger().detail("Detail level added!")
+
 def setUpLogging(consoleLogLevel = logging.INFO):
     count = 0
     suffix = ""
@@ -58,7 +61,7 @@ def setUpLogging(consoleLogLevel = logging.INFO):
 setUpLogging(logging.DEBUG)
 
 
-print(sys.executable)
+logging.info(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
 #sys.path.append("./MultiTwichRenderer")
 
@@ -80,6 +83,7 @@ if COPY_FILES:
 os.makedirs(logFolder, exist_ok=True)
 if COPY_FILES:
     assert localBasepath.strip(' /\\') != basepath.strip(' /\\')
+    logging.info("Copying files is enabled!")
 
 if ENABLE_URWID:
     if COPY_FILES:
@@ -97,7 +101,7 @@ def mainStart():
         except TypeError as ex:
             if str(ex) == 'ord() expected a character, but string of length 0 found':
                 URWID = False
-                print(
+                logging.warn(
                     "Unable to start urwid loop, possibly in Jupyter Notebook?\nFalling back to simple terminal control!")
                 commandWorker()
             else:
@@ -112,7 +116,7 @@ if __name__ == '__main__':
     defaultSessionRenderConfig = RenderConfig()
     
     if not __debug__:
-        print("Deployment mode")
+        logging.info("Deployment mode")
         if COPY_FILES:
             copyThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig': defaultSessionRenderConfig,
@@ -125,18 +129,18 @@ if __name__ == '__main__':
             commandWorker()
         sys.exit(0)
     else:
-        print("Development mode")
+        logging.info("Development mode")
         devSessionRenderConfig = defaultSessionRenderConfig.copy()
         # devSessionRenderConfig.logLevel = 1
 
         sessionWorker(renderConfig=devSessionRenderConfig,
                       maxLookback=timedelta(days=7, hours=18))
-        #print(allStreamersWithVideos)
+        #logging.detail(allStreamersWithVideos)
         # copyWorker()
-        # print(getAllStreamingDaysByStreamer()['ChilledChaos'])
+        # logging.detail(getAllStreamingDaysByStreamer()['ChilledChaos'])
         # commandWorker()
         #mainStart()
         allGames = calcGameCounts()
         for game in sorted(allGames.keys(), key=lambda x: (allGames[x], x)):
-            print(game, allGames[game])
+            logging.detail(game, allGames[game])
         del allGames
