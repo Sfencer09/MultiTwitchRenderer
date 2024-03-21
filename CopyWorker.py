@@ -9,7 +9,9 @@ from typing import Tuple
 
 from SharedUtils import extractInputFiles
 
+import logging
 
+logger = logging.getLogger('CopyWorker')
 
 if __debug__:
     from config import *
@@ -29,13 +31,13 @@ if COPY_FILES:
 def getActiveCopyTaskInfo() -> RenderTask:
     return activeCopyTask
 
-def copyWorker(copyLog=partial(print, flush=True)):
+def copyWorker(copyLog=None):
     #copyLog = copyText.addLine
     queueEmpty = False
     while True:
         if copyQueue.empty():
             if not queueEmpty:
-                print("Copy queue empty, sleeping")
+                logger.detail("Copy queue empty, sleeping")
                 queueEmpty = True
             ttime.sleep(10)
             continue
@@ -70,14 +72,22 @@ def copyWorker(copyLog=partial(print, flush=True)):
             localPath = remotePath.replace(basepath, localBasepath)
             if not os.path.isfile(localPath):
                 # time.sleep(5)
-                copyLog(f"Copying file {remotePath} to local storage")
+                logger.detail(f"Copying file {remotePath} to local storage")
+                if copyLog is not None:
+                    copyLog(f"Copying file {remotePath} to local storage")
                 # copy to temp file to avoid tripping the if condition with incomplete transfers
                 shutil.copyfile(remotePath, localPath+'.temp')
-                copyLog('File copy complete, moving to location')
+                logger.detail(f'File copy complete, moving to location {localPath}')
+                if copyLog is not None:
+                    copyLog('File copy complete, moving to location')
                 shutil.move(localPath+'.temp', localPath)
-                copyLog('Move complete')
+                logger.detail('Move complete')
+                if copyLog is not None:
+                    copyLog('Move complete')
             else:
-                copyLog('Local file already exists')
+                logger.detail('Local file already exists')
+                if copyLog is not None:
+                    copyLog('Local file already exists')
             incrFileRefCount(localPath)
             # copy file and update SourceFile object
             file.localVideoPath = localPath
@@ -86,8 +96,9 @@ def copyWorker(copyLog=partial(print, flush=True)):
             # replace file path in renderCommand
             for command in task.commandArray:
                 command[command.index(remotePath)] = localPath
-        copyLog(
-            f'Finished source file copies for render to {overallOutputFile}')
+        logger.detail('Local file already exists')
+        if copyLog is not None:
+            copyLog(f'Finished source file copies for render to {overallOutputFile}')
         # item = QueueItem(streamer, day, renderConfig, outPath)
         copyQueue.task_done()
         queueItem = (DEFAULT_PRIORITY, RenderTask(task.mainStreamer,
