@@ -2,6 +2,10 @@ import os
 import sys
 import logging
 
+if __debug__:
+    from config import *
+exec(open("config.py").read(), globals())
+
 def addLoggingLevelModuleLevel(levelName, levelNum, methodName=None):
     # Copied from https://stackoverflow.com/a/35804945
     if not methodName:
@@ -36,11 +40,11 @@ def setUpLogging(consoleLogLevel = logging.INFO):
     suffix = ""
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
-    os.makedirs("./logs", exist_ok=True)
-    while os.path.isfile(f"./logs/MultiTwitchRenderer{suffix}.log") and os.path.getsize(f"./logs/MultiTwitchRenderer{suffix}.log") > 0:
+    os.makedirs(logFolder, exist_ok=True)
+    while os.path.isfile(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) and os.path.getsize(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) > 0:
         suffix = f" {count}"
         count += 1
-    logging.basicConfig(filename = f"./logs/MultiTwitchRenderer{suffix}.log",
+    logging.basicConfig(filename = os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log"),
                         format = fmt,
                         datefmt = datefmt,
                         encoding='utf-8',
