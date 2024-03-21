@@ -34,11 +34,12 @@ addLoggingLevel('TRACE', logging.DEBUG - 5)
 #addLoggingLevel('NOTIFY', logging.INFO + 5)
 addLoggingLevel('DETAIL', logging.INFO - 5)
 
-def setUpLogging():
+def setUpLogging(consoleLogLevel = logging.INFO):
     count = 0
     suffix = ""
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
+    os.makedirs("./logs", exist_ok=True)
     while os.path.isfile(f"logs/MultiTwitchRenderer{suffix}.log") and os.path.getsize(f"logs/MultiTwitchRenderer{suffix}.log") > 0:
         suffix = f" {count}"
         count += 1
@@ -48,12 +49,14 @@ def setUpLogging():
                         encoding='utf-8',
                         level = logging.DEBUG)
     console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.INFO)
+    console.setLevel(logging.WARNING)
     formatter = logging.Formatter(fmt, datefmt=datefmt)
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
 
-setUpLogging()
+# TODO: set using command line flag rather than hard-coding level
+setUpLogging(logging.DEBUG)
+
 
 print(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
