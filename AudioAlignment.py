@@ -340,11 +340,11 @@ def findAverageAudioOffset(
     print(mostPopularOffset, chosenOffset)
     weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
     assert abs(weightedAverageOffset) < 120, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    print(weightedAverageOffset)
     return weightedAverageOffset
     #return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
     
 
-# First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
 def findAverageFileOffset(
     file1: SourceFile,
     file2: SourceFile,
@@ -361,6 +361,8 @@ def findAverageFileOffset(
     )
     return findAverageAudioOffset(file1Path, file2Path, offset, **kwargs)
 
+# TODO: First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
+# Need to build a way to group offsets by time efficiently
 def findAllFileOffsets(file1: SourceFile,
                        file2: SourceFile,
                        **kwargs):
