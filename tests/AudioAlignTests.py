@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from AudioAlignment import *
 from config import *
-import time as ttime
+import time
 import scanned
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from SessionWorker import getAllStreamingDaysByStreamer
@@ -64,7 +64,7 @@ def testAudioAlignmentForDate(streamer, day):
     print(mainFiles)
     mainFile = scanned.filesBySourceVideoPath[list(mainFiles)[0]]
     offsets = dict()
-    startTime = ttime.time()
+    startTime = time.time()
     for file in (scanned.filesBySourceVideoPath[f] for f in sorted(secondaryFiles)):
         offset = findAverageFileOffset(mainFile, file,
             duration = 7200,
@@ -74,7 +74,7 @@ def testAudioAlignmentForDate(streamer, day):
         print("Offset: ", offset)
         key = file.videoFile
         offsets[key] = offset
-    print(ttime.time() - startTime, "seconds to run all correlations")
+    print(time.time() - startTime, "seconds to run all correlations")
     #print(offsets)
     return offsets
 
@@ -90,4 +90,4 @@ outputs = {}
 def testGenerateWithPrecision(streamer, day):
     commands = generateTilingCommandMultiSegment(streamer, day, renderConfig=RenderConfig(preciseAlign = True))
     print(commands)
-testGenerateWithPrecision(testStreamer, testDay)
+#testGenerateWithPrecision(testStreamer, testDay)
