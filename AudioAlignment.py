@@ -64,9 +64,10 @@ def extractAudio(target_file: str):
             "-vn",
             "-acodec",
             "copy",
+            "-y",
             audioPath,
         ]
-        subprocess.check_call(extractCommand)
+        subprocess.check_call(extractCommand, stderr=subprocess.PIPE, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
         audioFiles.add(audioPath)
     return audioPath
 
