@@ -63,7 +63,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                   maxLookback: timedelta = DEFAULT_MAX_LOOKBACK,
                   dataFilepath=DEFAULT_DATA_FILEPATH,
                   renderConfig=RenderConfig(),
-                  sessionLog = partial(print, flush=True)):
+                  sessionLog = None):
     #sessionLog = sessionText.addLine
     from MultiTwitchRenderer import generateTilingCommandMultiSegment
     #allStreamersWithVideos = SourceFile.allStreamersWithVideos
@@ -87,29 +87,39 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
             (x.downloadTime for x in scanned.allFilesByVideoId.values()))
         currentTime = datetime.now(timezone.utc)
         if changeCount != prevChangeCount:
-            sessionLog(
-                f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
+            logger.info(f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
+            if sessionLog is not None:
+                sessionLog(
+                    f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
         timeSinceLastDownload = currentTime - latestDownloadTime
         if changeCount != prevChangeCount:
-            sessionLog(
-                f'Time since last download= {str(timeSinceLastDownload)}')
+            logger.info(f'Time since last download= {str(timeSinceLastDownload)}')
+            if sessionLog is not None:
+                sessionLog(
+                    f'Time since last download= {str(timeSinceLastDownload)}')
         if __debug__ or timeSinceLastDownload > minimumSessionWorkerDelay:
             streamingDays = getAllStreamingDaysByStreamer()
             for streamer in monitorStreamers:
                 # already sorted with the newest first
                 allDays = streamingDays[streamer]
                 if changeCount != prevChangeCount:
-                    sessionLog(
-                        f'Latest streaming days for {streamer}: {allDays[:25]}')
+                    logger.info(f'Latest streaming days for {streamer}: {allDays[:25]}')
+                    if sessionLog is not None:
+                        sessionLog(
+                            f'Latest streaming days for {streamer}: {allDays[:25]}')
                 for day in allDays:
                     dt = convertToDatetime(day)
                     if maxLookback is not None and datetime.now() - dt > maxLookback:
                         if changeCount != prevChangeCount:
-                            sessionLog("Reached max lookback, stopping")
+                            logger.detailed("Reached max lookback, stopping")
+                            if sessionLog is not None:
+                                sessionLog("Reached max lookback, stopping")
                         break
                     status = getRenderStatus(streamer, day)
                     if changeCount != prevChangeCount:
-                        sessionLog(f'Status for {day} = {status}')
+                        logger.detailed(f'Status for {day} = {status}')
+                        if sessionLog is not None:
+                            sessionLog(f'Status for {day} = {status}')
                     if status is None:
                         # new file, build command and add to queue
                         outPath = getVideoOutputPath(streamer, day)
@@ -117,12 +127,16 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                             streamer, day, renderConfig, outPath)
                         if command is None:  # command cannot be made, maybe solo stream or only one
                             if changeCount != prevChangeCount:
-                                sessionLog(
-                                    f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
+                                logger.info(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
+                                if sessionLog is not None:
+                                    sessionLog(
+                                        f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
                             continue
                         item = RenderTask(streamer, day, renderConfig, outPath)
-                        sessionLog(
-                            f"Adding render for streamer {streamer} from {day}")
+                        logger.info(f"Adding render for streamer {streamer} from {day}")
+                        if sessionLog is not None:
+                            sessionLog(
+                                f"Adding render for streamer {streamer} from {day}")
                         (copyQueue if COPY_FILES else renderQueue).put(
                             (DEFAULT_PRIORITY, item))
                         setRenderStatus(
@@ -131,11 +145,15 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                         # break #
                     elif maxLookback is None:
                         if changeCount != prevChangeCount:
-                            sessionLog(
-                                "Reached last rendered date for streamer, stopping\n")
+                            logger.info("Reached last rendered date for streamer, stopping")
+                            if sessionLog is not None:
+                                sessionLog(
+                                    "Reached last rendered date for streamer, stopping\n")
                         break
         else:
-            sessionLog("Files are too new, waiting longer...")
+            logger.info("Files are too new, waiting longer...")
+            if sessionLog is not None:
+                sessionLog("Files are too new, waiting longer...")
         prevChangeCount = changeCount
         if __debug__:
             break
