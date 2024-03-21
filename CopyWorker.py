@@ -9,9 +9,9 @@ from typing import Tuple
 
 from SharedUtils import extractInputFiles
 
-import logging
+import MTRLogging
 
-logger = logging.getLogger('CopyWorker')
+logger = MTRLogging.getLogger('CopyWorker')
 
 if __debug__:
     from config import *
