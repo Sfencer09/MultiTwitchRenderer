@@ -968,7 +968,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                                                                             microWindowSize = 10)
                         if audioOffset is not None:
                             currentFileOffsets[secondaryFilePath] = audioOffset
-            saveAudioCache()
+                        saveAudioCache()
 
         for segIndex in range(numSegments):
             filtergraphParts = []
