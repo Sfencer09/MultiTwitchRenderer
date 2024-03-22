@@ -166,7 +166,7 @@ def findAudioOffsets(within_file: str,
     findAudioFile = extractAudio(find_file)
     logger.info(f"{withinAudioFile}, {findAudioFile}")
     logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
-    logger.detail("Initial offset =", initialOffset)
+    logger.detail(f"Initial offset = {initialOffset}")
     y_within, sr_within = librosa.load(
         withinAudioFile,
         sr=None,
@@ -194,7 +194,7 @@ def findAudioOffsets(within_file: str,
     for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
         macroWindowStart = macroWindowNum * macroStride * sr_within
         macroWindowEnd = ((macroWindowNum * macroStride) + macroWindowSize) * sr_within
-        logger.debug("Macro start:", macroWindowStart/sr_within, "end:", macroWindowEnd/sr_within)
+        logger.debug(f"Macro start: {macroWindowStart/sr_within}, end: {macroWindowEnd/sr_within}")
         withinSnippet = y_within[macroWindowStart : macroWindowEnd]
         for microWindowNum in range(int(ceil((macroWindowSize - microWindowSize) / microStride))):
             microWindowStart = int(macroWindowStart + (microWindowNum * microStride * sr_within))
