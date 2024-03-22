@@ -1,6 +1,8 @@
 
-import typing
-if typing.TYPE_CHECKING:
+from typing import TYPE_CHECKING, Tuple
+
+from SharedUtils import getTimeOverlap
+if TYPE_CHECKING:
     from SourceFile import SourceFile
 
 
@@ -50,6 +52,22 @@ class Session:
                         return True
             return self.game == cmp.game and (not useChat or (self.file.parsedChat is None and cmp.file.parsedChat is None))
             # raise Exception("Not implemented yet")
+
+    def hasOverlapV2(self, cmp: 'Session', useChat=True, targetRange:None | Tuple[int, int]=None) -> bool:
+        assert targetRange is None or len(targetRange) == 2, f"Invalid target range: {targetRange}"
+        if targetRange is None:
+            overlapTime = getTimeOverlap(self.startTimestamp, self.endTimestamp, cmp.startTimestamp, cmp.endTimestamp)
+        else:
+            overlapTime = getTimeOverlap(self.startTimestamp, self.endTimestamp, cmp.startTimestamp, cmp.endTimestamp, *targetRange)
+        if overlapTime is None:
+            return False
+        if useChat:
+            if self.file.parsedChat is not None:
+                ...
+            if cmp.file.parsedChat is not None:
+                ...
+        else:
+            ...
 
     def __repr__(self):
         return f"Session(game=\"{self.game}\", startTimestamp={self.startTimestamp}, endTimestamp={self.endTimestamp}, file=\"{self.file}\")"

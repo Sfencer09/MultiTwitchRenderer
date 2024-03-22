@@ -74,3 +74,11 @@ def calcGameTimes():
                     allGames[game] += length
     return allGames
 
+def getTimeOverlap(start1, end1, start2, end2, *additionalTimePairs):
+    if len(additionalTimePairs) % 2 != 0:
+        raise ValueError("Must give an even number of argments")
+    overlapStart = max(start1, start2, *additionalTimePairs[0::2])
+    overlapEnd = min(end1, end2, *additionalTimePairs[1::2])
+    if overlapEnd <= overlapStart:
+        return None
+    return (overlapStart, overlapEnd)
