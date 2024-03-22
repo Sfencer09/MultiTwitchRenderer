@@ -1023,7 +1023,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     if fileVideoPath in rowFileOffsets:
                         #early compared to main streamer = positive offset
                         startOffset -= rowFileOffsets[fileVideoPath]
-                    #endOffset = segmentEndTime - file.startTimestamp
+                    endOffset = segmentEndTime - file.startTimestamp
                     inputIndex = rowInputFileCount
                     fileIndex = inputFileIndexes[file]
                     # audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
