@@ -194,15 +194,15 @@ def findAudioOffsets(within_file: str,
     for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
         macroWindowStart = macroWindowNum * macroStride * sr_within
         macroWindowEnd = ((macroWindowNum * macroStride) + macroWindowSize) * sr_within
-        logger.debug(f"Macro start: {macroWindowStart/sr_within}, end: {macroWindowEnd/sr_within}")
+        logger.trace(f"Macro start: {macroWindowStart/sr_within}, end: {macroWindowEnd/sr_within}")
         withinSnippet = y_within[macroWindowStart : macroWindowEnd]
         for microWindowNum in range(int(ceil((macroWindowSize - microWindowSize) / microStride))):
             microWindowStart = int(macroWindowStart + (microWindowNum * microStride * sr_within))
             microWindowEnd = int(macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * sr_within))
-            logger.debug(f"Micro start: {microWindowStart/sr_within}, end: {microWindowEnd/sr_within}")
+            logger.trace(f"Micro start: {microWindowStart/sr_within}, end: {microWindowEnd/sr_within}")
             findSnippet = y_find[microWindowStart:microWindowEnd]
             c = signal.correlate(withinSnippet, findSnippet, mode='same', method='fft')
-            logger.debug(f"Signal correlated, memory tuple: {psutil.virtual_memory()}")
+            logger.trace(f"Signal correlated, memory tuple: {psutil.virtual_memory()}")
             peak = np.argmax(c)
             logger.trace(f"within shape = {withinSnippet.shape}, find shape = {findSnippet.shape}, c shape = {c.shape}")
             foundOffset = round(((peak + macroWindowStart - microWindowStart) / sr_within) - (microWindowSize / 2), 2)
