@@ -1,9 +1,10 @@
 
-from typing import List
+from typing import Dict, List, Tuple
 import os
 import math
 import random
 import sys
+import json
 
 from datetime import datetime, timedelta
 from functools import reduce, partial
@@ -66,6 +67,28 @@ def generateLayout(numTiles):
 def toFfmpegTimestamp(ts: int | float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
 
+audioCacheSavePath = "./audioOffsets.json"
+audioOffsetCache:Dict[str, Dict[str, float]] = {}
+
+def loadAudioCache():
+    try:
+        global audioOffsetCache
+        audioOffsetCache = json.load(audioCacheSavePath)
+    except:
+        pass
+
+loadAudioCache()
+
+def saveAudioCache():
+    try:
+        with open(audioCacheSavePath, 'w') as audioCacheFile:
+            json.dump(audioOffsetCache, audioCacheFile)
+    except Exception as ex:
+        print(ex)
+        pass
+
+import atexit
+atexit.register(saveAudioCache)
 
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None) -> List[List[str]]:
     otherStreamers = [
@@ -90,6 +113,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     cutMode = renderConfig.cutMode
     useChat = renderConfig.useChat
     excludeStreamers = renderConfig.excludeStreamers
+    preciseAlign = renderConfig.preciseAlign
     # includeStreamers = renderConfig.includeStreamers
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
@@ -118,11 +142,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         if file.parsedChat is not None:
             groupsFromMainFiles.extend(file.parsedChat.groups)
     
+    mainFiles = set((session.file for session in mainSessionsOnTargetDate))
     if logLevel >= 1:
         print("\n\nStep 2.1: ")
         pprint(groupsFromMainFiles)
 
-        mainFiles = set((session.file for session in mainSessionsOnTargetDate))
         for mainFile in mainFiles:
             print(mainFile.infoFile)
             chat = mainFile.parsedChat
@@ -222,9 +246,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         # and the element in each column is either None or the indexed streamer's file(path) for that section of
         # time - should never be more than one
     numSegments = len(uniqueTimestampsSorted)-1
-    segmentFileMatrix = [[None for i in range(
+    segmentFileMatrix:List[List[None|SourceFile]] = [[None for i in range(
         len(allInputStreamers))] for j in range(numSegments)]
-    segmentSessionMatrix = [[None for i in range(
+    segmentSessionMatrix:List[List[None|List[Session]]] = [[None for i in range(
         len(allInputStreamers))] for j in range(numSegments)]
     for segIndex in range(numSegments):
         # segmentsByStreamerIndex = segmentFileMatrix[segIndex]
@@ -516,7 +540,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                   str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6])
 
     # 12. Build a sorted array of unique filepaths from #8 - these will become the input stream indexes
-    inputFilesSorted = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
+    inputFilesSorted:List[SourceFile] = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
                               key=lambda x: allInputStreamers.index(x.streamer))
     # 12a. Build reverse-lookup dictionary
     inputFileIndexes = {}
@@ -967,6 +991,56 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         intermediateFilepaths = [os.path.join(
             localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
         audioFiltergraphParts = []
+        fileOffsets = audioOffsetCache #:Dict[str, Dict[str, float]]
+        if preciseAlign:
+            import AudioAlignment
+            measurements:Dict[str, Dict[str, List[int, int]]] = {}
+            for rowNum, row in enumerate(segmentFileMatrix):
+                primaryFile = row[0]
+                if primaryFile is None:
+                    continue
+                primaryVideoPath = primaryFile.localVideoFile if primaryFile.localVideoFile is not None else primaryFile.videoFile
+                if primaryVideoPath not in measurements:
+                    measurements[primaryVideoPath] = {}
+                currentMeasurements = measurements[primaryVideoPath]
+                segmentStartTime = uniqueTimestampsSorted[rowNum]
+                segmentEndTime = uniqueTimestampsSorted[rowNum+1]
+                segmentDuration = segmentEndTime - segmentStartTime
+                for f in row[1:]:
+                    if f is not None:
+                        secondaryVideoPath = f.localVideoFile if f.localVideoFile is not None else f.videoFile
+                        if primaryVideoPath in fileOffsets and secondaryVideoPath in fileOffsets[primaryVideoPath]:
+                            continue
+                        streamOverlapStart = max(f.startTimestamp, primaryFile.startTimestamp)
+                        streamOffsetStart = segmentStartTime - streamOverlapStart
+                        streamOffsetEnd = segmentEndTime - streamOverlapStart
+                        if secondaryVideoPath not in currentMeasurements:
+                            currentMeasurements[secondaryVideoPath] = [streamOffsetStart, streamOffsetEnd]
+                        else:
+                            #assert currentMeasurements[secondaryVideoPath][1] == streamOffsetStart, f"{currentMeasurements[secondaryVideoPath]} != {streamOffsetStart}"
+                            assert currentMeasurements[secondaryVideoPath][1] <= streamOffsetStart
+                            currentMeasurements[secondaryVideoPath][1] = streamOffsetEnd
+            for primaryFilePath, secondaryFilePaths in measurements.items():
+                if primaryFilePath not in fileOffsets:
+                    fileOffsets[primaryFilePath] = {}
+                currentFileOffsets = fileOffsets[primaryFilePath]
+                for secondaryFilePath, searchOffsets in secondaryFilePaths.items():
+                    if secondaryFilePath not in currentFileOffsets:
+                        startOffset, endOffset = searchOffsets
+                        streamOffset = scanned.filesBySourceVideoPath[secondaryFilePath].startTimestamp - \
+                            scanned.filesBySourceVideoPath[primaryFilePath].startTimestamp
+                        audioOffset = AudioAlignment.findAverageAudioOffset(primaryFilePath,
+                                                                            secondaryFilePath,
+                                                                            initialOffset=streamOffset,
+                                                                            start=startOffset,
+                                                                            duration = min(AudioAlignment.MAX_LOAD_DURATION, endOffset - startOffset),
+                                                                            macroWindowSize = 10*60,
+                                                                            macroStride = 10*60,
+                                                                            microWindowSize = 10)
+                        if audioOffset is not None:
+                            currentFileOffsets[secondaryFilePath] = audioOffset
+            saveAudioCache()
+
         for segIndex in range(numSegments):
             filtergraphParts = []
             segmentStartTime = uniqueTimestampsSorted[segIndex]
@@ -1001,7 +1075,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 nullAudioInputOptions.extend(
                     ('-f',  'lavfi', '-i', f'anullsrc=r={rateStr}'))
                 rowNullAudioStreamsBySamplerates[rateStr] = audioInputIndex
-
+            rowMainFile = segmentFileMatrix[segIndex][0]
+            if rowMainFile is not None:
+                rowMainFilePath = rowMainFile.localVideoFile if rowMainFile.localVideoFile is not None else rowMainFile.videoFile
+                if rowMainFilePath in fileOffsets:
+                    rowFileOffsets = fileOffsets[rowMainFilePath]
+                else:
+                    rowFileOffsets = {}
+            else:
+                rowFileOffsets = {}
             rowInputOptions = []
             for streamerIndex in range(len(allInputStreamers)):
                 file = segmentFileMatrix[segIndex][streamerIndex]
@@ -1010,7 +1092,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 # 13b. Use #10a&b and #9a to build intermediate segments
                 if file is not None:
                     startOffset = segmentStartTime - file.startTimestamp
-                    endOffset = segmentEndTime - file.startTimestamp
+                    fileVideoPath = file.localVideoFile if file.localVideoFile is not None else file.videoFile
+                    if fileVideoPath in rowFileOffsets:
+                        #early compared to main streamer = positive offset
+                        startOffset -= rowFileOffsets[fileVideoPath]
+                    #endOffset = segmentEndTime - file.startTimestamp
                     inputIndex = rowInputFileCount
                     fileIndex = inputFileIndexes[file]
                     # audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
@@ -1041,11 +1127,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         #    rowInputOptions.extend(('-threads', str(threadCount//2)))
                     if startOffset != 0:
                         rowInputOptions.extend(('-ss', str(startOffset)))
-                    rowInputOptions.append('-i')
-                    if file.localVideoFile is not None:
-                        rowInputOptions.append(file.localVideoFile)
-                    else:
-                        rowInputOptions.append(file.videoFile)
+                    rowInputOptions.extend(('-i', fileVideoPath))
                     useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (
                         maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
                     # print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
@@ -1095,8 +1177,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     rowVideoSegmentNames.append(videoSegmentName)
                     rowInputFileCount += 1
                     if logLevel >= 4:
-                        print("\n\nStep 13b: ", segIndex, streamerIndex, file, startOffset,
-                              endOffset, inputIndex, streamerIndex, videoSegmentName, audioSegmentName)
+                        print("\n\nStep 13b: ", segIndex, streamerIndex, file, startOffset, #endOffset, 
+                              inputIndex, streamerIndex, videoSegmentName, audioSegmentName)
                 else:
                     audioRate = streamerAudioSampleRates[streamerIndex]
                     nullAudioIndex = rowNullAudioStreamsBySamplerates[str(

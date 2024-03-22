@@ -185,6 +185,8 @@ renderConfigSchema = Schema({
     Optional('excludeStreamers', default=None):
     # Cannot be passed as string
     Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
+    Optional('preciseAlign', default=defaultRenderConfig['preciseAlign']):
+    Or(bool, Use(lambda x: x.lower() in trueStrings)),
 })
 
 
@@ -205,6 +207,7 @@ class RenderConfig:
     minimumTimeInVideo: int
     cutMode: str
     useChat: bool
+    preciseAlign: bool
     includeStreamers: None | Dict[str, None | Dict[str, None | str]]
     excludeStreamers: None | Dict[str, None | Dict[str, None | str]]
 
