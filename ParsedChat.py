@@ -1,6 +1,7 @@
-from typing import Dict, List
+from typing import Dict, List, TYPE_CHECKING
 from SharedUtils import convertToDatetime
-#from SourceFile import SourceFile
+if TYPE_CHECKING:
+    from SourceFile import SourceFile
 import json
 import re
 from datetime import datetime
