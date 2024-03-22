@@ -273,7 +273,7 @@ def findPopularAudioOffsets(
     if len(offsetsByFrequency) == 0:
         return {}
     popularOffsetKeys = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) > popularThreshold]
-    logger.debug("popularOffsetKeys", popularOffsetKeys)
+    logger.debug(f"popularOffsetKeys: {popularOffsetKeys}")
     popularOffsets = {}
     for key in popularOffsetKeys:
         popularOffsets[key] = allOffsets[key]
