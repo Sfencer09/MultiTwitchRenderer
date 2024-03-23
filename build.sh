@@ -21,3 +21,5 @@ cp dist/MultiTwitchRenderer "/mnt/pool2/media/software/$currentGitBranch/" && \
 cp dist/config.py "/mnt/pool2/media/software/$currentGitBranch/"
 
 fi
+
+echo "Build complete!"

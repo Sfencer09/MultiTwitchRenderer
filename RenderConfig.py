@@ -5,6 +5,9 @@ from typing import Dict
 from schema import Schema, Or, And, Optional, Use
 
 
+from MTRLogging import getLogger
+logger = getLogger('RenderConfig')
+
 if __debug__:
     from config import *
 exec(open("config.py").read(), globals())
@@ -22,13 +25,13 @@ def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
     process1 = subprocess.run(
         [f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
-    print(process1.stdout.decode())
+    logger.info(process1.stdout.decode())
     try:
         process2 = subprocess.run(
             ["nvidia-smi", "-q", "-d", "MEMORY,UTILIZATION"], capture_output=True)
         nvidiaSmiOutput = process2.stdout.decode()
-        print(nvidiaSmiOutput)
-        print(process2.returncode)
+        logger.info(nvidiaSmiOutput)
+        logger.info(process2.returncode)
         if process2.returncode == 0:
             encoding = False
             decoding = False
@@ -39,7 +42,7 @@ def getHasHardwareAceleration():
                 elif 'Decoder' in row:
                     decoding = 'N/A' not in row
                 rowCount += 1
-            print(f"Row count: {rowCount}")
+            logger.info(f"Row count: {rowCount}")
             mask = SCALING
             if decoding:
                 mask |= HW_DECODE
@@ -47,32 +50,32 @@ def getHasHardwareAceleration():
                 mask |= HW_ENCODE
             return ('NVIDIA', mask)
     except Exception as ex:
-        print(ex)
+        pass
     try:
         process3 = subprocess.run(["rocm-smi", "--json"], capture_output=True)
         amdSmiOutput = process3.stdout.decode()
-        print(amdSmiOutput)
-        print(process3.returncode)
+        logger.info(amdSmiOutput)
+        logger.info(process3.returncode)
         if process3.returncode == 0:
-            print("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
+            logger.info("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
             return ('AMD', HW_DECODE | HW_ENCODE)
     except Exception as ex:
-        print(ex)
+        pass
     return (None, 0)
 
 
 HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
 if HWACCEL_BRAND is not None:
-    print(f'{HWACCEL_BRAND} hardware video acceleration detected')
-    print(f'Functions:')
+    logger.info(f'{HWACCEL_BRAND} hardware video acceleration detected')
+    logger.info(f'Functions:')
     if HWACCEL_FUNCTIONS & HW_DECODE != 0:
-        print("    Decode")
+        logger.info("    Decode")
     if HWACCEL_FUNCTIONS & (HW_INPUT_SCALE | HW_OUTPUT_SCALE) != 0:
-        print("    Scaling")
+        logger.info("    Scaling")
     if HWACCEL_FUNCTIONS & HW_ENCODE != 0:
-        print("    Encode")
+        logger.info("    Encode")
 else:
-    print('No hardware video decoding detected!')
+    logger.info('No hardware video decoding detected!')
 
 
 # inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
@@ -125,11 +128,11 @@ ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
 
 
 defaultRenderConfig = RENDER_CONFIG_DEFAULTS
-try:
-    with open('./renderConfig.json') as renderConfigJsonFile:
-        defaultRenderConfig = json.load(renderConfigJsonFile)
-except:
-    print("Coult not load renderConfig.json, using defaults from config.py")
+# try:
+#     with open('./renderConfig.json') as renderConfigJsonFile:
+#         defaultRenderConfig = json.load(renderConfigJsonFile)
+# except:
+#     print("Coult not load renderConfig.json, using defaults from config.py")
 
 acceptedOutputCodecs = ['libx264', 'libx265']
 if ACTIVE_HWACCEL_VALUES is not None:
@@ -185,6 +188,8 @@ renderConfigSchema = Schema({
     Optional('excludeStreamers', default=None):
     # Cannot be passed as string
     Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
+    Optional('preciseAlign', default=defaultRenderConfig['preciseAlign']):
+    Or(bool, Use(lambda x: x.lower() in trueStrings)),
 })
 
 
@@ -205,6 +210,7 @@ class RenderConfig:
     minimumTimeInVideo: int
     cutMode: str
     useChat: bool
+    preciseAlign: bool
     includeStreamers: None | Dict[str, None | Dict[str, None | str]]
     excludeStreamers: None | Dict[str, None | Dict[str, None | str]]
 

@@ -163,7 +163,11 @@ cython_debug/
 .vscode/
 
 knownFiles.pickle*
+audioOffsets.json
 MultiTwitchRenderer.ipynb
 renderStatuses.pickle
-
 urwid-ui-original.py
+logs/
+
+#file is a symlink
+tests/config.py

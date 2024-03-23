@@ -32,7 +32,7 @@ def extractInputFiles(ffmpegCommand: List[str]):
         if st == '-i':
             isInput = True
         elif isInput:
-            if st != 'anullsrc':
+            if isinstance(st, str) and not st.startswith('anullsrc'):
                 files.append(st)
             isInput = False
     return files

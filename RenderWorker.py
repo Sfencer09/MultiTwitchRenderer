@@ -11,13 +11,15 @@ import os
 from shlex import quote
 from typing import Any, Tuple
 
-from RenderTask import RenderTask, getRenderStatus
-
 if __debug__:
     from config import *
 exec(open("config.py").read(), globals())
 
+from MTRLogging import getLogger
+logger = getLogger('RenderWorker')
 
+
+from RenderTask import RenderTask, getRenderStatus
 from SharedUtils import insertSuffix
 from SourceFile import getVideoInfo
 from RenderTask import setRenderStatus, getRenderStatus, decrFileRefCount
@@ -49,14 +51,14 @@ def getActiveRenderTaskInfo() -> Tuple[RenderTask, int, subprocess.Popen]:
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
                  overwrite_output=DEFAULT_OVERWRITE_OUTPUT,
-                 renderLog=partial(print, flush=True)):
+                 renderLog=None):
     #renderLog = renderText.addLine
     queueEmpty = False
     while True:
         # sessionText, copyText, renderText = bufferedTexts
         if renderQueue.empty():
             if not queueEmpty:
-                print("Render queue empty, sleeping")
+                logger.detail("Render queue empty, sleeping")
                 queueEmpty = True
             ttime.sleep(10)
             continue
@@ -122,13 +124,13 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                                     float(videoInfo['format']['duration']))
                                 # if duration !=
                             except Exception as ex:
-                                # if task.renderConfig.logLevel > 0:
-                                #    print(ex)
-                                renderLog(str(ex))
+                                logger.detail(str(ex))
+                                if renderLog is not None:
+                                    renderLog(str(ex))
                             if shouldSkip:
-                                # if task.renderConfig.logLevel > 0:
-                                renderLog(
-                                    f"Skipping render to file {trueOutpath}, file already exists")
+                                logger.info(f"Skipping render to file {trueOutpath}, file already exists")
+                                if renderLog is not None:
+                                    renderLog(f"Skipping render to file {trueOutpath}, file already exists")
                                 continue
                         else:
                             currentCommand[-1] = insertSuffix(
@@ -138,8 +140,9 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                         if currentOutpath.startswith(localBasepath):
                             tempFiles.append(currentOutpath)
                     # if task.renderConfig.logLevel > 0:
-                    renderLog(
-                        f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...")
+                    logger.info(f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...")
+                    if renderLog is not None:
+                        renderLog(f"Running render to file {trueOutpath if trueOutpath is not None else currentCommand[-1]} ...")
 
                 # TODO: figure out how to replace with asyncio processes - need to run from one thread and interrupt from another
 
@@ -152,22 +155,29 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                     returncode = process.wait()
                     activeRenderSubprocess = None
                 except KeyboardInterrupt:
-                    renderLog(
+                    logger.info("Keyboard interrupt detected, stopping active render!")
+                    if renderLog is not None:
+                        renderLog(
                         "Keyboard interrupt detected, stopping active render!")
                     process.kill()
                     process.wait()
-                    renderLog("Render terminated!")
+                    logger.info("Render terminated!")
+                    if renderLog is not None:
+                        renderLog("Render terminated!")
                     return
                 except Exception as ex:
-                    renderLog(str(ex))
+                    logger.error(str(ex))
+                    if renderLog is not None:
+                        renderLog(str(ex))
                     returncode = -1
                     activeRenderSubprocess = None
 
                 if returncode != 0:
                     hasError = True
                     if returncode != 130:  # ctrl-c on UNIX (?)
-                        renderLog(
-                            f" Render errored! Writing to log file {errorFilePath}")
+                        logger.error(f"Render errored! Writing to log file {errorFilePath}")
+                        if renderLog is not None:
+                            renderLog(f"Render errored! Writing to log file {errorFilePath}")
                         setRenderStatus(task.mainStreamer,
                                         task.fileDate, 'ERRORED')
                         with open(errorFilePath, 'a') as errorFile:
@@ -181,23 +191,31 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                 else:
                     if trueOutpath is not None:
                         shutil.move(currentCommand[-1], trueOutpath)
-                        renderLog(f" Render to {trueOutpath} complete!")
+                        logger.info(f"Render to {trueOutpath} complete!")
+                        if renderLog is not None:
+                            renderLog(f"Render to {trueOutpath} complete!")
                     else:
-                        renderLog(f" Render to {currentCommand[-1]} complete!")
+                        logger.info(f"Render to {currentCommand[-1]} complete!")
+                        if renderLog is not None:
+                            renderLog(f"Render to {currentCommand[-1]} complete!")
         if not hasError:
-            print("Render task finished, cleaning up temp files:")
-            print(tempFiles)
+            logger.info("Render task finished, cleaning up temp files:")
+            logger.detail(tempFiles)
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
             if COPY_FILES:
                 for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
                     remainingRefs = decrFileRefCount(file.localVideoPath)
                     if remainingRefs == 0:
-                        renderLog(f"Removing local file {file}")
+                        logger.detail(f"Removing local file {file}")
+                        if renderLog is not None:
+                            renderLog(f"Removing local file {file}")
                         os.remove(file)
             # intermediateFiles = set([command[-1] for command in renderCommands[:-1] if command[0].endswith('ffmpeg')])
             # for file in intermediateFiles:
             for file in tempFiles:
-                renderLog(f"Removing intermediate file {file}")
+                logger.detail(f"Removing intermediate file {file}")
+                if renderLog is not None:
+                    renderLog(f"Removing intermediate file {file}")
                 assert basepath not in file
                 os.remove(file)
         renderQueue.task_done()
@@ -205,21 +223,26 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
             break
 
 def endRendersAndExit():
+    logger.info("Shutting down!")
     print('Shutting down, please wait at least 15 seconds before manually killing...')
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if activeRenderSubprocess is not None:
+        logger.info("Terminating render thread")
         print("Terminating render thread")
         activeRenderSubprocess.terminate()
         activeRenderSubprocess.wait(10)
         if activeRenderSubprocess.poll() is None:
+            logger.info("Terminating render thread did not complete within 10 seconds, killing instead")
             print(
                 "Terminating render thread did not complete within 10 seconds, killing instead")
             activeRenderSubprocess.kill()
             activeRenderSubprocess.wait()
         if activeRenderSubprocess.poll() is not None:
+            logger.info("Active render stopped successfully")
             print("Active render stopped successfully")
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     print("Stopping!")
+    logger.info("Stopping!")
     sys.exit(0)
 
 

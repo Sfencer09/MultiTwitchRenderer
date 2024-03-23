@@ -1,6 +1,7 @@
 # +
 import os
-from datetime import timezone, time, timedelta
+from datetime import timezone, timedelta
+from datetime import time as datetimetime
 streamersParseChatList = ('ChilledChaos', 'ZeRoyalViking')
 
 basepath = '/mnt/pool2/media/Twitch Downloads/'
@@ -11,10 +12,6 @@ outputDirectory = "Rendered Multiviews"
 ENABLE_URWID = False
 
 mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
-globalAllStreamers = [name for name in os.listdir(basepath) if
-                      (name not in ("NA", outputDirectory) and 
-                       os.path.isdir(os.path.join(basepath, name)))]
-#secondaryStreamers = [name for name in globalAllStreamers if name not in mainStreamers]
 
 streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
                    'APlatypus':['https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1'],
@@ -74,7 +71,7 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
 nongroupGames = ('Just Chatting', "I'm Only Sleeping")
 ffmpegPath='' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
 
-characterReplacements = {'?':'？', '/':'', '\\':''}
+characterReplacements = {'?':'？', '/':'⧸', '\\':'', ':':'：', '<':'＜', '>':'＞'}
 
 threadCount = os.cpu_count()
 
@@ -95,7 +92,7 @@ MST_TIMEZONE = timezone(timedelta(hours=-7))
 PST_TIMEZONE = timezone(timedelta(hours=-8))
 UTC_TIMEZONE = timezone(timedelta(hours=0))
 LOCAL_TIMEZONE = CST_TIMEZONE
-DAY_START_TIME = time(0, 0, 0, tzinfo=LOCAL_TIMEZONE)
+DAY_START_TIME = datetimetime(0, 0, 0, tzinfo=LOCAL_TIMEZONE)
 
 outputResolutions = [None, (1920,1080), (3840,1080), (3840,2160), (3840,2160), (3840,2160), (3840,2160), (4480,2520)]
 outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "25M",       "30M",       "40M"]
@@ -132,6 +129,7 @@ RENDER_CONFIG_DEFAULTS = {
     'minimumTimeInVideo': 900,
     'cutMode': 'chunked',
     'useChat': True,
+    'preciseAlign': False,
 }
 # -
 

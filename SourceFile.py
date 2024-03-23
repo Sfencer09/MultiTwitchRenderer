@@ -14,6 +14,9 @@ exec(open("config.py").read(), globals())
 from Session import Session
 from ParsedChat import ParsedChat, convertToDatetime
 
+from MTRLogging import getLogger
+logger = getLogger('SourceFile')
+
 def getVideoInfo(videoFile: str):
     probeResult = subprocess.run(['ffprobe', '-v', 'quiet',
                                   '-print_format', 'json=c=1',
@@ -125,9 +128,11 @@ def scanFiles(log=False):
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
+    globalAllStreamers = [name for name in os.listdir(basepath) if
+                      (name not in ("NA", outputDirectory) and 
+                       os.path.isdir(os.path.join(basepath, name)))]
     for streamer in globalAllStreamers:
-        if log:
-            print(f"Scanning streamer {streamer} ", end='')
+        logger.info(f"Scanning streamer {streamer} ")
         newStreamerFiles:List[SourceFile] = []
         streamerBasePath = os.path.join(basepath, streamer, 'S1')
         count = 0
@@ -142,8 +147,6 @@ def scanFiles(log=False):
             assert len(filenameSegments) >= 3
             videoId = filenameSegments[-2]
             # print(videoId, filepath, sep=' '*8)
-            if log and count % 10 == 0:
-                print('.', end='')
             file = None
             if videoId not in scanned.allFilesByVideoId.keys() and videoId not in newFilesByVideoId.keys():
                 if any((filename.endswith(videoExt) for videoExt in videoExts)):
@@ -175,9 +178,6 @@ def scanFiles(log=False):
             # allScannedFiles.add(filepath)
             count += 1
         count = 0
-        if log:
-            print()
-            # print('*', end='')
         newCompleteFiles = []
         for i in reversed(range(len(newStreamerFiles))):
             file = newStreamerFiles[i]
@@ -209,9 +209,7 @@ def scanFiles(log=False):
             #        del filesBySourceVideoPath[file.videoFile]
             #    del scanned.allFilesByVideoId[file.videoId]
             #    del streamerFiles[i]
-        # if log:
-        if count > 0 or log:
-            print(f"Scanned streamer {streamer} with {count} files")
+        logger.info(f"Scanned streamer {streamer} with {count} files")
         if len(newStreamerFiles) > 0:
             if streamer not in scanned.allFilesByStreamer.keys():
                 # scanned.allStreamersWithVideos.append(streamer)
@@ -219,8 +217,7 @@ def scanFiles(log=False):
             else:  # streamer already had videos scanned in
                 scanned.allFilesByStreamer[streamer].extend(newCompleteFiles)
     scanned.allStreamersWithVideos = list(scanned.allFilesByStreamer.keys())
-    if log:
-        print("Step 0: ", scanned.allStreamersWithVideos, end="\n\n\n")
+    logger.info(f"Step 0: {scanned.allStreamersWithVideos}")
 
     # [OLD]       1. Build sorted (by start time) array of sessions by streamer
     # for streamer in scanned.allStreamersWithVideos:
@@ -232,20 +229,19 @@ def scanFiles(log=False):
         sessionList.sort(key=lambda x: x.startTimestamp)
     # for streamer in scanned.allStreamersWithVideos:
     #    scanned.allStreamerSessions[streamer].sort(key=lambda x:x.startTimestamp)
-    if log:
-        print("Step 1: ", sum((len(x)
-              for x in scanned.allStreamerSessions.values())), end="\n\n\n")
+    logger.info(f"Step 1: {sum((len(x) for x in scanned.allStreamerSessions.values()))}")
 
 def saveFiledata(filepath: str):
+    logger.info("Starting pickle dump")
     with open(filepath, 'wb') as file:
         pickle.dump(scanned.allFilesByVideoId, file)
-        print("Pickle dump successful")
+        logger.info("Pickle dump successful")
 
 
 def loadFiledata(filepath: str):  # suppresses all errors
     try:
         with open(filepath, 'rb') as file:
-            print("Starting pickle load...")
+            logger.info("Starting pickle load...")
             pickleData = pickle.load(file)
             scanned.allFilesByVideoId = pickleData
             scanned.allFilesByStreamer = {}  # string:[SourceFile]
@@ -265,9 +261,12 @@ def loadFiledata(filepath: str):  # suppresses all errors
                 scanned.allScannedFiles.add(file.infoFile)
                 if file.chatFile is not None:
                     scanned.allScannedFiles.add(file.chatFile)
-            print("Pickle load successful")
+            logger.info("Pickle load successful")
+    except FileNotFoundError:
+        logger.warning("Pickle load failed due to missing file, this is not an issue for the first run or if the file has been deleted")
     except Exception as ex:
-        print("Pickle load failed! Exception:", ex)
+        logger.error("Pickle load failed! Exception:")
+        logger.error(ex)
 
 
 def initialize():

@@ -1,10 +1,12 @@
-from typing import Dict, List
+from typing import Dict, List, TYPE_CHECKING
 from SharedUtils import convertToDatetime
-#from SourceFile import SourceFile
+if TYPE_CHECKING:
+    from SourceFile import SourceFile
 import json
 import re
 from datetime import datetime
 from fuzzysearch import find_near_matches
+import scanned
 
 if __debug__:
     from config import *
@@ -13,7 +15,7 @@ exec(open("config.py").read(), globals())
 def parsePlayersFromGroupMessage(message: str):
     players = []
     messageLowercase = message.lower()
-    for streamer in globalAllStreamers:
+    for streamer in scanned.allFilesByStreamer.keys():
         fuzzymatches = find_near_matches(
             streamer.lower(), messageLowercase, max_l_dist=len(streamer)//5)
         if len(fuzzymatches) > 0:
