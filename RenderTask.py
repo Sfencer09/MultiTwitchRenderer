@@ -99,7 +99,7 @@ def decrFileRefCount(filename:str):
 
 def setRenderStatus(streamer:str, date:str, status:str):
     assert status in ("RENDERING", "RENDER_QUEUE",
-                      "COPY_QUEUE", "COPYING", "FINISHED", "ERRORED")
+                      "COPY_QUEUE", "COPYING", "FINISHED", "ERRORED", "SOLO")
     assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
     assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"

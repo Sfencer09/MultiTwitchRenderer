@@ -131,6 +131,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                                 if sessionLog is not None:
                                     sessionLog(
                                         f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
+                            setRenderStatus(streamer, day, "SOLO")
                             continue
                         item = RenderTask(streamer, day, renderConfig, outPath)
                         logger.info(f"Adding render for streamer {streamer} from {day}")
