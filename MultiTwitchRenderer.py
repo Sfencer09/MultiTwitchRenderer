@@ -207,7 +207,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     secondaryGroups: Dict[str, List[Dict[str, datetime | List[str]]]] = {}
     for file in secondaryFiles:
         if file.parsedChat is not None:
-            if file.streamer in secondaryGroups.keys():
+            if file.streamer not in secondaryGroups.keys():
                 secondaryGroups[streamer] = list(file.parsedChat.groups)
             else:
                 secondaryGroups[streamer].extend(file.parsedChat.groups)
@@ -519,6 +519,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     #trimSessionsV1()
     def compressRows():
+        nonlocal numSegments
         for i in range(numSegments-1, 0, -1):
             logger.detail(str(i))
             if all(((segmentFileMatrix[i][stIndex] is None) == (segmentFileMatrix[i-1][stIndex] is None) for stIndex in range(len(allInputStreamers)))):

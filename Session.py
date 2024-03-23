@@ -71,38 +71,44 @@ class Session:
                 sortedGroups = sorted(groupsList, key=lambda x: x['time'])
                 if len(sortedGroups) == 0:
                     return False
-                if overlapEnd < sortedGroups[0]['time'].timestamp():
+                if overlapEnd <= sortedGroups[0]['time'].timestamp():
                     return matchStreamer in sortedGroups[0]['group']
-                if sortedGroups[-1]['time'].timestamp() < overlapStart:
+                if sortedGroups[-1]['time'].timestamp() <= overlapStart:
                     return matchStreamer in sortedGroups[-1]['group']
                 # If we haven't returned yet, we have at least one group entry within the overlap time,
                 # we need to calculate how much of the overlap time has the matching streamer
                 overlapDuration = overlapEnd - overlapStart
                 inclusionDuration: float = 0
-                groupOverlapStart = None
-                groupOverlapEnd = None
+                leadingGroupEntry = None
+                containedGroupEntries = []
+                trailingGroupEntry = None
                 for i in range(len(sortedGroups)):
-                    entry = sortedGroups[i]
-                    if overlapStart <= entry['time'].timestamp() < overlapEnd:
-                        if groupOverlapStart is None:
-                            groupOverlapStart = i
-                        groupOverlapEnd = i
-                assert groupOverlapStart is not None and groupOverlapEnd is not None
-                if groupOverlapStart > 0:
-                    leadingGroupEntry = sortedGroups[groupOverlapStart-1]
+                    entryTime = sortedGroups[i]['time'].timestamp()
+                    if entryTime < overlapStart:
+                        leadingGroupEntry = sortedGroups[i]
+                    elif overlapStart <= entryTime < overlapEnd:
+                        containedGroupEntries.append(sortedGroups[i])
+                    elif entryTime >= overlapEnd:
+                        if trailingGroupEntry is None:
+                            trailingGroupEntry = sortedGroups[i]
+                if len(containedGroupEntries) == 0:
+                    if leadingGroupEntry is not None:
+                        return matchStreamer in leadingGroupEntry['group']
+                    assert trailingGroupEntry is not None
+                    return matchStreamer in trailingGroupEntry['group']
+                if leadingGroupEntry is not None:
+                    if matchStreamer in leadingGroupEntry['group']:
+                        inclusionDuration += containedGroupEntries[0]['time'].timestamp() - overlapStart
                 else:
-                    leadingGroupEntry = sortedGroups[groupOverlapStart]
-                if matchStreamer in leadingGroupEntry['group']:
-                    inclusionDuration += leadingGroupEntry['time'].timestamp() - overlapStart
-                for i in range(groupOverlapStart, groupOverlapEnd-1):
-                    entry1 = sortedGroups[i]
-                    entry2 = sortedGroups[i+1]
+                    if matchStreamer in containedGroupEntries[0]['group']:
+                        inclusionDuration += containedGroupEntries[0]['time'].timestamp() - overlapStart
+                for i in range(len(containedGroupEntries)-1):
+                    entry1 = containedGroupEntries[i]
+                    entry2 = containedGroupEntries[i+1]
                     if matchStreamer in entry1['group']:
                         inclusionDuration += entry2['time'].timestamp() - entry1['time'].timestamp()
-
-                trailingGroupEntry = sortedGroups[groupOverlapEnd]
-                if matchStreamer in trailingGroupEntry['group']:
-                    inclusionDuration += overlapEnd - trailingGroupEntry['time'].timestamp()
+                if matchStreamer in containedGroupEntries[-1]['group']:
+                    inclusionDuration += overlapEnd - containedGroupEntries[-1]['time'].timestamp()
                 inclusionFraction = inclusionDuration / overlapDuration
                 return inclusionFraction >= inclusionThreshold
             
