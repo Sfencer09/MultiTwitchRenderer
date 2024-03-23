@@ -1,6 +1,6 @@
 
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 import os
 import math
 import random
@@ -159,10 +159,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #groupsFromMainFiles = reduce(list.append,  # list.__add__,
     #                             (file.parsedChat.groups for file in set((session.file for session in mainSessionsOnTargetDate)
     #                                                                     ) if file.parsedChat is not None), [])
-    groupsFromMainFiles = []
+    groupsFromMainFiles: List[Dict[str, datetime | List[str]]] = []
     for file in set((session.file for session in mainSessionsOnTargetDate)):
         if file.parsedChat is not None:
             groupsFromMainFiles.extend(file.parsedChat.groups)
+    
     
     # if logLevel >= 1:
     #     print("\n\nStep 2.1: ")
@@ -188,7 +189,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             continue
         inputSessionsByStreamer[streamer] = []
         for session in scanned.allStreamerSessions[streamer]:
-            if any((session.hasOverlap(x, useChat) for x in mainSessionsOnTargetDate)):
+            if any((session.hasOverlapV2(x, useChat) for x in mainSessionsOnTargetDate)):
                 if excludeStreamers is not None and streamer in excludeStreamers.keys():
                     if excludeStreamers[streamer] is None or session.game in excludeStreamers[streamer]:
                         continue
@@ -201,6 +202,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     secondarySessionsArray.sort(key=lambda x: x.startTimestamp)
     if logger.isEnabledFor(logging.DEBUG): # avoid performance cost if possible
         logger.debug(f"Step 4: {pformat(secondarySessionsArray)}")
+
+    secondaryFiles: Set[SourceFile] = set((session.file for session in secondarySessionsArray))
+    secondaryGroups: Dict[str, List[Dict[str, datetime | List[str]]]] = {}
+    for file in secondaryFiles:
+        if file.parsedChat is not None:
+            if file.streamer in secondaryGroups.keys():
+                secondaryGroups[streamer] = list(file.parsedChat.groups)
+            else:
+                secondaryGroups[streamer].extend(file.parsedChat.groups)
 
     # 5. Build array of streamers that have sessions in #4, with the target streamer first and the others sorted by
         # first start time - these will become the audio output stream orders
@@ -249,13 +259,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 uniqueTimestamps.add(start)
             if end < mainSessionsEndTime or endTimeMode == 'allOverlapEnd':
                 uniqueTimestamps.add(timePair[1])
-    for mainFile in mainFiles:
-        chat = mainFile.parsedChat
-        if chat is not None:
-            for group in chat.groups:
-                groupTimestamp = group['time'].timestamp()
-                if mainSessionsStartTime < groupTimestamp < mainSessionsEndTime:
-                    uniqueTimestamps.add(groupTimestamp)
+    if useChat:
+        uniqueTimestamps.update((group['time'].timestamp() for group in groupsFromMainFiles if mainSessionsStartTime < group['time'].timestamp(
+        ) < mainSessionsEndTime and not any((abs(x-group['time'].timestamp()) < 1 for x in uniqueTimestamps))))
+        for groupsList in secondaryGroups.values():
+            uniqueTimestamps.update((group['time'].timestamp() for group in groupsList if mainSessionsStartTime < group['time'].timestamp(
+            ) < mainSessionsEndTime and not any((abs(x-group['time'].timestamp()) < 1 for x in uniqueTimestamps))))
     uniqueTimestampsSorted = sorted(uniqueTimestamps)
     allSessionsStartTime = uniqueTimestampsSorted[0]
     allSessionsEndTime = uniqueTimestampsSorted[-1]
@@ -294,9 +303,20 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         logger.debug(f"{segmentSessionMatrix[segIndex][streamerIndex]}, {overlapStart}, {overlapEnd}, {segmentStartTime}, {segmentEndTime}")
                         assert segmentFileMatrix[segIndex][streamerIndex] is session.file
         addOverlappingSessions(mainSessionsOnTargetDate, 0)
-        for i in range(1, len(allInputStreamers)):
-            addOverlappingSessions(
-                inputSessionsByStreamer[allInputStreamers[i]], i)
+        if segmentFileMatrix[segIndex][0] is not None:
+            for streamerIndex in range(1, len(allInputStreamers)):
+                #addOverlappingSessions(inputSessionsByStreamer[allInputStreamers[i]], i)
+                for session in inputSessionsByStreamer[allInputStreamers[streamerIndex]]:
+                    if any((session.hasOverlapV2(mainSession, useChat=useChat, targetRange=(segmentStartTime, segmentEndTime)) for mainSession in segmentSessionMatrix[segIndex][0])):
+                        if segmentFileMatrix[segIndex][streamerIndex] is None:
+                            segmentFileMatrix[segIndex][streamerIndex] = session.file
+                            segmentSessionMatrix[segIndex][streamerIndex] = [
+                                session]
+                        else:
+                            segmentSessionMatrix[segIndex][streamerIndex].append(
+                                session)
+                            logger.debug(f"{segmentSessionMatrix[segIndex][streamerIndex]}")
+                            assert segmentFileMatrix[segIndex][streamerIndex] is session.file
     logger.info(f"Step 8: {allInputStreamers}")
     logger.trace(pformat(segmentFileMatrix))
 
@@ -444,7 +464,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         else:
                             # gap starting
                             gapStart = i
-                            gapLenth = segmentDuration
+                            gapLength = segmentDuration
                     if not curState:
                         gapLength += segmentDuration
                     lastState = curState
@@ -497,23 +517,23 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         for i in range(numSegments):
             ...
 
-    trimSessionsV1()
-    # def compressRows():
-    for i in range(numSegments-1, 0, -1):
-        logger.detail(str(i))
-        if all(((segmentFileMatrix[i][stIndex] is None) == (segmentFileMatrix[i-1][stIndex] is None) for stIndex in range(len(allInputStreamers)))):
-            del segmentFileMatrix[i]
-            sessionMergeRow = [None if segmentSessionMatrix[i][si] is None else set(
-                segmentSessionMatrix[i-1][si]).union(set(segmentSessionMatrix[i][si])) for si in range(len(allInputStreamers))]
-            segmentSessionMatrix[i-1] = [None if sessionMerge is None else sorted(
-                sessionMerge, key=lambda x: x.startTimestamp) for sessionMerge in sessionMergeRow]
-            del segmentSessionMatrix[i]
-            tempTs = uniqueTimestampsSorted[i]
-            logger.detail(f"Combining segments {str(i)} and {str(i-1)}, dropping timestamp {str(tempTs)}")
-            del uniqueTimestampsSorted[i]
-            uniqueTimestamps.remove(tempTs)
-            numSegments -= 1
-    # compressRows()
+    #trimSessionsV1()
+    def compressRows():
+        for i in range(numSegments-1, 0, -1):
+            logger.detail(str(i))
+            if all(((segmentFileMatrix[i][stIndex] is None) == (segmentFileMatrix[i-1][stIndex] is None) for stIndex in range(len(allInputStreamers)))):
+                del segmentFileMatrix[i]
+                sessionMergeRow = [None if segmentSessionMatrix[i][si] is None else set(
+                    segmentSessionMatrix[i-1][si]).union(set(segmentSessionMatrix[i][si])) for si in range(len(allInputStreamers))]
+                segmentSessionMatrix[i-1] = [None if sessionMerge is None else sorted(
+                    sessionMerge, key=lambda x: x.startTimestamp) for sessionMerge in sessionMergeRow]
+                del segmentSessionMatrix[i]
+                tempTs = uniqueTimestampsSorted[i]
+                logger.detail(f"Combining segments {str(i)} and {str(i-1)}, dropping timestamp {str(tempTs)}")
+                del uniqueTimestampsSorted[i]
+                uniqueTimestamps.remove(tempTs)
+                numSegments -= 1
+    compressRows()
 
     logSegmentMatrix(logging.DETAIL)
     # def sortByEntryTime():

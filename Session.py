@@ -108,11 +108,11 @@ class Session:
             
             foundOverlap = None
             if self.file.parsedChat is not None:
-                foundOverlap = hasChatOverlap(self.file.parsedChat, cmp.file.streamer)
+                foundOverlap = hasChatOverlap(self.file.parsedChat.groups, cmp.file.streamer)
                 if foundOverlap:
                     return True
             if cmp.file.parsedChat is not None:
-                foundOverlap = hasChatOverlap(cmp.file.parsedChat, self.file.streamer)
+                foundOverlap = hasChatOverlap(cmp.file.parsedChat.groups, self.file.streamer)
             return foundOverlap if foundOverlap is not None else (self.game == cmp.game)
         else:
             return self.game == cmp.game
