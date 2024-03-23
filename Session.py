@@ -106,14 +106,14 @@ class Session:
                 inclusionFraction = inclusionDuration / overlapDuration
                 return inclusionFraction >= inclusionThreshold
             
+            foundOverlap = None
             if self.file.parsedChat is not None:
                 foundOverlap = hasChatOverlap(self.file.parsedChat, cmp.file.streamer)
                 if foundOverlap:
                     return True
             if cmp.file.parsedChat is not None:
                 foundOverlap = hasChatOverlap(cmp.file.parsedChat, self.file.streamer)
-                return foundOverlap
-            return self.game == cmp.game
+            return foundOverlap if foundOverlap is not None else (self.game == cmp.game)
         else:
             return self.game == cmp.game
 
