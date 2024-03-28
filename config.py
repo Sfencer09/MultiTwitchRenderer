@@ -124,7 +124,7 @@ RENDER_CONFIG_DEFAULTS = {
     'minGapSize': 0,
     'outputCodec': 'libx264',
     'encodingSpeedPreset': 'medium',
-    'useHardwareAcceleration': 0,
+    'useHardwareAcceleration': {},
     'maxHwaccelFiles': 0,
     'minimumTimeInVideo': 900,
     'cutMode': 'chunked',

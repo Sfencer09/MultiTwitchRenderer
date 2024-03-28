@@ -25,7 +25,7 @@ import scanned
 
 from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
-from RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from RenderConfig import RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
 from SharedUtils import calcGameCounts, getVideoOutputPath
 from Session import Session
 
@@ -646,7 +646,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     codecOptions = ["-c:a", "aac",
                     "-c:v", outputCodec,
                     "-s", outputResolutionStr]
-    if outputCodec in ('libx264', 'h264_nvenc'):
+    #if outputCodec in ('libx264', 'h264_nvenc'):
+    if "264" in outputCodec:
         codecOptions.extend(("-profile:v", "high",
                              # "-maxrate",outputBitrates[maxTileWidth],
                              # "-bufsize","4M",
@@ -655,7 +656,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                              ))
         if REDUCED_MEMORY:
             codecOptions.extend('-rc-lookahead', '20', '-g', '60')
-    elif outputCodec in ('libx265', 'hevc_nvenc'):
+    #elif outputCodec in ('libx265', 'hevc_nvenc'):
+    elif "265" in outputCodec or "hevc" in outputCodec:
         codecOptions.extend((
             "-preset", encodingSpeedPreset,
             "-crf", "26",
@@ -1107,11 +1109,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         if maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles:
                             decodeOptions = ACTIVE_HWACCEL_VALUES['decode_input_options']
                             scaleOptions = ACTIVE_HWACCEL_VALUES['scale_input_options']
-                            inputOptions.extend(decodeOptions)
+                            rowInputOptions.extend(decodeOptions)
                             # inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
                             # inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
                             if useHardwareAcceleration & HW_INPUT_SCALE != 0 and scaleOptions is not None:
-                                inputOptions.extend(scaleOptions)
+                                rowInputOptions.extend(scaleOptions)
                             #    rowInputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
                         # else:
                         #    rowInputOptions.extend(('-threads', str(threadCount//2)))

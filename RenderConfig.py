@@ -1,6 +1,9 @@
+from io import BytesIO
 import json
+import sys
+import os
 import subprocess
-from typing import Dict
+from typing import Dict, Iterable, List, Tuple
 
 from schema import Schema, Or, And, Optional, Use
 
@@ -19,9 +22,47 @@ HW_ENCODE = 8
 
 
 trueStrings = ('t', 'y', 'true', 'yes')
+HWACCEL_VALUES = {
+    'NVIDIA': {
+        # 'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
+        'scale_filter': '_npp',
+        'pad_filter': '_opencl',
+        'upload_filter': '_cuda',
+        'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
+        'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
+        'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
+    },
+    # 'AMD': {
+        # 'support_mask': HW_DECODE|HW_ENCODE,
+    #     'scale_filter': '',
+    #     'pad_filter': '',
+    #     'upload_filter': '',
+    #     # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
+    #     # 'decode_input_options': ('-hwaccel', 'd3d11va'),
+    #     'decode_input_options
+    #     'scale_input_options': ('-hw'),
+    #     'encode_codecs': ('h264_amf', 'hevc_amf'),
+    # },
+    'Intel': {
+        # 'support_mask': HW_DECODE|HW_ENCODE,
+        'scale_filter': '_qsv',
+        'pad_filter': '',
+        'upload_filter': '',
+        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
+        'scale_input_options': (),
+        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+    },
+    # None: {
+    #     'scale_filter': '',
+    #     'pad_filter': '',
+    #     'upload_filter': '',
+    #     'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
+    #     'scale_input_options': None,
+    #     'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+    # }
+}
 
-
-def getHasHardwareAceleration():
+""" def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
     process1 = subprocess.run(
         [f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
@@ -65,6 +106,144 @@ def getHasHardwareAceleration():
 
 
 HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
+
+def getAllHardwareAccelerationFunctions() -> Dict[str, int]:
+    SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
+    #ffmpegVersionProcess = subprocess.run(
+    #    [f"{ffmpegPath}ffmpeg", "-version"], capture_output=True)
+    #ffmpegInfo = ffmpegVersionProcess.stdout.decode()
+    ffmpegInfo = subprocess.check_output([f"{ffmpegPath}ffmpeg", "-version"], universal_newlines=True, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    ffmpegBuildInfo = [row for row in ffmpegInfo.split('\n') if row.startswith("configuration:")][0]
+    ffmpegBuildOptions = [elem for elem in ffmpegBuildInfo.split(' ') if elem.startswith('-')]
+    logger.detail(ffmpegInfo)
+    ffmpegCodecs = subprocess.check_output([f"{ffmpegPath}ffmpeg", "-version"], universal_newlines=True, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+    functionsSupported = {}
+    # NVIDIA
+    try:
+        nvidiaSmiProcess = subprocess.run(
+            ["nvidia-smi", "-q", "-d", "MEMORY,UTILIZATION"], capture_output=True)
+        nvidiaSmiOutput = nvidiaSmiProcess.stdout.decode()
+        logger.info(nvidiaSmiOutput)
+        logger.info(nvidiaSmiProcess.returncode)
+        if nvidiaSmiProcess.returncode == 0:
+            encoding = False
+            decoding = False
+            rowCount = 0
+            for row in nvidiaSmiOutput.split('\n'):
+                if 'Encoder' in row:
+                    if 'N/A' not in row:
+                        logger.info("Driver reported encoding capabilities")
+                        if "--enable-nvenc" in ffmpegBuildOptions:
+                            encoding = True
+                            logger.info("FFMpeg build info includes --enable-nvenc, NVIDIA hardware encoding enabled")
+                        else:
+                            logger.warning("FFMpeg build does not include --enable-nvenc despite driver reporting encoding support, make sure a suitable ffmpeg process is specified in config.py")
+                elif 'Decoder' in row:
+                    if 'N/A' not in row:
+                        logger.info("Driver reported decoding capabilities")
+                        if "--enable-nvdec" in ffmpegBuildOptions:
+                            decoding = True
+                            logger.info("FFMpeg build info includes --enable-nvdec, NVIDIA hardware decoding enabled")
+                        else:
+                            logger.warning("FFMpeg build does not include --enable-nvdec despite driver reporting decoding support, make sure a suitable ffmpeg process is specified in config.py")
+                rowCount += 1
+            logger.info(f"Row count: {rowCount}")
+            mask = SCALING
+            if decoding:
+                mask |= HW_DECODE
+            if encoding:
+                mask |= HW_ENCODE
+            # return ('NVIDIA', mask)
+            functionsSupported["NVIDIA"] = mask
+    except Exception as ex:
+        logger.debug(ex)
+    # AMD
+    try:
+        amdSmiProcess = subprocess.run(["rocm-smi", "--json"], capture_output=True)
+        amdSmiOutput = amdSmiProcess.stdout.decode()
+        logger.info(amdSmiOutput)
+        logger.info(amdSmiProcess.returncode)
+        if amdSmiProcess.returncode == 0:
+            logger.info("Parsing AMD HW acceleration from rocm-smi not implemented yet, assuming all functions available")
+            return ('AMD', HW_DECODE | HW_ENCODE)
+    except Exception as ex:
+        logger.debug(ex)
+        pass
+    # Intel
+    return functionsSupported  """
+
+def _generateTestVideo() -> bytes:
+    fullFfmpegPath = ffmpegPath + "ffmpeg"
+    testVideoBuildCommand = [fullFfmpegPath, 
+                             "-hide_banner", "-nostats",
+                             "-f", "lavfi",
+                             "-i", "testsrc=size=1280x720",
+                             "-t", "1",
+                             "-pix_fmt", "yuv420p",
+                             "-f", "matroska",
+                             "pipe:"]
+    testVideoData = subprocess.check_output(testVideoBuildCommand,
+                                            stdin=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            text=False)
+    return testVideoData
+
+def _testHardwareFunctions(deviceName:str|int, testVideoData:None|bytes=None) -> tuple:
+    if testVideoData is None:
+        testVideoData = _generateTestVideo()
+    fullFfmpegPath = ffmpegPath + "ffmpeg"
+    commandStart = [fullFfmpegPath, '-hwaccel_device', str(deviceName)]
+    def _testCommand(command):
+        proc = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        proc.communicate(testVideoData)
+        return proc.wait() == 0
+    functionMask = 0
+    for hwbrand, values in HWACCEL_VALUES.items():
+        decodingTestCommand = commandStart + \
+                            list(values['decode_input_options']) + \
+                                ['-f', 'matroska', '-i', 'pipe:',
+                                '-f', 'null', '-']
+
+        if _testCommand(decodingTestCommand):
+            functionMask |= HW_DECODE
+            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
+        else:
+            continue # if there's no decode acceleration, there's probably just no video hardware for this brand
+        
+        scalingTestCommand = commandStart + list(values['decode_input_options']) + \
+            list(values['scale_input_options']) + ['-f', 'matroska', '-i', 'pipe:', \
+                'vf', f'scale{values["scale_filter"]}=-1:480:force_original_aspect_ratio=decrease:format=yuv420p:', '-f', 'null', '-']
+        if _testCommand(scalingTestCommand):
+            functionMask |= HW_INPUT_SCALE | HW_OUTPUT_SCALE
+            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
+        
+        encodingTestCommand = commandStart + ['-f', 'matroska', '-i', 'pipe:', '-c:v', values['encode_codecs'][0], '-f', 'null', '-']
+        if _testCommand(encodingTestCommand):
+            functionMask |= HW_ENCODE
+            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
+        
+        return (hwbrand, functionMask)
+    return None
+
+"""Got tired of trying to figure out ways of scanning the video hardware available,
+and figured the most accurate way to check for hardware acceleration features is 
+simply to try and use them and see if that succeeds. The trick is to do it without
+packing a test video, or in fact writing anything to disk."""
+def getHardwareAccelerationDevicesV2() -> Dict[str, Tuple[str, int]]:
+    testVideoData = _generateTestVideo()
+    deviceIndex = 0
+    hwDeviceFunctions:Dict[Tuple[str, int]] = {}
+    functionMask = ...
+    while functionMask is not None:
+        functionMask = _testHardwareFunctions(deviceName=deviceIndex, testVideoData=testVideoData)
+        if functionMask is not None:
+            hwDeviceFunctions[str(deviceIndex)] = functionMask
+        deviceIndex += 1
+    return hwDeviceFunctions
+
+HW_ACCEL_DEVICES = getHardwareAccelerationDevicesV2()
+
+""" 
 if HWACCEL_BRAND is not None:
     logger.info(f'{HWACCEL_BRAND} hardware video acceleration detected')
     logger.info(f'Functions:')
@@ -76,53 +255,16 @@ if HWACCEL_BRAND is not None:
         logger.info("    Encode")
 else:
     logger.info('No hardware video decoding detected!')
-
+ """
 
 # inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
 # inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
 # if useHardwareAcceleration&HW_INPUT_SCALE != 0 and cutMode == 'trim':
 #    inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
 # HWACCEL_BRAND
-HWACCEL_VALUES = {
-    'NVIDIA': {
-        # 'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
-        'scale_filter': '_npp',
-        'pad_filter': '_opencl',
-        'upload_filter': '_cuda',
-        'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
-        'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
-        'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
-    },
-    'AMD': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': '',
-        'pad_filter': '',
-        'upload_filter': '',
-        # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
-        'decode_input_options': ('-hwaccel', 'd3d11va'),
-        'scale_input_options': None,
-        'encode_codecs': ('h264_amf', 'hevc_amf'),
-    },
-    'Intel': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': '',
-        'pad_filter': '',
-        'upload_filter': '',
-        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-        'scale_input_options': None,
-        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
-    },
-    None: {
-        'scale_filter': '',
-        'pad_filter': '',
-        'upload_filter': '',
-        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-        'scale_input_options': None,
-        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
-    }
-}
+
 #if HWACCEL_BRAND is not None:
-ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
+#ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
 #else:
 #    ACTIVE_HWACCEL_VALUES = None
 
@@ -134,12 +276,62 @@ defaultRenderConfig = RENDER_CONFIG_DEFAULTS
 # except:
 #     print("Coult not load renderConfig.json, using defaults from config.py")
 
-acceptedOutputCodecs = ['libx264', 'libx265']
-if ACTIVE_HWACCEL_VALUES is not None:
-    hardwareOutputCodecs = ACTIVE_HWACCEL_VALUES['encode_codecs']
-    acceptedOutputCodecs.extend(hardwareOutputCodecs)
-else:
-    hardwareOutputCodecs = []
+acceptedOutputCodecs = set(['libx264', 'libx265'])
+hardwareOutputCodecs = set()
+#for brand, function in HW_ACCEL_DEVICES:
+for device, info in HW_ACCEL_DEVICES.items():
+    brand, device = info
+    if function & HW_ENCODE:
+        codecs = HWACCEL_VALUES[brand]['encode_codecs']
+        hardwareOutputCodecs.update(codecs)
+        acceptedOutputCodecs.update(codecs)
+
+    
+def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]:
+    """Returns a sorted list of devices that can be used for hardware acceleration,
+        sorted by priority and capabilities.
+        
+        Intended to be the transformer for the useHardwareAcceleration setting
+
+    Args:
+        settings (Dict[str, Dict[str, str|int]]): A dictionary where each key is a device identifier,
+        either a number or a device path. Each value is a dictionary with key 'mask' (int),
+        and optionally 'maxDecodeStreams' (int > 0) and/or 'priority' (int, lower value = used first if possible,
+        default=last place)
+    """
+    if settings is None:
+        return []
+    __default_priority = 100000000000000000000
+    __default_decode_streams = 0
+    permittedDevices = []
+    
+    for device, info in settings.items():
+        if device not in HW_ACCEL_DEVICES.keys():
+            HW_ACCEL_DEVICES[device] = _testHardwareFunctions(device)
+        deviceBrand, functionMask = HW_ACCEL_DEVICES[device]
+        permittedMask = info['mask']
+        if 'maxDecodeStreams' in info:
+            maxDecodeStreams = int(info['maxDecodeStrings'])
+        else:
+            maxDecodeStreams = __default_decode_streams
+        if 'priority' in info:
+            priority = info['priority']
+        else:
+            priority = __default_priority
+        finalMask = permittedMask & functionMask
+        if finalMask & (HW_ENCODE | HW_DECODE) != 0:
+            permittedDevices.append({device:{'brand':deviceBrand, 'functions':finalMask, 'priority':priority, 'maxDecodeStreams':maxDecodeStreams}})
+    
+    permittedDevices.sort(key=lambda x: (x['priority'], -x['functions'], -x['maxDecodeStreams']))
+    
+    for entry in permittedDevices:
+        if entry['priority'] == __default_priority:
+            del entry['priority']
+        if entry['maxDecodeStreams'] == __default_decode_streams:
+            del entry['maxDecodeStreams']
+    
+    return permittedDevices
+        
 
 renderConfigSchema = Schema({
     Optional('drawLabels', default=defaultRenderConfig['drawLabels']):
@@ -171,10 +363,14 @@ renderConfigSchema = Schema({
     lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
                     'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
     Optional('useHardwareAcceleration', default=defaultRenderConfig['useHardwareAcceleration']):
-    And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
+    #And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
+    And(Or(None, {}, {str:{'mask': lambda x: x & (HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE) == x,
+                           Optional('maxDecodeStrings'): lambda x: int(x) >= 0,
+                           Optional('priority'): int}}),
+        Use(buildHardwareAccelList)),
     # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-    Optional('maxHwaccelFiles', default=defaultRenderConfig['maxHwaccelFiles']):
-    And(Use(int), lambda x: x >= 0),
+    #Optional('maxHwaccelFiles', default=defaultRenderConfig['maxHwaccelFiles']):
+    #And(Use(int), lambda x: x >= 0),
     Optional('minimumTimeInVideo', default=defaultRenderConfig['minimumTimeInVideo']):
     And(Use(int), lambda x: x >= 0),
     Optional('cutMode', default=defaultRenderConfig['cutMode']):
@@ -205,8 +401,8 @@ class RenderConfig:
     minGapSize: int
     outputCodec: str
     encodingSpeedPreset: str
-    useHardwareAcceleration: int
-    maxHwaccelFiles: int
+    useHardwareAcceleration: List[Dict[str, str|int]]
+    #maxHwaccelFiles: int
     minimumTimeInVideo: int
     cutMode: str
     useChat: bool
