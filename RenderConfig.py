@@ -29,7 +29,10 @@ HWACCEL_VALUES = {
         'pad_filter': '_opencl',
         'upload_filter': '_cuda',
         'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
+        'decode_multigpu_options': ('-threads', '1', '-hwaccel_device', '%(DEVICE_PATH)s', '-c:v', 'h264_cuvid'),
         'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
+        'upscale_filter_options': '',
+        'downscale_filter_options': ':interp_algo=super',
         'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
     },
     # 'AMD': {
@@ -40,26 +43,33 @@ HWACCEL_VALUES = {
     #     # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
     #     # 'decode_input_options': ('-hwaccel', 'd3d11va'),
     #     'decode_input_options
-    #     'scale_input_options': ('-hw'),
+    #     'scale_input_options': ('-hwaccel'),
+    #     'upscale_filter_options': '',
+    #     'downscale_filter_options': '',
     #     'encode_codecs': ('h264_amf', 'hevc_amf'),
     # },
     'Intel': {
         # 'support_mask': HW_DECODE|HW_ENCODE,
         'scale_filter': '_qsv',
         'pad_filter': '',
-        'upload_filter': '',
+        'upload_filter': '=extra_hw_frames=64,format=qsv',
         'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-        'scale_input_options': (),
+        'decode_multigpu_options': ('-hwaccel', 'qsv', '-qsv_device', '%(DEVICE_PATH)s', '-c:v', 'h264_qsv'),
+        'upscale_filter_options': '',
+        'downscale_filter_options': '',
         'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+        'encode_codecs2': {'h264': {'name':'h264_qsv', 
+                                    'encodingPresetValidator':lambda x: x in ('veryfast','faster','fast','medium','slow','slower','veryslow'),
+                                    'encodingSettings': ()}
+            }
+        #TODO: change encode codecs to a dictionary where the c:v value is the key and the value is either None or a list of options to control that codec
     },
-    # None: {
-    #     'scale_filter': '',
-    #     'pad_filter': '',
-    #     'upload_filter': '',
-    #     'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-    #     'scale_input_options': None,
-    #     'encode_codecs': ('h264_qsv', 'hevc_qsv'),
-    # }
+    None: {
+        'encode_codecs2': {'h264': {'name':'h264_qsv', 
+                                    'encodingPresetValidator':lambda x: x in ('veryfast','faster','fast','medium','slow','slower','veryslow'),
+                                    'encodingSettings': ()}
+            }
+    }
 }
 
 """ def getHasHardwareAceleration():
@@ -286,6 +296,14 @@ for device, info in HW_ACCEL_DEVICES.items():
         hardwareOutputCodecs.update(codecs)
         acceptedOutputCodecs.update(codecs)
 
+def _isDevicePath(path: str):
+    if os.path.isdir(path) or os.path.isfile(path):
+        return False # Device paths are not considered files, and we can't use directories
+    try:
+        os.stat(path)
+    except OSError:
+        return False
+    return True
     
 def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]:
     """Returns a sorted list of devices that can be used for hardware acceleration,
@@ -307,6 +325,13 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]
     
     for device, info in settings.items():
         if device not in HW_ACCEL_DEVICES.keys():
+            try:
+                int(device)
+            except:
+                if not _isDevicePath(device):
+                    logger.error(f"{device} is not an accessible device path!")
+                    #raise ValueError(f"{device} is not accessible!")
+                    continue
             HW_ACCEL_DEVICES[device] = _testHardwareFunctions(device)
         deviceBrand, functionMask = HW_ACCEL_DEVICES[device]
         permittedMask = info['mask']
@@ -320,9 +345,9 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]
             priority = __default_priority
         finalMask = permittedMask & functionMask
         if finalMask & (HW_ENCODE | HW_DECODE) != 0:
-            permittedDevices.append({device:{'brand':deviceBrand, 'functions':finalMask, 'priority':priority, 'maxDecodeStreams':maxDecodeStreams}})
+            permittedDevices.append({'devicePath': device, 'brand':deviceBrand, 'functions':finalMask, 'priority':priority, 'maxDecodeStreams':maxDecodeStreams})
     
-    permittedDevices.sort(key=lambda x: (x['priority'], -x['functions'], -x['maxDecodeStreams']))
+    permittedDevices.sort(key=lambda x: (x['priority'], -x['maxDecodeStreams'], -x['functions']))
     
     for entry in permittedDevices:
         if entry['priority'] == __default_priority:
@@ -362,7 +387,7 @@ renderConfigSchema = Schema({
     Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']):
     lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
                     'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    Optional('useHardwareAcceleration', default=defaultRenderConfig['useHardwareAcceleration']):
+    Optional('hardwareAccelOptions', default=defaultRenderConfig['hardwareAccelOptions']):
     #And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
     And(Or(None, {}, {str:{'mask': lambda x: x & (HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE) == x,
                            Optional('maxDecodeStrings'): lambda x: int(x) >= 0,
@@ -401,7 +426,7 @@ class RenderConfig:
     minGapSize: int
     outputCodec: str
     encodingSpeedPreset: str
-    useHardwareAcceleration: List[Dict[str, str|int]]
+    hardwareAccelerationDevices: List[Dict[str, str|int]]
     #maxHwaccelFiles: int
     minimumTimeInVideo: int
     cutMode: str

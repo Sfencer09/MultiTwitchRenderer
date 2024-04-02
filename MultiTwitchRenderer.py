@@ -25,7 +25,7 @@ import scanned
 
 from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
-from RenderConfig import RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from RenderConfig import HW_ACCEL_DEVICES, HWACCEL_VALUES, RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
 from SharedUtils import calcGameCounts, getVideoOutputPath
 from Session import Session
 
@@ -132,8 +132,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     minGapSize = renderConfig.minGapSize
     outputCodec = renderConfig.outputCodec
     encodingSpeedPreset = renderConfig.encodingSpeedPreset
-    useHardwareAcceleration = renderConfig.useHardwareAcceleration
-    maxHwaccelFiles = renderConfig.maxHwaccelFiles
+    hwAccelDevices = renderConfig.hardwareAccelerationDevices
+    #maxHwaccelFiles = renderConfig.maxHwaccelFiles
     minimumTimeInVideo = renderConfig.minimumTimeInVideo
     cutMode = renderConfig.cutMode
     useChat = renderConfig.useChat
@@ -570,6 +570,37 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             (session.game for item in segmentSessionMatrix[i][1:] if item is not None for session in item))
         logger.info(f"{tempMainGames}, {tempGames}, {str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6]}, {str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6]}")
 
+
+    encodeDevice = None
+    decodeDevices = []
+    
+    for device in hwAccelDevices:
+        functions = device['mask']
+        if encodeDevice is None and functions & HW_ENCODE != 0:
+            encodeDevice = device
+        if functions & HW_DECODE != 0:
+            decodeDevices.append(device)
+    
+    def getHwDecodeInfoForFile(fileIndex:int):
+        for device in decodeDevices:
+            if 'maxDecodeStreams' in device:
+                deviceStreams = device['maxDecodeStreams']
+                if deviceStreams == 0 or deviceStreams > fileIndex:
+                    return device
+                fileIndex -= deviceStreams
+            else:
+                return device
+        return None
+    
+    
+    #uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
+    uploadFilter = "hwupload"
+    if encodeDevice is not None:
+        uploadFilter += HWACCEL_VALUES[encodeDevice['brand']]['upload_filter']
+    downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
+
+
+
     # 12. Build a sorted array of unique filepaths from #8 - these will become the input stream indexes
     inputFilesSorted:List[SourceFile] = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
                               key=lambda x: allInputStreamers.index(x.streamer))
@@ -578,22 +609,23 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     for i in range(len(inputFilesSorted)):
         inputFileIndexes[inputFilesSorted[i]] = i
         # 12b. Build input options in order
+    
     inputOptions = []
     inputVideoInfo = []
     for i in range(len(inputFilesSorted)):
         file = inputFilesSorted[i]
-        if useHardwareAcceleration & HW_DECODE != 0:
-            if maxHwaccelFiles == 0 or i < maxHwaccelFiles:
-                decodeOptions = ACTIVE_HWACCEL_VALUES['decode_input_options']
-                scaleOptions = ACTIVE_HWACCEL_VALUES['scale_input_options']
-                inputOptions.extend(decodeOptions)
-                # inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
-                # inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-                if useHardwareAcceleration & HW_INPUT_SCALE != 0 and cutMode in ('trim', 'chunked') and scaleOptions is not None:
-                    inputOptions.extend(scaleOptions)
-                    # inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
-            # else:
-            #    inputOptions.extend(('-threads', str(threadCount//2)))
+        hwDevice = getHwDecodeInfoForFile(i)
+        if hwDevice is not None:
+            brand = hwDevice['brand']
+            hwDevicePath = hwDevice['devicePath']
+            if len(hwAccelDevices) > 1:
+                inputOptions.extend([option % {'DEVICE_PATH':hwDevicePath} for option in HWACCEL_VALUES[brand]['decode_multigpu_options']])
+            else:
+                inputOptions.extend(HWACCEL_VALUES[brand]['decode_input_options'])
+            if hwDevice['mask'] & HW_INPUT_SCALE != 0:
+                inputOptions.extend(HWACCEL_VALUES[brand]['scale_input_options'])
+        # else:
+        #    inputOptions.extend(('-threads', str(threadCount//2)))
         inputOptions.append('-i')
         if file.localVideoFile is not None:
             inputOptions.append(file.localVideoFile)
@@ -667,17 +699,24 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             logger.warning("Reduced memory mode not available yet for libx265 codec")
     threadOptions = ['-threads', str(threadCount),
                      '-filter_threads', str(threadCount),
-                     '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
-    uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
-    downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
+                     '-filter_complex_threads', str(threadCount)] if hwAccelDevices else []
     timeFilter = f"setpts=PTS-STARTPTS"
 
     # 14. For each row of #8:
     # filtergraphStringSegments = []
     # filtergraphStringSegmentsV2 = []
     logger.info(f"Step 13.v2: {segmentTileCounts}, {maxSegmentTiles}, {outputResolution}")
+    
+    def getScaleAlgorithm(inputDim:int, outputDim:int, hwScalingBrand:None|str):
+        if outputDim > inputDim:
+            return HWACCEL_VALUES[hwScalingBrand]['upscale_filter_options'] if hwScalingBrand is not None else ':flags=lanczos'
+        elif outputDim < inputDim:
+            return HWACCEL_VALUES[hwScalingBrand]['downscale_filter_options'] if hwScalingBrand is not None else ''  # ':flags=area'
+        else: # outputDim == inputDim
+            return ''
+    
     # v2()
-
+    """
     def filtergraphSegmentVersion():
         filtergraphParts = []
         inputSegmentNumbers = [[None for i in range(
@@ -847,14 +886,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     logger.info(f"Step 13.v1: {segmentTileCounts}, {maxSegmentTiles}, {outputResolution}")
 
-    def getScaleAlgorithm(inputDim, outputDim, useHwScaling):
-        if outputDim > inputDim:  # upscaling
-            return '' if useHwScaling else ':flags=lanczos'
-        elif outputDim < inputDim:
-            return ':interp_algo=super' if useHwScaling else ''  # ':flags=area'
-        else:  # outputDim == inputDim
-            return ''
-
     # v1
     def filtergraphTrimVersion():  # uniqueTimestampsSorted, allInputStreamers, segmentFileMatrix, segmentSessionMatrix
         filtergraphParts = []
@@ -977,6 +1008,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 codecOptions,
                 ["-movflags", "faststart", outputFile]])]
 
+    """
+    
     ####################
     ##  V3 - Chunked  ##
     ####################
@@ -1078,6 +1111,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     rowFileOffsets = {}
             else:
                 rowFileOffsets = {}
+            
             rowInputOptions = []
             for streamerIndex in range(len(allInputStreamers)):
                 file = segmentFileMatrix[segIndex][streamerIndex]
@@ -1105,23 +1139,29 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     logger.debug(f"{inputFilesSorted[fileIndex].videoFile}, {inputIndex}, {originalResolution}, {tileResolution}, {originalResolution == tileResolution}")
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
-                    if useHardwareAcceleration & HW_DECODE != 0:
-                        if maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles:
-                            decodeOptions = ACTIVE_HWACCEL_VALUES['decode_input_options']
-                            scaleOptions = ACTIVE_HWACCEL_VALUES['scale_input_options']
-                            rowInputOptions.extend(decodeOptions)
-                            # inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
-                            # inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
-                            if useHardwareAcceleration & HW_INPUT_SCALE != 0 and scaleOptions is not None:
-                                rowInputOptions.extend(scaleOptions)
-                            #    rowInputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
-                        # else:
-                        #    rowInputOptions.extend(('-threads', str(threadCount//2)))
+                    
+                    hwDevice = getHwDecodeInfoForFile(rowInputFileCount)
+                    useHwFilterAccel = False
+                    useHwDecodeAccel = False
+                    hwBrand = None
+                    if hwDevice is not None:
+                        hwBrand = hwDevice['brand']
+                        hwDevicePath = hwDevice['devicePath']
+                        if len(hwAccelDevices) > 1:
+                            rowInputOptions.extend([option % {'DEVICE_PATH':hwDevicePath} for option in HWACCEL_VALUES[brand]['decode_multigpu_options']])
+                        else:
+                            rowInputOptions.extend(HWACCEL_VALUES[hwBrand]['decode_input_options'])
+                        useHwDecodeAccel = True
+                        if hwDevice['mask'] & HW_INPUT_SCALE != 0 and needToScale:
+                            rowInputOptions.extend(HWACCEL_VALUES[hwBrand]['scale_input_options'])
+                            useHwFilterAccel = True
+                    # else:
+                    #    rowInputOptions.extend(('-threads', str(threadCount//2)))
                     if startOffset != 0:
                         rowInputOptions.extend(('-ss', str(startOffset)))
                     rowInputOptions.extend(('-i', fileVideoPath))
-                    useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (
-                        maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
+                    # useHwFilterAccel = hwAccelDevices & HW_INPUT_SCALE != 0 and (
+                    #     maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
                     # print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     tileHeight = int(tileResolution.split(':')[1])
                     logger.debug(f"tileHeight={tileHeight}, video height={height}")
@@ -1133,8 +1173,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     #    scaleAlgo = ''
                     scaleAlgo = getScaleAlgorithm(
                         height, tileHeight, useHwFilterAccel)
-                    scaleSuffix = ACTIVE_HWACCEL_VALUES['scale_filter'] if useHwFilterAccel else ''
-                    padSuffix = ACTIVE_HWACCEL_VALUES['pad_filter'] if useHwFilterAccel else ''
+                    decodeUploadFilter = "hwupload"
+                    if useHwFilterAccel:
+                        scaleSuffix = HWACCEL_VALUES[hwBrand]['scale_filter']
+                        padSuffix = HWACCEL_VALUES[hwBrand]['pad_filter']
+                        decodeUploadFilter += HWACCEL_VALUES[hwBrand]['upload_filter']
+                    else:
+                        scaleSuffix = ''
+                        padSuffix = ''
+                    downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
                     scaleFilter = f"scale{scaleSuffix}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                     padFilter = f"pad{padSuffix}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
@@ -1143,14 +1190,17 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     trimFilter = f"trim=duration={str(segmentDuration)}"
                     filtergraphBody = None
                     if needToScale or not isSixteenByNine:
-                        mask = HW_DECODE | HW_INPUT_SCALE
-                        if useHardwareAcceleration & mask == HW_DECODE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
+                        #mask = HW_DECODE | HW_INPUT_SCALE
+                        #if hwAccelDevices & mask == HW_DECODE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
+                        if useHwDecodeAccel and not useHwFilterAccel:
                             filtergraphBody = [
                                 fpsFilter, trimFilter, timeFilter, scaleFilter, padFilter, labelFilter]
-                        elif useHardwareAcceleration & mask == HW_INPUT_SCALE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
-                            filtergraphBody = [fpsFilter, trimFilter, timeFilter, uploadFilter,
+                        #elif hwAccelDevices & mask == HW_INPUT_SCALE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
+                        elif not useHwDecodeAccel and useHwFilterAccel: # Idk why you'd be doing this, but it's supported
+                            filtergraphBody = [fpsFilter, trimFilter, timeFilter, decodeUploadFilter,
                                                scaleFilter, padFilter, downloadFilter, labelFilter]
-                        elif useHardwareAcceleration & mask == (HW_DECODE | HW_INPUT_SCALE) and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
+                        #elif hwAccelDevices & mask == (HW_DECODE | HW_INPUT_SCALE) and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
+                        elif useHwDecodeAccel and useHwFilterAccel:
                             filtergraphBody = [
                                 scaleFilter, padFilter, downloadFilter, fpsFilter, trimFilter, timeFilter, labelFilter]
                         # elif useHardwareAcceleration >= 4:
@@ -1184,21 +1234,30 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             if numRowSegments > 1:
                 rowTileWidth = calcTileWidth(numRowSegments)
                 segmentRes = [int(x) for x in segmentResolution.split(':')]
-                useHwOutscaleAccel = useHardwareAcceleration & HW_OUTPUT_SCALE != 0
-                scaleSuffix = ACTIVE_HWACCEL_VALUES['scale_filter'] if useHwOutscaleAccel else ''
-                padSuffix = ACTIVE_HWACCEL_VALUES['pad_filter'] if useHwOutscaleAccel else ''
+                #useHwOutscaleAccel = hwAccelDevices & HW_OUTPUT_SCALE != 0
+                if encodeDevice is not None:
+                    hwBrand = encodeDevice['brand']
+                    useHwOutscaleAccel = encodeDevice['mask'] & HW_OUTPUT_SCALE != 0
+                    scaleSuffix = HWACCEL_VALUES[hwBrand]['scale_filter'] if useHwOutscaleAccel else ''
+                    padSuffix = HWACCEL_VALUES[hwBrand]['pad_filter'] if useHwOutscaleAccel else ''
+                else:
+                    scaleSuffix = ''
+                    padSuffix = ''
+                    useHwOutscaleAccel = False
                 scaleToFitFilter = f"scale{scaleSuffix}={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
                 padFilter = f"pad{padSuffix}={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(
                     rowTileWidth-1) else ''
                 xstackFilter = f"xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}"
                 # xstackString = f"[{']['.join(rowVideoSegmentNames)}] xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter}{uploadFilter if useHardwareAcceleration&HW_ENCODE!=0 else ''} [vseg{segIndex}]"
-                if useHardwareAcceleration & HW_ENCODE != 0:
+                #if hwAccelDevices & HW_ENCODE != 0:
+                if encodeDevice is not None:
+                    encodeUploadFilter = HWACCEL_VALUES[encodeDevice['brand']]['upload_filter']
                     if useHwOutscaleAccel:
-                        xstackBody = [xstackFilter, uploadFilter,
+                        xstackBody = [xstackFilter, encodeUploadFilter,
                                       scaleToFitFilter, padFilter]
                     else:
                         xstackBody = [xstackFilter,
-                                      scaleToFitFilter, padFilter, uploadFilter]
+                                      scaleToFitFilter, padFilter, encodeUploadFilter]
                 else:
                     xstackBody = [xstackFilter, scaleToFitFilter, padFilter]
                 xstackString = f"[{']['.join(rowVideoSegmentNames)}] {', '.join([x for x in xstackBody if x != ''])} [vseg{segIndex}]"
@@ -1262,10 +1321,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     if cutMode == 'segment':
         raise Exception("version outdated")
-        return filtergraphSegmentVersion()
+        #return filtergraphSegmentVersion()
     elif cutMode == 'trim':
         raise Exception("version outdated")
-        return filtergraphTrimVersion()
+        #return filtergraphTrimVersion()
     elif cutMode == 'chunked':
         return filtergraphChunkedVersion()
 
