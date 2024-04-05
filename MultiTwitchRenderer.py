@@ -87,7 +87,7 @@ loadAudioCache()
 def saveAudioCache():
     try:
         with open(audioCacheSavePath, 'w') as audioCacheFile:
-            json.dump(audioOffsetCache, audioCacheFile)
+            json.dump(audioOffsetCache, audioCacheFile, indent=4)
     except Exception as ex:
         print(ex)
         pass
