@@ -209,7 +209,7 @@ def findAudioOffsets(within_file: str,
             offsetStr = str(round(foundOffset / bucketSize) * bucketSize)
             offsetEntry = (foundOffset, c[peak], microWindowStart/sr_within)
             if c[peak] >= threshold:
-                logger.debug(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
+                logger.trace(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
                 if offsetStr in offsetsFound.keys():
                     offsetsFound[offsetStr].append(offsetEntry)
                 else:
@@ -235,7 +235,7 @@ def findAudioOffsets(within_file: str,
         for offset in range(1, bucketSpillover+1):
             upOneKey = str(keyInt+(bucketSize*offset))
             downOneKey = str(keyInt-(bucketSize*offset))
-            logger.debug(f"{key}, {upOneKey}, {downOneKey}")
+            logger.trace(f"{key}, {upOneKey}, {downOneKey}")
             if upOneKey in offsetsFound.keys():
                 spilledOffsets[key].extend(offsetsFound[upOneKey])
             if downOneKey in offsetsFound.keys():
