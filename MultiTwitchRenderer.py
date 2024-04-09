@@ -78,7 +78,8 @@ audioOffsetCache:Dict[str, Dict[str, float]] = {}
 def loadAudioCache():
     try:
         global audioOffsetCache
-        audioOffsetCache = json.load(audioCacheSavePath)
+        with open(audioCacheSavePath, encoding='utf-8') as audioCacheFile:
+            audioOffsetCache = json.load(audioCacheFile)
     except:
         pass
 
@@ -86,7 +87,7 @@ loadAudioCache()
 
 def saveAudioCache():
     try:
-        with open(audioCacheSavePath, 'w') as audioCacheFile:
+        with open(audioCacheSavePath, 'w', encoding='utf-8') as audioCacheFile:
             json.dump(audioOffsetCache, audioCacheFile, indent=4)
     except Exception as ex:
         print(ex)
