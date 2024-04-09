@@ -46,7 +46,7 @@ print(
 testStreamer = mainStreamers[0]
 allStreamingDays = getAllStreamingDaysByStreamer()
 #testDay = allStreamingDays[testStreamer][0]
-testDay = "2024-02-20"
+testDay = "2024-04-01"
 def testAudioAlignmentForDate(streamer, day):
     commands = generateTilingCommandMultiSegment(streamer, day)
     if commands is None:
@@ -90,4 +90,4 @@ outputs = {}
 def testGenerateWithPrecision(streamer, day):
     commands = generateTilingCommandMultiSegment(streamer, day, renderConfig=RenderConfig(preciseAlign = True))
     print(commands)
-#testGenerateWithPrecision(testStreamer, testDay)
+testGenerateWithPrecision(testStreamer, testDay)
