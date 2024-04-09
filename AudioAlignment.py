@@ -188,7 +188,7 @@ def findAudioOffsets(within_file: str,
     findLength = y_find.shape[0] / sr_within
     overlapLength = min(withinLength, findLength)
     offsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
-    threshold = max(100, 5 * microWindowSize) #500
+    threshold = max(150, 5 * microWindowSize) #500
     #allOffsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
     allOffsetsFound: List[tuple] = []
     for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
@@ -279,6 +279,7 @@ def findPopularAudioOffsets(
         popularOffsets[key] = allOffsets[key]
     return popularOffsets
 
+__CUTOFF_OFFSET = 45
 
 def findAverageAudioOffset(
     within_file: str,
@@ -333,6 +334,9 @@ def findAverageAudioOffset(
                     raise NotImplementedError
                     assert len(popularOffsets) == 2 or len(allOffsets[popularOffsets[2]]) < len(allOffsets[mostPopularOffset])
                     return None
+            totalPopOffsetCount = sum((len(allOffsets[x]) for x in popularOffsets))
+            if len(allOffsets[mostPopularOffset]) < totalPopOffsetCount * 0.4:
+                return None
         #assert len(popularOffsets) <= 1 or len(allOffsets[popularOffsets[1]]) != len(allOffsets[mostPopularOffset])
     elif len(reoccurringOffsets) == 0:
         return None
@@ -342,7 +346,10 @@ def findAverageAudioOffset(
     chosenOffset = allOffsets[mostPopularOffset]
     logger.detail(f"{mostPopularOffset}, {chosenOffset}")
     weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
-    assert abs(weightedAverageOffset) < 120, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    assert abs(weightedAverageOffset) <= __CUTOFF_OFFSET, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    if abs(weightedAverageOffset) > __CUTOFF_OFFSET:
+        logger.error(f"Average offset {weightedAverageOffset} outside of normal range!\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}")
+        return None
     logger.info(weightedAverageOffset)
     return weightedAverageOffset
     #return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
