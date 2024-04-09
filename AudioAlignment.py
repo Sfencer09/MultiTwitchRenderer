@@ -58,7 +58,8 @@ readExistingAudioFiles()
 
 def extractAudio(target_file: str):
     audioPath = getAudioPath(target_file)
-    if audioPath not in audioFiles:
+    #if audioPath not in audioFiles:
+    if not os.path.isfile(audioPath):
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
         extractCommand = [
             ffmpegPath + "ffmpeg",
@@ -167,21 +168,44 @@ def findAudioOffsets(within_file: str,
     logger.info(f"{withinAudioFile}, {findAudioFile}")
     logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     logger.detail(f"Initial offset = {initialOffset}")
-    y_within, sr_within = librosa.load(
-        withinAudioFile,
-        sr=None,
-        offset=start + (initialOffset if initialOffset > 0 else 0),
-        duration=duration,
-    )
+    try:
+        y_within, sr_within = librosa.load(
+            withinAudioFile,
+            sr=None,
+            offset=start + (initialOffset if initialOffset > 0 else 0),
+            duration=duration,
+        )
+    except Exception as ex:
+        logger.warning(f"Got {repr(ex)} when trying to load {withinAudioFile}, deleting file and retrying once")
+        os.remove(withinAudioFile)
+        withinAudioFile = extractAudio(within_file)
+        y_within, sr_within = librosa.load(
+            withinAudioFile,
+            sr=None,
+            offset=start + (initialOffset if initialOffset > 0 else 0),
+            duration=duration,
+        )
     logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     startTime = time.time()
-    y_find, _ = librosa.load(
-        findAudioFile,
-        sr=sr_within,
-        offset=start - (initialOffset if initialOffset < 0 else 0),
-        # duration=window if window is not None else duration,
-        duration=duration
-    )
+    try:
+        y_find, _ = librosa.load(
+            findAudioFile,
+            sr=sr_within,
+            offset=start - (initialOffset if initialOffset < 0 else 0),
+            # duration=window if window is not None else duration,
+            duration=duration
+        )
+    except Exception as ex:
+        logger.warning(f"Got {repr(ex)} when trying to load {findAudioFile}, deleting file and retrying once")
+        os.remove(findAudioFile)
+        findAudioFile = extractAudio(find_file)
+        y_find, _ = librosa.load(
+            findAudioFile,
+            sr=sr_within,
+            offset=start - (initialOffset if initialOffset < 0 else 0),
+            # duration=window if window is not None else duration,
+            duration=duration
+        )
     logger.detail(f"Second audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     startTime = time.time()
     withinLength = y_within.shape[0] / sr_within
