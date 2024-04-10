@@ -35,8 +35,8 @@ testLogger = logging.getLogger("test")
 testLogger.trace("Trace level added!")
 testLogger.detail("Detail level added!")
 
-consoleLogLevel = logging.WARNING
-fileLogLevel = logging.DEBUG # TODO: move to config or CLI args
+_consoleLogLevel = getattr(logging, consoleLogLevel.upper())
+_fileLogLevel = getattr(logging, fileLogLevel.upper())
 __fileHandler = None
 
 def setUpLogging():
@@ -53,14 +53,14 @@ def setUpLogging():
     logging.basicConfig(format = fmt,
                         datefmt = datefmt,
                         encoding = 'utf-8',
-                        level = consoleLogLevel)
+                        level = _consoleLogLevel)
                         #level = logging.WARNING)
     #console = logging.StreamHandler(sys.stdout)
     #console.setLevel(consoleLogLevel)
     #console.setFormatter(formatter)
     global __fileHandler
     __fileHandler = logging.FileHandler(logFilename, encoding='utf-8')
-    __fileHandler.setLevel(fileLogLevel)
+    __fileHandler.setLevel(_fileLogLevel)
     __fileHandler.setFormatter(formatter)
     #logging.getLogger('').addHandler(console)
     #logging.getLogger('').addHandler(fileHandle)
@@ -71,7 +71,7 @@ setUpLogging()
 def getLogger(name:str):
     logger = logging.getLogger(name)
     if logger.level == logging.NOTSET:
-        logger.setLevel(min(consoleLogLevel, fileLogLevel))
+        logger.setLevel(min(_consoleLogLevel, _fileLogLevel))
         if '.' not in name:
             #logger.addHandler(console)
             logger.addHandler(__fileHandler)

@@ -100,6 +100,9 @@ outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "
 errorFilePath = r'./erroredCommands.log'
 statusFilePath = r'./renderStatuses.pickle'
 logFolder = r'./logs/'
+#Valid values are 'error', 'warning', 'info', 'detail', 'debug', and 'trace'
+consoleLogLevel = 'WARNING'
+fileLogLevel = 'DEBUG'
 
 COPY_FILES = False
 DEFAULT_MAX_LOOKBACK=timedelta(days=30)
