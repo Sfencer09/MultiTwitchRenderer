@@ -35,29 +35,44 @@ testLogger = logging.getLogger("test")
 testLogger.trace("Trace level added!")
 testLogger.detail("Detail level added!")
 
-def setUpLogging(consoleLogLevel = logging.INFO):
+consoleLogLevel = logging.WARNING
+fileLogLevel = logging.DEBUG # TODO: move to config or CLI args
+__fileHandler = None
+
+def setUpLogging():
     count = 0
     suffix = ""
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
+    formatter = logging.Formatter(fmt, datefmt=datefmt)
     os.makedirs(logFolder, exist_ok=True)
     while os.path.isfile(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) and os.path.getsize(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) > 0:
-        suffix = f" {count}"
+        suffix = f"-{count}"
         count += 1
-    logging.basicConfig(filename = os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log"),
-                        format = fmt,
+    logFilename = os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")
+    logging.basicConfig(format = fmt,
                         datefmt = datefmt,
-                        encoding='utf-8',
-                        level = logging.DEBUG)
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(consoleLogLevel)
-    formatter = logging.Formatter(fmt, datefmt=datefmt)
-    console.setFormatter(formatter)
-    logging.getLogger('').addHandler(console)
+                        encoding = 'utf-8',
+                        level = consoleLogLevel)
+                        #level = logging.WARNING)
+    #console = logging.StreamHandler(sys.stdout)
+    #console.setLevel(consoleLogLevel)
+    #console.setFormatter(formatter)
+    global __fileHandler
+    __fileHandler = logging.FileHandler(logFilename, encoding='utf-8')
+    __fileHandler.setLevel(fileLogLevel)
+    __fileHandler.setFormatter(formatter)
+    #logging.getLogger('').addHandler(console)
+    #logging.getLogger('').addHandler(fileHandle)
 
 # TODO: set using command line flag rather than hard-coding level
-setUpLogging(logging.WARNING)
+setUpLogging()
 
 def getLogger(name:str):
     logger = logging.getLogger(name)
+    if logger.level == logging.NOTSET:
+        logger.setLevel(min(consoleLogLevel, fileLogLevel))
+        if '.' not in name:
+            #logger.addHandler(console)
+            logger.addHandler(__fileHandler)
     return logger
