@@ -68,11 +68,17 @@ def setUpLogging():
 # TODO: set using command line flag rather than hard-coding level
 setUpLogging()
 
+__configuredTopLoggers = set()
+
 def getLogger(name:str):
     logger = logging.getLogger(name)
-    if logger.level == logging.NOTSET:
-        logger.setLevel(min(_consoleLogLevel, _fileLogLevel))
-        if '.' not in name:
-            #logger.addHandler(console)
-            logger.addHandler(__fileHandler)
+    #if logger.level == logging.NOTSET:
+    #logger.setLevel(min(_consoleLogLevel, _fileLogLevel))
+    topLevelName = name.split('.')[0]
+    #if '.' not in name:
+    if topLevelName not in __configuredTopLoggers:
+        topLevelLogger = logging.getLogger(topLevelName)
+        #topLevelLogger.addHandler(console)
+        topLevelLogger.addHandler(__fileHandler)
+        __configuredTopLoggers.add(topLevelName)
     return logger
