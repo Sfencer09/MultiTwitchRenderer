@@ -35,17 +35,22 @@ print("Initialization complete!")
 print(len(scanned.allFilesByVideoId))
 
 # %%
-
-sessionWorker()
+pprint(scanned.allFilesByStreamer['BryceMcQuaid'][-2].infoJson)
+pprint(scanned.allStreamerSessions['BryceMcQuaid'])
 
 # %%
 
+#sessionWorker()
+
+# %%
+
+testCommands = None
 #testCommand = generateTilingCommandMultiSegment('ChilledChaos', "2023-11-30", f"/mnt/pool2/media/Twitch Downloads/{outputDirectory}/S1/{outputDirectory} - 2023-11-30 - ChilledChaos.mkv")
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-04-02')
 testStreamer = mainStreamers[0]
-testCommands = None
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()
 while testCommands is None:
@@ -72,7 +77,7 @@ while testCommands is None:
                                                  )#)
     dateIndex += 1
 
-print([extractInputFiles(testCommand) for testCommand in testCommands])
+pprint([extractInputFiles(testCommand) for testCommand in testCommands])
 print("\n\n")
 for testCommand in testCommands:
     if 'ffmpeg' in testCommand[0]:
@@ -119,7 +124,7 @@ pprint([targetGroups[i] for i in range(len(targetGroups)) if i == 0 or set(targe
 print(parsePlayersFromGroupMessage("Chilled is playing with APlatypuss(Soon), AriBunnie, AstarriApple(Soon), HeckMuffins, JonSandman, KaraCorvus, OzzaWorld(Soon), Reenyy, TayderTot, X33N, and VikramAFC!!"))
 
 # %%
-print(scanned.allFilesByVideoId['v2082233820'])
+pprint(scanned.allFilesByVideoId['v2082233820'])
 
 testCommands = generateTilingCommandMultiSegment(testStreamer, "2024-03-05")
 
