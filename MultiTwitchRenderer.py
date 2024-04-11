@@ -559,6 +559,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     # Sort based on https://stackoverflow.com/a/19932054
     _, *segmentFileMatrix = map(list, zip(*sorted(zip(finalSortKeys, *segmentFileMatrix))))
     _, *segmentSessionMatrix = map(list, zip(*sorted(zip(finalSortKeys, *segmentSessionMatrix))))
+    allInputStreamers = [streamer for _, streamer in sorted(zip(finalSortKeys, allInputStreamers))]
+    for i in range(len(allInputStreamers)):
+        allInputStreamersSortKey[allInputStreamers[i]] = i
     
     logSegmentMatrix(logging.INFO)
     for i in range(len(segmentSessionMatrix)):
