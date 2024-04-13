@@ -71,9 +71,9 @@ streamerAliases = {'AphexArcade':['https://twitter.com/ChilledChaos/status/17371
 nongroupGames = ('Just Chatting', "I'm Only Sleeping")
 ffmpegPath='' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
 
-characterReplacements = {'?':'？', '/':'⧸', '\\':'', ':':'：', '<':'＜', '>':'＞'}
+characterReplacements = {'?':'？', '/':'⧸', '\\':'⧹', ':':'：', '<':'＜', '>':'＞'}
 
-threadCount = os.cpu_count()
+threadCount = 0 #os.cpu_count()
 
 #videoExt = '.mp4'
 videoExts = ['.mp4', '.mkv']
@@ -92,7 +92,6 @@ MST_TIMEZONE = timezone(timedelta(hours=-7))
 PST_TIMEZONE = timezone(timedelta(hours=-8))
 UTC_TIMEZONE = timezone(timedelta(hours=0))
 LOCAL_TIMEZONE = CST_TIMEZONE
-DAY_START_TIME = datetimetime(0, 0, 0, tzinfo=LOCAL_TIMEZONE)
 
 outputResolutions = [None, (1920,1080), (3840,1080), (3840,2160), (3840,2160), (3840,2160), (3840,2160), (4480,2520)]
 outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "25M",       "30M",       "40M"]
@@ -100,12 +99,8 @@ outputBitrates = [None,    "6M",        "12M",       "20M",       "25M",       "
 errorFilePath = r'./erroredCommands.log'
 statusFilePath = r'./renderStatuses.pickle'
 logFolder = r'./logs/'
-#Valid values are 'error', 'warning', 'info', 'detail', 'debug', and 'trace'
-consoleLogLevel = 'WARNING'
-fileLogLevel = 'DEBUG'
 
 COPY_FILES = False
-DEFAULT_MAX_LOOKBACK=timedelta(days=30)
 
 minimumSessionWorkerDelay = timedelta(hours=3)
 

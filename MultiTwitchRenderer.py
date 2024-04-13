@@ -7,7 +7,8 @@ import random
 import sys
 import json
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from datetime import time as datetimetime
 from functools import reduce, partial
 from pprint import pformat, pprint
 from Session import Session
@@ -144,12 +145,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(
-        datetime.fromisoformat(targetDate), DAY_START_TIME)
+        datetime.fromisoformat(targetDate), datetimetime(0, 0, 0, tzinfo=LOCAL_TIMEZONE))
     targetDateEndTime = targetDateStartTime + timedelta(days=1)
     logger.info(f"{targetDate}, {targetDateStartTime}, {targetDateEndTime}")
     logger.info(f'other streamers{otherStreamers}')
     mainSessionsOnTargetDate:List[Session] = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
-        x.startTimestamp, tz=UTC_TIMEZONE) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
+        x.startTimestamp, tz=timezone(timedelta(hours=0))) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError(
             "Selected streamer does not have any sessions on the target date")

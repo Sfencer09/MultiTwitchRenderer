@@ -59,8 +59,8 @@ def getAllStreamingDaysByStreamer():
     return daysByStreamer
 
 
-def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
-                  maxLookback: timedelta = DEFAULT_MAX_LOOKBACK,
+def sessionWorker(maxLookback: timedelta,
+                  monitorStreamers=DEFAULT_MONITOR_STREAMERS,
                   dataFilepath=DEFAULT_DATA_FILEPATH,
                   renderConfig=RenderConfig(),
                   sessionLog = None):
