@@ -4,9 +4,9 @@ import threading
 import os
 import sys
 
-if not sys.version_info >= (3, 7, 0):
+if not sys.version_info >= (3, 11, 0):
     raise EnvironmentError(
-        "Python version too low, relies on ordered property of dicts")
+        "Python version too low (<3.11), relies on new iso format parsing in datetime.time")
 
 from MTRLogging import getLogger, logFolder
 logger = getLogger('Main')
