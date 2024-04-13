@@ -3,8 +3,8 @@ from functools import partial
 import os
 from typing import List
 from thefuzz import process as fuzzproc
-import time as ttime
-from CopyWorker import getActiveCopyTaskInfo #avoid name conflict with import in config file
+import time as ttime #avoid name conflict with import in config file
+
 
 if __debug__:
     from config import *
@@ -12,7 +12,9 @@ exec(open("config.py").read(), globals())
 import scanned
 import RenderWorker
 if COPY_FILES:
-    from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
+    #from CopyWorker import getActiveCopyTaskInfo 
+    #from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
+    import CopyWorker
 from SharedUtils import calcGameCounts
 from RenderConfig import RenderConfig
 from RenderTask import DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, RenderTask, clearErroredStatuses, deleteRenderStatus, getRenderStatus, getRendersWithStatus, setRenderStatus
@@ -53,7 +55,7 @@ def printActiveJobs():
     print(f"Active render job:",
           "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
     if COPY_FILES:
-        activeCopyTask = getActiveCopyTaskInfo()
+        activeCopyTask = CopyWorker.getActiveCopyTaskInfo()
         print(f"Active copy job:",
               "None" if activeCopyTask is None else f"{str(activeCopyTask)}")
 
@@ -68,10 +70,10 @@ def printQueuedJobs():
         for queueItem in sorted(RenderWorker.renderQueue.queue):
             print(queueItem)
     if COPY_FILES:
-        if len(copyQueue.queue) == 0:
+        if len(CopyWorker.copyQueue.queue) == 0:
             print("Copy queue: empty")
         else:
-            for queueItem in sorted(copyQueue.queue):
+            for queueItem in sorted(CopyWorker.copyQueue.queue):
                 print(queueItem)
 
 
@@ -369,7 +371,7 @@ def inputManualJob(initialRenderConfig=None):
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate,
                     'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
-    (copyQueue if COPY_FILES else RenderWorker.renderQueue).put((MANUAL_PRIORITY, item))
+    (CopyWorker.copyQueue if COPY_FILES else RenderWorker.renderQueue).put((MANUAL_PRIORITY, item))
 
 
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
@@ -442,8 +444,8 @@ def editQueue():
                 selectedQueue = RenderWorker.renderQueue
                 selectedQueueLock = RenderWorker.renderQueueLock
             elif userInput.lower().startswith('c'):
-                selectedQueue = copyQueue
-                selectedQueueLock = copyQueueLock
+                selectedQueue = CopyWorker.copyQueue
+                selectedQueueLock = CopyWorker.copyQueueLock
             elif userInput.lower() in quitOptions:
                 return
             else:
