@@ -101,6 +101,13 @@ def convertTimezoneString(prospectiveTz):
     return tempTime.tzinfo
 
 acceptedOutputCodecs = ['libx264', 'libx265']
+hardwareOutputCodecs = []
+
+def isAcceptedOutputCodec(codec:str):
+    return codec in acceptedOutputCodecs
+
+def isHardwareOutputCodec(codec:str):
+    return codec in hardwareOutputCodecs
 
 configSchema = Schema({
     'main': {
@@ -224,7 +231,9 @@ HWACCEL_VALUES = {
         'encode_codecs': ('h264_qsv', 'hevc_qsv'),
     }
 }
-
+HWACCEL_BRAND = None
+HWACCEL_FUNCTIONS = 0
+ACTIVE_HWACCEL_VALUES = None
 def getHasHardwareAceleration(ffmpegPath:str=""):
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
     process1 = subprocess.run(
@@ -297,7 +306,9 @@ def loadHardwareAcceleration(ffmpegPath:str=""):
         acceptedOutputCodecs.extend(hardwareOutputCodecs)
     else:
         hardwareOutputCodecs = []
-        
+
+def validateHwaccelFunctions(functions:int):
+    return functions & HWACCEL_FUNCTIONS == functions        
 
 loadHardwareAcceleration()
 
