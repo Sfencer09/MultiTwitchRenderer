@@ -8,8 +8,8 @@ localBasepath = '/mnt/pool1/media/downloads/'  #localBasepath = '/mnt/scratch1/'
 # Name of folder within basepath that output videos will be placed in
 outputDirectory = "Rendered Multiviews"
 
-# List of streamers to automatically run renders for
-mainStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
+# List of streamers to automatically queue and run renders for
+monitorStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
 
 # List of streamers who implement a !who and/or !group NightBot command
 streamersParseChatList = ['ChilledChaos', 'ZeRoyalViking']
@@ -36,9 +36,6 @@ logFolder = './logs/'
 copyFiles = false
 
 minimumSessionWorkerDelayHours = 3 #timedelta(hours=3)
-
-# Streamers to automatically queue and run renders for
-monitorStreamers = [] #['ChilledChaos', ]
 
 overwriteIntermediateFiles = true
 # Whether to overwrite existing output files
