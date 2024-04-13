@@ -125,8 +125,8 @@ configSchema = Schema({
             And(str, lambda x: x == '' or x[-1]=='/'),
         'localTimezone':
             And(str, Use(convertTimezoneString)),
-        Optional('errorFilePath', default='./erroredCommands.log'):
-            str,
+        #Optional('errorFilePath', default='./erroredCommands.log'):
+        #    str,
         Optional('statusFilePath', default='./renderStatuses.pickle'):
             str,
         Optional('logFolder', default='./logs/'):

@@ -177,18 +177,6 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                     if returncode != 130:  # ctrl-c on UNIX (?)
                         logger.error("Render errored! Printing current command:")
                         logger.error(formatCommand(currentCommand))
-                        # logger.error(f"Render errored! Writing to log file {errorFilePath}")
-                        # if renderLog is not None:
-                        #     renderLog(f"Render errored! Writing to log file {errorFilePath}")
-                        # setRenderStatus(task.mainStreamer,
-                        #                 task.fileDate, 'ERRORED')
-                        # with open(errorFilePath, 'a') as errorFile:
-                        #     errorFile.write(
-                        #         f'Errored on: {formatCommand(currentCommand)}\n')
-                        #     errorFile.write(f'Full command list: ')
-                        #     errorFile.write(' ;; '.join(
-                        #         (formatCommand(renderCommand) for renderCommand in renderCommands)))
-                        #     errorFile.write('\n\n')
                     break
                 else:
                     if trueOutpath is not None:

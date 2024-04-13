@@ -25,9 +25,6 @@ ffmpegPath = '' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
 # Time offset of local timezone, days will split at midnight in this timezone
 localTimezone = "-06:00" #CST
 
-# Deprecated, or soon will be
-errorFilePath = './erroredCommands.log'
-
 # Must be writeable
 statusFilePath = './renderStatuses.pickle'
 logFolder = './logs/'
