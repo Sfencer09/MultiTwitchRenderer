@@ -10,7 +10,7 @@ if __debug__:
     from config import *
 exec(open("config.py").read(), globals())
 import scanned
-from RenderWorker import endRendersAndExit, renderQueue, renderQueueLock, startRenderThread, getActiveRenderTaskInfo
+import RenderWorker
 if COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
 from SharedUtils import calcGameCounts
@@ -28,14 +28,14 @@ class Command:
 
 commandArray:List[Command] = []
 
-commandArray.append(Command(endRendersAndExit, 'Exit program'))
+commandArray.append(Command(RenderWorker.endRendersAndExit, 'Exit program'))
 
 
 def triggerStartRenderThread():
     print("Starting render thread")
     #if renderThread is not None and not renderThread.is_alive():
     #    renderThread.start()
-    startRenderThread()
+    RenderWorker.startRenderThread()
     index = None
     for i in range(len(commandArray)):
         if commandArray[i].targetFunc == triggerStartRenderThread:
@@ -49,7 +49,7 @@ commandArray.append(Command(triggerStartRenderThread, 'Start render thread'))
 
 
 def printActiveJobs():
-    activeRenderTask, activeRenderTaskSubindex, _ = getActiveRenderTaskInfo()
+    activeRenderTask, activeRenderTaskSubindex, _ = RenderWorker.getActiveRenderTaskInfo()
     print(f"Active render job:",
           "None" if activeRenderTask is None else f"{str(activeRenderTask)}, subindex {str(activeRenderTaskSubindex)}\n{activeRenderTask.__repr__()}")
     if COPY_FILES:
@@ -62,10 +62,10 @@ commandArray.append(Command(printActiveJobs, 'Print active jobs'))
 
 
 def printQueuedJobs():
-    if len(renderQueue.queue) == 0:
+    if len(RenderWorker.renderQueue.queue) == 0:
         print("Render queue: empty")
     else:
-        for queueItem in sorted(renderQueue.queue):
+        for queueItem in sorted(RenderWorker.renderQueue.queue):
             print(queueItem)
     if COPY_FILES:
         if len(copyQueue.queue) == 0:
@@ -369,7 +369,7 @@ def inputManualJob(initialRenderConfig=None):
     print(f"Adding render for streamer {mainStreamer} from {fileDate}")
     setRenderStatus(mainStreamer, fileDate,
                     'COPY_QUEUE' if COPY_FILES else 'RENDER_QUEUE')
-    (copyQueue if COPY_FILES else renderQueue).put((MANUAL_PRIORITY, item))
+    (copyQueue if COPY_FILES else RenderWorker.renderQueue).put((MANUAL_PRIORITY, item))
 
 
 commandArray.append(Command(inputManualJob, 'Add new manual job'))
@@ -439,8 +439,8 @@ def editQueue():
         while selectedQueue is None:
             userInput = input(" >> ")
             if userInput.lower().startswith('r'):
-                selectedQueue = renderQueue
-                selectedQueueLock = renderQueueLock
+                selectedQueue = RenderWorker.renderQueue
+                selectedQueueLock = RenderWorker.renderQueueLock
             elif userInput.lower().startswith('c'):
                 selectedQueue = copyQueue
                 selectedQueueLock = copyQueueLock
@@ -449,8 +449,8 @@ def editQueue():
             else:
                 print(f"Unrecognized input ('q' to quit): '{userInput}'")
     else:
-        selectedQueue = renderQueue
-        selectedQueueLock = renderQueueLock
+        selectedQueue = RenderWorker.renderQueue
+        selectedQueueLock = RenderWorker.renderQueueLock
     selectedQueueLock.acquire()
     items = []
     while not selectedQueue.empty():
