@@ -19,18 +19,18 @@ from SourceFile import SourceFile
 
 sys.path.append(os.path.dirname(sys.executable))
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 
 audioFiles = set()
 audioExt = ".m4a"
-audioBasepath = os.path.join(localBasepath, "extracted-audio")
+audioBasepath = os.path.join(getConfig('main.localBasepath'), "extracted-audio")
 os.makedirs(audioBasepath, exist_ok=True)
 
 
 def getAudioPath(videoPath: str):
     # assert any((videoPath.endswith(videoExt) for videoExt in videoExts))
+    basepath = getConfig('main.basepath')
+    videoExts = getConfig('internal.videoExts')
     assert videoPath.startswith(basepath)
     for videoExt in videoExts:
         if videoPath.endswith(videoExt):
@@ -62,7 +62,7 @@ def extractAudio(target_file: str):
     if not os.path.isfile(audioPath):
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
         extractCommand = [
-            ffmpegPath + "ffmpeg",
+            getConfig('ffmpegPath') + "ffmpeg",
             "-i",
             target_file,
             "-vn",

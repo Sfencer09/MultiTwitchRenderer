@@ -3,9 +3,7 @@ import threading
 import pickle
 import os
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 import scanned
 
 from MTRLogging import getLogger
@@ -45,7 +43,7 @@ class RenderTask:
     def __repr__(self):
         return f"QueueItem(mainStreamer={self.mainStreamer}, fileDate={self.fileDate}, renderConfig={self.renderConfig}, outputPath={self.outputPath})"
 
-
+statusFilePath = getConfig('main.statusFilePath')
 renderStatuses = {}
 if os.path.isfile(statusFilePath):
     with open(statusFilePath, 'rb') as statusFile:
@@ -70,7 +68,7 @@ def saveRenderStatuses():
             pickle.dump(renderStatuses, statusFile)
 
 def incrFileRefCount(filename:str):
-    assert filename.startswith(localBasepath)
+    assert filename.startswith(getConfig('main.localBasepath'))
     localFileRefCountLock.acquire()
     ret = 0
     if filename not in localFileReferenceCounts.keys():
@@ -84,7 +82,7 @@ def incrFileRefCount(filename:str):
 
 
 def decrFileRefCount(filename:str):
-    assert filename.startswith(localBasepath)
+    assert filename.startswith(getConfig('main.localBasepath'))
     localFileRefCountLock.acquire()
     ret = 0
     if filename not in localFileReferenceCounts.keys():

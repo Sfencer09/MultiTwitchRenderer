@@ -8,10 +8,6 @@ from schema import Schema, Or, And, Optional, Use
 from MTRLogging import getLogger
 logger = getLogger('RenderConfig')
 
-#if __debug__:
-#    from config import *
-#exec(open("config.py").read(), globals())
-
 from MTRConfig import trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, validateHwaccelFunctions, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE
 
 defaultRenderConfig = getConfig('main.defaultRenderConfig')

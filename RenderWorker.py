@@ -1,6 +1,6 @@
 from functools import partial
 import shutil
-import time as ttime #avoid name conflict with import in config file
+import time
 import signal
 import queue
 import threading
@@ -11,9 +11,7 @@ import os
 from shlex import quote
 from typing import Any, Tuple
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 
 from MTRLogging import getLogger
 logger = getLogger('RenderWorker')
@@ -49,18 +47,20 @@ def getActiveRenderTaskInfo() -> Tuple[RenderTask, int, subprocess.Popen]:
     return (activeRenderTask, activeRenderTaskSubindex, activeRenderSubprocess)
 
 def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
-                 overwrite_intermediate=DEFAULT_OVERWRITE_INTERMEDIATE,
-                 overwrite_output=DEFAULT_OVERWRITE_OUTPUT,
+                 overwrite_intermediate=getConfig('main.overwriteIntermediateFiles'),
+                 overwrite_output=getConfig('main.overwriteOutputFiles'),
                  renderLog=None):
     #renderLog = renderText.addLine
     queueEmpty = False
+    logFolder = getConfig('main.logFolder')
+    localBasepath = getConfig('main.localBasepath')
     while True:
         # sessionText, copyText, renderText = bufferedTexts
         if renderQueue.empty():
             if not queueEmpty:
                 logger.detail("Render queue empty, sleeping")
                 queueEmpty = True
-            ttime.sleep(10)
+            time.sleep(10)
             continue
         queueEmpty = False
         renderQueueLock.acquire()  # block if user is editing queue
@@ -175,18 +175,20 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                 if returncode != 0:
                     hasError = True
                     if returncode != 130:  # ctrl-c on UNIX (?)
-                        logger.error(f"Render errored! Writing to log file {errorFilePath}")
-                        if renderLog is not None:
-                            renderLog(f"Render errored! Writing to log file {errorFilePath}")
-                        setRenderStatus(task.mainStreamer,
-                                        task.fileDate, 'ERRORED')
-                        with open(errorFilePath, 'a') as errorFile:
-                            errorFile.write(
-                                f'Errored on: {formatCommand(currentCommand)}\n')
-                            errorFile.write(f'Full command list: ')
-                            errorFile.write(' ;; '.join(
-                                (formatCommand(renderCommand) for renderCommand in renderCommands)))
-                            errorFile.write('\n\n')
+                        logger.error("Render errored! Printing current command:")
+                        logger.error(formatCommand(currentCommand))
+                        # logger.error(f"Render errored! Writing to log file {errorFilePath}")
+                        # if renderLog is not None:
+                        #     renderLog(f"Render errored! Writing to log file {errorFilePath}")
+                        # setRenderStatus(task.mainStreamer,
+                        #                 task.fileDate, 'ERRORED')
+                        # with open(errorFilePath, 'a') as errorFile:
+                        #     errorFile.write(
+                        #         f'Errored on: {formatCommand(currentCommand)}\n')
+                        #     errorFile.write(f'Full command list: ')
+                        #     errorFile.write(' ;; '.join(
+                        #         (formatCommand(renderCommand) for renderCommand in renderCommands)))
+                        #     errorFile.write('\n\n')
                     break
                 else:
                     if trueOutpath is not None:
@@ -202,7 +204,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
             logger.info("Render task finished, cleaning up temp files:")
             logger.detail(tempFiles)
             setRenderStatus(task.mainStreamer, task.fileDate, 'FINISHED')
-            if COPY_FILES:
+            if getConfig('main.copyFiles'):
                 for file in (f for f in task.sourceFiles if f.videoFile.startswith(localBasepath)):
                     remainingRefs = decrFileRefCount(file.localVideoPath)
                     if remainingRefs == 0:
@@ -216,7 +218,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                 logger.detail(f"Removing intermediate file {file}")
                 if renderLog is not None:
                     renderLog(f"Removing intermediate file {file}")
-                assert basepath not in file
+                assert getConfig('basepath') not in file
                 os.remove(file)
         renderQueue.task_done()
         if __debug__:
@@ -246,7 +248,7 @@ def endRendersAndExit():
     sys.exit(0)
 
 
-if ENABLE_URWID:
+if getConfig('internal.ENABLE_URWID'):
     import UrwidUI.UrwidMain
     renderThread = threading.Thread(target=renderWorker, kwargs={'renderLog':UrwidUI.UrwidMain.renderText.addLine})
     renderThread.daemon = True

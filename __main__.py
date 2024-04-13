@@ -8,17 +8,19 @@ if not sys.version_info >= (3, 7, 0):
     raise EnvironmentError(
         "Python version too low, relies on ordered property of dicts")
 
-from MTRLogging import getLogger
+from MTRLogging import getLogger, logFolder
 logger = getLogger('Main')
 
 logger.info(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
 #sys.path.append("./MultiTwichRenderer")
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+import MTRConfig
 
+COPY_FILES = MTRConfig.getConfig('main.copyFiles')
+localBasepath = MTRConfig.getConfig('main.localBasepath')
+basepath = MTRConfig.getConfig('main.basepath')
+ENABLE_URWID = MTRConfig.getConfig('internal.ENABLE_URWID')
 
 #import __init__
 #from UrwidUI.UrwidMain import urwidUiMain
@@ -70,7 +72,7 @@ if __name__ == '__main__':
         if COPY_FILES:
             copyThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig': defaultSessionRenderConfig,
-                                                                       'maxLookback': timedelta(days=DEFAULT_LOOKBACK_DAYS)})
+                                                                       'maxLookback': timedelta(days=MTRConfig.getConfig('main.sessionLookbackDays'))})
         sessionThread.daemon = True
         sessionThread.start()
         if ENABLE_URWID:

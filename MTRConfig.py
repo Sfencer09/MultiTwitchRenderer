@@ -115,7 +115,6 @@ configSchema = Schema({
         'localBasepath': isWriteableDir,
         Optional('outputDirectory', default='Rendered_Multiviews'):
             And(str, lambda val: all((x not in val for x in ("\\/")))),
-        'mainStreamers': [isValidStreamerName],
         Optional('streamersParseChatList', default=[]):
             [isValidStreamerName],
         Optional('dataFilepath', default='./knownFiles.pickle'):
@@ -310,6 +309,9 @@ def loadHardwareAcceleration(ffmpegPath:str=""):
 def validateHwaccelFunctions(functions:int):
     return functions & HWACCEL_FUNCTIONS == functions        
 
+def getActiveHwAccelValues():
+    return ACTIVE_HWACCEL_VALUES
+
 loadHardwareAcceleration()
 
 loadedConfig:dict|None = None
@@ -325,6 +327,8 @@ def loadConfigFile(path:str):
             if ffmpegPath != "":
                 loadHardwareAcceleration(ffmpegPath)
         loadedConfig = configSchema.validate(tempConfig)
+        if os.path.samefile(loadedConfig['main']['basepath'], loadedConfig['main']['localBasepath']):
+            raise Exception("Values for 'basepath' and 'localBasepath' must be different directories")
         
 def getConfig(configPath:str):
     pathParts = configPath.split('.')

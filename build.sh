@@ -8,7 +8,8 @@ if [ $currentGitBranch = 'master' ]; then
 
 python -O -m PyInstaller ./MultiTwitchRenderer.spec && \
 cp dist/MultiTwitchRenderer /mnt/pool2/media/software/ && \
-cp dist/config.py /mnt/pool2/media/software/
+cp config.toml /mnt/pool2/media/software/
+#cp dist/config.py /mnt/pool2/media/software/
 
 else
 
@@ -18,7 +19,8 @@ fi
 
 python -O -m PyInstaller ./MultiTwitchRenderer.spec && \
 cp dist/MultiTwitchRenderer "/mnt/pool2/media/software/$currentGitBranch/" && \
-cp dist/config.py "/mnt/pool2/media/software/$currentGitBranch/"
+#cp dist/config.py "/mnt/pool2/media/software/$currentGitBranch/"
+cp config.toml "/mnt/pool2/media/software/$currentGitBranch/"
 
 fi
 

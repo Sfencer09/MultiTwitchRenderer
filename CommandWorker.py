@@ -3,14 +3,15 @@ from functools import partial
 import os
 from typing import List
 from thefuzz import process as fuzzproc
-import time as ttime
-from CopyWorker import getActiveCopyTaskInfo #avoid name conflict with import in config file
+import time as ttime #avoid name conflict with import in config file
+from CopyWorker import getActiveCopyTaskInfo
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
 import scanned
 from RenderWorker import endRendersAndExit, renderQueue, renderQueueLock, startRenderThread, getActiveRenderTaskInfo
+from MTRConfig import getConfig
+
+COPY_FILES = getConfig('main.copyFiles')
+
 if COPY_FILES:
     from CopyWorker import activeCopyTask, copyQueue, copyQueueLock
 from SharedUtils import calcGameCounts
@@ -381,6 +382,8 @@ def editQueueItem(queueEntry):
     fileDate = item.fileDate
     renderConfig = item.renderConfig
     outputPath = item.outputPath
+    videoExts = getConfig('internal.videoExts')
+    basepath = getConfig('main.basepath')
     while True:
         print("Current values:")
         print(f"Render config: {str(renderConfig)}")

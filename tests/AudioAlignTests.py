@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 
 from AudioAlignment import *
-from config import *
 import time
 import scanned
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
@@ -43,7 +42,7 @@ print(
 )"""
 
 
-testStreamer = mainStreamers[0]
+testStreamer = getConfig('main.monitorStreamers')[0]
 allStreamingDays = getAllStreamingDaysByStreamer()
 #testDay = allStreamingDays[testStreamer][0]
 testDay = "2024-04-01"

@@ -18,15 +18,13 @@ print = partial(print, flush=True)
 #print(sys.executable)
 sys.path.append(os.path.dirname(sys.executable))
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE, getActiveHwAccelValues
 
 import scanned
 
 from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
-from RenderConfig import RenderConfig, ACTIVE_HWACCEL_VALUES, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from RenderConfig import RenderConfig
 from SharedUtils import calcGameCounts, getVideoOutputPath
 from Session import Session
 
@@ -45,6 +43,7 @@ def calcTileWidth(numTiles):
 def calcResolutions(numTiles, maxNumTiles):
     tileWidth = calcTileWidth(numTiles)
     maxTileWidth = calcTileWidth(maxNumTiles)
+    outputResolutions = getConfig('internal.outputResolutions')
     maxOutputResolution = outputResolutions[maxTileWidth]
     scaleFactor = min(
         maxOutputResolution[0] // (16*tileWidth), maxOutputResolution[1] // (9*tileWidth))
@@ -126,7 +125,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     drawLabels = renderConfig.drawLabels
     startTimeMode = renderConfig.startTimeMode
     endTimeMode = renderConfig.endTimeMode
-    logLevel = renderConfig.logLevel
     sessionTrimLookback = renderConfig.sessionTrimLookback
     sessionTrimLookahead = renderConfig.sessionTrimLookahead
     sessionTrimLookbackSeconds = renderConfig.sessionTrimLookbackSeconds
@@ -142,10 +140,18 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     excludeStreamers = renderConfig.excludeStreamers
     preciseAlign = renderConfig.preciseAlign
     # includeStreamers = renderConfig.includeStreamers
+    threadCount = getConfig('internal.threadCount')
+    nongroupGames = getConfig('main.nongroupGames')
+    outputResolutions = getConfig('internal.outputResolutions')
+    REDUCED_MEMORY = getConfig('internal.reducedFfmpegMemory')
+    ffmpegPath = getConfig('main.ffmpegPath')
+    basepath = getConfig('main.basepath')
+    localBasepath = getConfig('main.localBasepath')
+    ACTIVE_HWACCEL_VALUES = getActiveHwAccelValues()
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(
-        datetime.fromisoformat(targetDate), datetimetime(0, 0, 0, tzinfo=LOCAL_TIMEZONE))
+        datetime.fromisoformat(targetDate), datetimetime(0, 0, 0, tzinfo=getConfig('main.localTimezone')))
     targetDateEndTime = targetDateStartTime + timedelta(days=1)
     logger.info(f"{targetDate}, {targetDateStartTime}, {targetDateEndTime}")
     logger.info(f'other streamers{otherStreamers}')
@@ -1280,7 +1286,8 @@ def normalizeAllGames():
     loggerGames.debug("---------------------------------------------------------------")
     knownReplacements = {}
     lowercaseGames = {}
-    for game, alias in gameAliases.items():
+    
+    for game, alias in getConfig('gameAliases'):
         assert game.lower() not in lowercaseGames.keys()
         knownReplacements[game] = list(alias)
         lowercaseGames[game.lower()] = game

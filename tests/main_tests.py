@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(parentDir))
 
 import __main__
 from MultiTwitchRenderer import generateTilingCommandMultiSegment
-from config import *
+from MTRConfig import getConfig
 from ParsedChat import parsePlayersFromGroupMessage
 from RenderConfig import RenderConfig
 from RenderWorker import formatCommand
@@ -44,7 +44,7 @@ sessionWorker()
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
-testStreamer = mainStreamers[0]
+testStreamer = getConfig('main.monitorStreamers')[0]
 testCommands = None
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()
@@ -129,7 +129,7 @@ print(testInputFiles)
 print(uniqueFiles)
 print("\n\n")
 
-saveFiledata(DEFAULT_DATA_FILEPATH)
+saveFiledata(getConfig('main.dataFilepath'))
 
 
 # %%
