@@ -44,8 +44,8 @@ print(
 
 testStreamer = getConfig('main.monitorStreamers')[0]
 allStreamingDays = getAllStreamingDaysByStreamer()
-#testDay = allStreamingDays[testStreamer][0]
-testDay = "2024-04-01"
+testDay = allStreamingDays[testStreamer][0]
+#testDay = "2024-04-02"
 def testAudioAlignmentForDate(streamer, day):
     commands = generateTilingCommandMultiSegment(streamer, day)
     if commands is None:

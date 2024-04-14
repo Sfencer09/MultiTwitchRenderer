@@ -86,11 +86,11 @@ if __name__ == '__main__':
         # devSessionRenderConfig.logLevel = 1
 
         sessionWorker(renderConfig=devSessionRenderConfig,
-                      maxLookback=timedelta(days=7, hours=18))
+                      maxLookback=timedelta(days=14))
         #logging.detail(allStreamersWithVideos)
         # copyWorker()
         # logging.detail(getAllStreamingDaysByStreamer()['ChilledChaos'])
-        # commandWorker()
+        commandWorker()
         #mainStart()
         allGames = calcGameCounts()
         for game in sorted(allGames.keys(), key=lambda x: (allGames[x], x)):

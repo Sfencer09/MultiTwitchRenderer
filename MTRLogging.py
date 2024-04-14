@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import argparse
 
@@ -82,34 +83,32 @@ def setUpLogging():
     suffix = ""
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
-    formatter = logging.Formatter(fmt, datefmt=datefmt)
     os.makedirs(logFolder, exist_ok=True)
     while os.path.isfile(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) and os.path.getsize(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) > 0:
         suffix = f"-{count}"
         count += 1
-    logFilename = os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")
-    logging.basicConfig(format = fmt,
+    logging.basicConfig(filename = os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log"),
+                        format = fmt,
                         datefmt = datefmt,
-                        encoding = 'utf-8',
-                        level = _consoleLogLevel)
-                        #level = logging.WARNING)
-    #console = logging.StreamHandler(sys.stdout)
-    #console.setLevel(consoleLogLevel)
-    #console.setFormatter(formatter)
-    global __fileHandler
-    __fileHandler = logging.FileHandler(logFilename, encoding='utf-8')
-    __fileHandler.setLevel(_fileLogLevel)
-    __fileHandler.setFormatter(formatter)
-    #logging.getLogger('').addHandler(console)
-    #logging.getLogger('').addHandler(fileHandle)
+                        encoding='utf-8',
+                        level = min(_consoleLogLevel, _fileLogLevel))
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(_consoleLogLevel)
+    formatter = logging.Formatter(fmt, datefmt=datefmt)
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+    logging.getLogger('numba').handlers.clear()
+    logging.getLogger('numba').setLevel(logging.WARNING)
+    logging.getLogger('numba').addHandler(logging.NullHandler())
+    logging.getLogger('numba.core').handlers.clear()
+    logging.getLogger('numba.core').setLevel(logging.WARNING)
+    logging.getLogger('numba.core').addHandler(logging.NullHandler())
+    logging.getLogger('numba.core.byteflow').handlers.clear()
+    logging.getLogger('numba.core.byteflow').setLevel(logging.WARNING)
+    logging.getLogger('numba.core.byteflow').addHandler(logging.NullHandler())
 
 setUpLogging()
 
 def getLogger(name:str):
     logger = logging.getLogger(name)
-    if logger.level == logging.NOTSET:
-        logger.setLevel(min(_consoleLogLevel, _fileLogLevel))
-        if '.' not in name:
-            #logger.addHandler(console)
-            logger.addHandler(__fileHandler)
     return logger
