@@ -62,7 +62,7 @@ def extractAudio(target_file: str):
     if not os.path.isfile(audioPath):
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
         extractCommand = [
-            getConfig('ffmpegPath') + "ffmpeg",
+            getConfig('main.ffmpegPath') + "ffmpeg",
             "-i",
             target_file,
             "-vn",

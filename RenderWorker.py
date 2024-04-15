@@ -206,7 +206,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                 logger.detail(f"Removing intermediate file {file}")
                 if renderLog is not None:
                     renderLog(f"Removing intermediate file {file}")
-                assert getConfig('basepath') not in file
+                assert getConfig('main.basepath') not in file
                 os.remove(file)
         renderQueue.task_done()
         if __debug__:

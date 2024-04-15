@@ -70,7 +70,7 @@ def copyWorker(copyLog=None):
         # renderCommand = list(task.commandArray)
         for file in sourceFiles:
             remotePath = file.videoFile
-            localPath = remotePath.replace(getConfig('basepath'), getConfig('localBasepath'))
+            localPath = remotePath.replace(getConfig('main.basepath'), getConfig('main.localBasepath'))
             if not os.path.isfile(localPath):
                 # time.sleep(5)
                 logger.detail(f"Copying file {remotePath} to local storage")
