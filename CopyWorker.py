@@ -13,9 +13,10 @@ import MTRLogging
 
 logger = MTRLogging.getLogger('CopyWorker')
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
+
+COPY_FILES = getConfig('main.copyFiles')
+
 import scanned
 
 from RenderWorker import renderQueue, renderQueueLock
@@ -69,7 +70,7 @@ def copyWorker(copyLog=None):
         # renderCommand = list(task.commandArray)
         for file in sourceFiles:
             remotePath = file.videoFile
-            localPath = remotePath.replace(basepath, localBasepath)
+            localPath = remotePath.replace(getConfig('main.basepath'), getConfig('main.localBasepath'))
             if not os.path.isfile(localPath):
                 # time.sleep(5)
                 logger.detail(f"Copying file {remotePath} to local storage")

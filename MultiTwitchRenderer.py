@@ -7,7 +7,8 @@ import random
 import sys
 import json
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from datetime import time as datetimetime
 from functools import reduce, partial
 from pprint import pformat, pprint
 from Session import Session
@@ -17,9 +18,7 @@ print = partial(print, flush=True)
 #print(sys.executable)
 sys.path.append(os.path.dirname(sys.executable))
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE, getActiveHwAccelValues
 
 import scanned
 
@@ -44,6 +43,7 @@ def calcTileWidth(numTiles):
 def calcResolutions(numTiles, maxNumTiles):
     tileWidth = calcTileWidth(numTiles)
     maxTileWidth = calcTileWidth(maxNumTiles)
+    outputResolutions = getConfig('internal.outputResolutions')
     maxOutputResolution = outputResolutions[maxTileWidth]
     scaleFactor = min(
         maxOutputResolution[0] // (16*tileWidth), maxOutputResolution[1] // (9*tileWidth))
@@ -78,7 +78,8 @@ audioOffsetCache:Dict[str, Dict[str, float]] = {}
 def loadAudioCache():
     try:
         global audioOffsetCache
-        audioOffsetCache = json.load(audioCacheSavePath)
+        with open(audioCacheSavePath, encoding='utf-8') as audioCacheFile:
+            audioOffsetCache = json.load(audioCacheFile)
     except:
         pass
 
@@ -86,8 +87,8 @@ loadAudioCache()
 
 def saveAudioCache():
     try:
-        with open(audioCacheSavePath, 'w') as audioCacheFile:
-            json.dump(audioOffsetCache, audioCacheFile)
+        with open(audioCacheSavePath, 'w', encoding='utf-8') as audioCacheFile:
+            json.dump(audioOffsetCache, audioCacheFile, indent=4)
     except Exception as ex:
         print(ex)
         pass
@@ -124,7 +125,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     drawLabels = renderConfig.drawLabels
     startTimeMode = renderConfig.startTimeMode
     endTimeMode = renderConfig.endTimeMode
-    logLevel = renderConfig.logLevel
     sessionTrimLookback = renderConfig.sessionTrimLookback
     sessionTrimLookahead = renderConfig.sessionTrimLookahead
     sessionTrimLookbackSeconds = renderConfig.sessionTrimLookbackSeconds
@@ -140,15 +140,23 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     excludeStreamers = renderConfig.excludeStreamers
     preciseAlign = renderConfig.preciseAlign
     # includeStreamers = renderConfig.includeStreamers
+    threadCount = getConfig('internal.threadCount')
+    nongroupGames = getConfig('main.nongroupGames')
+    outputResolutions = getConfig('internal.outputResolutions')
+    REDUCED_MEMORY = getConfig('internal.reducedFfmpegMemory')
+    ffmpegPath = getConfig('main.ffmpegPath')
+    basepath = getConfig('main.basepath')
+    localBasepath = getConfig('main.localBasepath')
+    ACTIVE_HWACCEL_VALUES = getActiveHwAccelValues()
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(
-        datetime.fromisoformat(targetDate), DAY_START_TIME)
+        datetime.fromisoformat(targetDate), datetimetime(0, 0, 0, tzinfo=getConfig('main.localTimezone')))
     targetDateEndTime = targetDateStartTime + timedelta(days=1)
     logger.info(f"{targetDate}, {targetDateStartTime}, {targetDateEndTime}")
     logger.info(f'other streamers{otherStreamers}')
     mainSessionsOnTargetDate:List[Session] = list(filter(lambda x: targetDateStartTime <= datetime.fromtimestamp(
-        x.startTimestamp, tz=UTC_TIMEZONE) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
+        x.startTimestamp, tz=timezone(timedelta(hours=0))) <= targetDateEndTime, scanned.allStreamerSessions[mainStreamer]))
     if len(mainSessionsOnTargetDate) == 0:
         raise ValueError(
             "Selected streamer does not have any sessions on the target date")
@@ -558,6 +566,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     # Sort based on https://stackoverflow.com/a/19932054
     _, *segmentFileMatrix = map(list, zip(*sorted(zip(finalSortKeys, *segmentFileMatrix))))
     _, *segmentSessionMatrix = map(list, zip(*sorted(zip(finalSortKeys, *segmentSessionMatrix))))
+    allInputStreamers = [streamer for _, streamer in sorted(zip(finalSortKeys, allInputStreamers))]
+    for i in range(len(allInputStreamers)):
+        allInputStreamersSortKey[allInputStreamers[i]] = i
     
     logSegmentMatrix(logging.INFO)
     for i in range(len(segmentSessionMatrix)):
@@ -1336,7 +1347,8 @@ def normalizeAllGames():
     loggerGames.debug("---------------------------------------------------------------")
     knownReplacements = {}
     lowercaseGames = {}
-    for game, alias in gameAliases.items():
+    
+    for game, alias in getConfig('gameAliases'):
         assert game.lower() not in lowercaseGames.keys()
         knownReplacements[game] = list(alias)
         lowercaseGames[game.lower()] = game

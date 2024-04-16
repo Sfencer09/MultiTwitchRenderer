@@ -11,66 +11,9 @@ from schema import Schema, Or, And, Optional, Use
 from MTRLogging import getLogger
 logger = getLogger('RenderConfig')
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, validateHwaccelFunctions, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES
 
-HW_DECODE = 1
-HW_INPUT_SCALE = 2
-HW_OUTPUT_SCALE = 4
-HW_ENCODE = 8
-
-
-trueStrings = ('t', 'y', 'true', 'yes')
-HWACCEL_VALUES = {
-    'NVIDIA': {
-        # 'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
-        'scale_filter': '_npp',
-        'pad_filter': '_opencl',
-        'upload_filter': '_cuda',
-        'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
-        'decode_multigpu_options': ('-threads', '1', '-hwaccel_device', '%(DEVICE_PATH)s', '-c:v', 'h264_cuvid'),
-        'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
-        'upscale_filter_options': '',
-        'downscale_filter_options': ':interp_algo=super',
-        'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
-    },
-    # 'AMD': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-    #     'scale_filter': '',
-    #     'pad_filter': '',
-    #     'upload_filter': '',
-    #     # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
-    #     # 'decode_input_options': ('-hwaccel', 'd3d11va'),
-    #     'decode_input_options
-    #     'scale_input_options': ('-hwaccel'),
-    #     'upscale_filter_options': '',
-    #     'downscale_filter_options': '',
-    #     'encode_codecs': ('h264_amf', 'hevc_amf'),
-    # },
-    'Intel': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': '_qsv',
-        'pad_filter': '',
-        'upload_filter': '=extra_hw_frames=64,format=qsv',
-        'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-        'decode_multigpu_options': ('-hwaccel', 'qsv', '-qsv_device', '%(DEVICE_PATH)s', '-c:v', 'h264_qsv'),
-        'upscale_filter_options': '',
-        'downscale_filter_options': '',
-        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
-        'encode_codecs2': {'h264': {'name':'h264_qsv', 
-                                    'encodingPresetValidator':lambda x: x in ('veryfast','faster','fast','medium','slow','slower','veryslow'),
-                                    'encodingSettings': ()}
-            }
-        #TODO: change encode codecs to a dictionary where the c:v value is the key and the value is either None or a list of options to control that codec
-    },
-    None: {
-        'encode_codecs2': {'h264': {'name':'h264_qsv', 
-                                    'encodingPresetValidator':lambda x: x in ('veryfast','faster','fast','medium','slow','slower','veryslow'),
-                                    'encodingSettings': ()}
-            }
-    }
-}
+defaultRenderConfig = getConfig('main.defaultRenderConfig')
 
 """ def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
@@ -183,7 +126,7 @@ def getAllHardwareAccelerationFunctions() -> Dict[str, int]:
     return functionsSupported  """
 
 def _generateTestVideo() -> bytes:
-    fullFfmpegPath = ffmpegPath + "ffmpeg"
+    fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
     testVideoBuildCommand = [fullFfmpegPath, 
                              "-hide_banner", "-nostats",
                              "-f", "lavfi",
@@ -201,7 +144,7 @@ def _generateTestVideo() -> bytes:
 def _testHardwareFunctions(deviceName:str|int, testVideoData:None|bytes=None) -> tuple:
     if testVideoData is None:
         testVideoData = _generateTestVideo()
-    fullFfmpegPath = ffmpegPath + "ffmpeg"
+    fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
     commandStart = [fullFfmpegPath, '-hwaccel_device', str(deviceName)]
     def _testCommand(command):
         proc = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
@@ -279,7 +222,7 @@ else:
 #    ACTIVE_HWACCEL_VALUES = None
 
 
-defaultRenderConfig = RENDER_CONFIG_DEFAULTS
+#defaultRenderConfig = RENDER_CONFIG_DEFAULTS
 # try:
 #     with open('./renderConfig.json') as renderConfigJsonFile:
 #         defaultRenderConfig = json.load(renderConfigJsonFile)
@@ -360,32 +303,32 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]
 
 renderConfigSchema = Schema({
     Optional('drawLabels', default=defaultRenderConfig['drawLabels']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
+        Or(bool, Use(lambda x: x.lower() in trueStrings)),
     Optional('startTimeMode', default=defaultRenderConfig['startTimeMode']):
-    lambda x: x in ('mainSessionStart', 'allOverlapStart'),
+        lambda x: x in ('mainSessionStart', 'allOverlapStart'),
     Optional('endTimeMode', default=defaultRenderConfig['endTimeMode']):
-    lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
+        lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
     Optional('logLevel', default=defaultRenderConfig['logLevel']):
-    And(Use(int), lambda x: 0 <= x <= 4),  # max logLevel = 4
+        And(Use(int), lambda x: 0 <= x <= 4),  # max logLevel = 4
     Optional('sessionTrimLookback', default=defaultRenderConfig['sessionTrimLookback']):
-    # TODO: convert from number of segments to number of seconds. Same for lookahead
-    Use(int),
+        # TODO: convert from number of segments to number of seconds. Same for lookahead
+        Use(int),
     Optional('sessionTrimLookahead', default=defaultRenderConfig['sessionTrimLookahead']):
-    And(Use(int), lambda x: x >= 0),
+        And(Use(int), lambda x: x >= 0),
     Optional('sessionTrimLookbackSeconds', default=defaultRenderConfig['sessionTrimLookbackSeconds']):
-    And(Use(int), lambda x: x >= 0),  # Not implemented yet
+        And(Use(int), lambda x: x >= 0),  # Not implemented yet
     Optional('sessionTrimLookaheadSeconds', default=defaultRenderConfig['sessionTrimLookaheadSeconds']):
-    And(Use(int), lambda x: x >= 0),
+        And(Use(int), lambda x: x >= 0),
     # Optional(Or(Optional('sessionTrimLookback', default=0),
     # Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): And(int, lambda x: x>=-1),
     # Optional(Or(Optional('sessionTrimLookahead', default=0),
     # Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
     Optional('minGapSize', default=defaultRenderConfig['minGapSize']):
-    And(Use(int), lambda x: x >= 0),
+        And(Use(int), lambda x: x >= 0),
     Optional('outputCodec', default=defaultRenderConfig['outputCodec']):
-    lambda x: x in acceptedOutputCodecs,
+        isAcceptedOutputCodec,
     Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']):
-    lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
+        lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
                     'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
     Optional('hardwareAccelOptions', default=defaultRenderConfig['hardwareAccelOptions']):
     #And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
@@ -397,20 +340,20 @@ renderConfigSchema = Schema({
     #Optional('maxHwaccelFiles', default=defaultRenderConfig['maxHwaccelFiles']):
     #And(Use(int), lambda x: x >= 0),
     Optional('minimumTimeInVideo', default=defaultRenderConfig['minimumTimeInVideo']):
-    And(Use(int), lambda x: x >= 0),
+        And(Use(int), lambda x: x >= 0),
     Optional('cutMode', default=defaultRenderConfig['cutMode']):
-    lambda x: x in ('chunked', ),  # 'trim', 'segment'),
+        lambda x: x in ('chunked', ),  # 'trim', 'segment'),
     Optional('useChat', default=defaultRenderConfig['useChat']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
+        Or(bool, Use(lambda x: x.lower() in trueStrings)),
     # overrides chat, but will not prevent game matching
     Optional('includeStreamers', default=None):
-    # Cannot be passed as string
-    Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
+        # Cannot be passed as string
+        Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
     Optional('excludeStreamers', default=None):
-    # Cannot be passed as string
-    Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
+        # Cannot be passed as string
+        Or(lambda x: x is None, [str], {str: Or(lambda x: x is None, [str])}),
     Optional('preciseAlign', default=defaultRenderConfig['preciseAlign']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
+        Or(bool, Use(lambda x: x.lower() in trueStrings)),
 })
 
 
@@ -437,7 +380,7 @@ class RenderConfig:
 
     def __init__(self, **kwargs):
         values:dict = renderConfigSchema.validate(kwargs)
-        if values['outputCodec'] in hardwareOutputCodecs:
+        if isHardwareOutputCodec(values['outputCodec']):
             if values['useHardwareAcceleration'] & HW_ENCODE == 0:
                 raise Exception(
                     f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {values['outputCodec']}")
@@ -450,7 +393,7 @@ class RenderConfig:
                 raise Exception(
                     f"Hardware-accelerated output scaling must currently be used with hardware encoding")
         if values['useHardwareAcceleration'] & HW_ENCODE != 0:
-            if values['outputCodec'] not in hardwareOutputCodecs:
+            if not isHardwareOutputCodec(values['outputCodec']):# not in hardwareOutputCodecs:
                 raise Exception(
                     f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled")
         for key, value in values.items():

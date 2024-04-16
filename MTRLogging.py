@@ -1,10 +1,49 @@
 import os
 import sys
 import logging
+import argparse
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+# TODO: move argparsing to own module
+class readableDir(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        prospectiveDir=values
+        if not os.path.isdir(prospectiveDir):
+            raise argparse.ArgumentError("readable_dir:{0} is not a valid path".format(prospectiveDir))
+        if os.access(prospectiveDir, os.R_OK):
+            setattr(namespace,self.dest,prospectiveDir)
+        else:
+            raise argparse.ArgumentError("readable_dir:{0} is not a readable dir".format(prospectiveDir))
+
+class writeableDir(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        prospectiveDir=values
+        if not os.path.isdir(prospectiveDir):
+            
+            raise argparse.ArgumentTypeError("readableDir:{0} is not a valid path".format(prospectiveDir))
+        if os.access(prospectiveDir, os.W_OK):
+            setattr(namespace, self.dest, prospectiveDir)
+        else:
+            raise argparse.ArgumentTypeError("readableDir:{0} is not a readable dir".format(prospectiveDir))
+
+argParser = argparse.ArgumentParser()
+argParser.add_argument('--log-level', '--file-log-level',
+                       choices=('trace', 'debug', 'detail', 'info', 'warning', 'error'),
+                       help="Valid values are 'error', 'warning', 'info', 'detail', 'debug', and 'trace'",
+                       dest='fileLogLevel',
+                       default='debug')
+argParser.add_argument('--console-log-level',
+                       choices=('trace', 'debug', 'detail', 'info', 'warning', 'error'),
+                       help="Valid values are 'error', 'warning', 'info', 'detail', 'debug', and 'trace'",
+                       dest='consoleLogLevel',
+                       default='warning')
+argParser.add_argument('--log-folder',
+                       dest='logFolder',
+                       #type=writeableDir, # need to modify to allow for new 
+                       default='./logs')
+args, _ = argParser.parse_known_args()
+logFolder = args.logFolder
+
+
 
 def addLoggingLevelModuleLevel(levelName, levelNum, methodName=None):
     # Copied from https://stackoverflow.com/a/35804945
@@ -28,35 +67,47 @@ def addLoggingLevelModuleLevel(levelName, levelNum, methodName=None):
 
     
 addLoggingLevelModuleLevel('TRACE', logging.DEBUG - 5)
-#addLoggingLevel('NOTIFY', logging.INFO + 5)
+#addLoggingLevelModuleLevel('NOTIFY', logging.WARNING + 5)
 addLoggingLevelModuleLevel('DETAIL', logging.INFO - 5)
 
 testLogger = logging.getLogger("test")
 testLogger.trace("Trace level added!")
 testLogger.detail("Detail level added!")
 
-def setUpLogging(consoleLogLevel = logging.INFO):
+_consoleLogLevel = getattr(logging, args.consoleLogLevel.upper())
+_fileLogLevel = getattr(logging, args.fileLogLevel.upper())
+__fileHandler = None
+
+def setUpLogging():
     count = 0
     suffix = ""
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
     os.makedirs(logFolder, exist_ok=True)
     while os.path.isfile(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) and os.path.getsize(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) > 0:
-        suffix = f" {count}"
+        suffix = f"-{count}"
         count += 1
     logging.basicConfig(filename = os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log"),
                         format = fmt,
                         datefmt = datefmt,
                         encoding='utf-8',
-                        level = logging.DEBUG)
+                        level = min(_consoleLogLevel, _fileLogLevel))
     console = logging.StreamHandler(sys.stdout)
-    console.setLevel(consoleLogLevel)
+    console.setLevel(_consoleLogLevel)
     formatter = logging.Formatter(fmt, datefmt=datefmt)
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
+    logging.getLogger('numba').handlers.clear()
+    logging.getLogger('numba').setLevel(logging.WARNING)
+    logging.getLogger('numba').addHandler(logging.NullHandler())
+    logging.getLogger('numba.core').handlers.clear()
+    logging.getLogger('numba.core').setLevel(logging.WARNING)
+    logging.getLogger('numba.core').addHandler(logging.NullHandler())
+    logging.getLogger('numba.core.byteflow').handlers.clear()
+    logging.getLogger('numba.core.byteflow').setLevel(logging.WARNING)
+    logging.getLogger('numba.core.byteflow').addHandler(logging.NullHandler())
 
-# TODO: set using command line flag rather than hard-coding level
-setUpLogging(logging.WARNING)
+setUpLogging()
 
 def getLogger(name:str):
     logger = logging.getLogger(name)

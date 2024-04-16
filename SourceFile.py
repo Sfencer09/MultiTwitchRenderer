@@ -7,9 +7,7 @@ import json
 from typing import Dict, List, Set
 import scanned
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 
 from Session import Session
 from ParsedChat import ParsedChat, convertToDatetime
@@ -89,7 +87,7 @@ class SourceFile:
         if self.infoFile == infoFile:
             return
         assert self.infoFile is None, f"Cannot overwrite existing info file {self.chatFile} with new file {infoFile}"
-        assert infoFile.endswith(infoExt) and os.path.isfile(
+        assert infoFile.endswith(getConfig('internal.infoExt')) and os.path.isfile(
             infoFile) and os.path.isabs(infoFile)
         self.infoFile = infoFile
         with open(infoFile) as file:
@@ -102,7 +100,7 @@ class SourceFile:
         if self.videoFile == videoFile:
             return
         assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
-        assert any((videoFile.endswith(videoExt) for videoExt in videoExts)
+        assert any((videoFile.endswith(videoExt) for videoExt in getConfig('internal.videoExts'))
                    ) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
         self.videoFile = videoFile
         self.downloadTime = convertToDatetime(os.path.getmtime(videoFile))
@@ -111,10 +109,10 @@ class SourceFile:
         if self.chatFile == chatFile:
             return
         assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
-        assert chatFile.endswith(chatExt) and os.path.isfile(
+        assert chatFile.endswith(getConfig('internal.chatExt')) and os.path.isfile(
             chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
-        if self.streamer in streamersParseChatList:
+        if self.streamer in getConfig('main.streamersParseChatList'):
             self.parsedChat = ParsedChat(self, chatFile)
 
     def getVideoFileInfo(self):
@@ -128,6 +126,12 @@ def scanFiles(log=False):
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
+    basepath = getConfig('main.basepath')
+    outputDirectory = getConfig('main.outputDirectory')
+    videoExts = getConfig('internal.videoExts')
+    videoIdRegex = getConfig('internal.videoIdRegex')
+    chatExt = getConfig('internal.chatExt')
+    infoExt = getConfig('internal.infoExt')
     globalAllStreamers = [name for name in os.listdir(basepath) if
                       (name not in ("NA", outputDirectory) and 
                        os.path.isdir(os.path.join(basepath, name)))]
@@ -270,21 +274,24 @@ def loadFiledata(filepath: str):  # suppresses all errors
 
 
 def initialize():
+    dataFilepath = getConfig('main.dataFilepath')
     if len(scanned.allFilesByVideoId) == 0:
-        loadFiledata(DEFAULT_DATA_FILEPATH)
+        loadFiledata(dataFilepath)
     oldCount = len(scanned.allFilesByVideoId)
     scanFiles(log=True)
     if len(scanned.allFilesByVideoId) != oldCount:
-        saveFiledata(DEFAULT_DATA_FILEPATH)
+        saveFiledata(dataFilepath)
 
 
 def reinitialize():
+    dataFilepath = getConfig('main.dataFilepath')
     scanned.allFilesByVideoId = {}
-    loadFiledata(DEFAULT_DATA_FILEPATH)
+    loadFiledata(dataFilepath)
     initialize()
 
 
 def reloadAndSave():
+    dataFilepath = getConfig('main.dataFilepath')
     scanned.allFilesByVideoId = {}
     scanned.allFilesByStreamer = {}  # string:[SourceFile]
     scanned.allStreamersWithVideos = []
@@ -292,5 +299,5 @@ def reloadAndSave():
     scanned.allScannedFiles = set()
     scanned.filesBySourceVideoPath = {}
     scanFiles(log=True)
-    saveFiledata(DEFAULT_DATA_FILEPATH)
+    saveFiledata(dataFilepath)
 

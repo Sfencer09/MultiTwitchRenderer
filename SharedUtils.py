@@ -2,9 +2,7 @@ from datetime import datetime, timezone
 import os
 from typing import List
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 import scanned
 
 def convertToDatetime(timestamp: int | float | str | datetime):
@@ -42,6 +40,8 @@ def extractInputFiles(ffmpegCommand: List[str]):
     # startDate = datetime.strftime(startTime, "%Y-%m-%d")
 
 def getVideoOutputPath(streamer, date):
+    basepath = getConfig('main.basepath')
+    outputDirectory = getConfig('main.outputDirectory')
     return os.path.join(basepath, outputDirectory, "S1", f"{outputDirectory} - {date} - {streamer}.mkv")
 
 

@@ -19,18 +19,18 @@ from SourceFile import SourceFile
 
 sys.path.append(os.path.dirname(sys.executable))
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 
 audioFiles = set()
 audioExt = ".m4a"
-audioBasepath = os.path.join(localBasepath, "extracted-audio")
+audioBasepath = os.path.join(getConfig('main.localBasepath'), "extracted-audio")
 os.makedirs(audioBasepath, exist_ok=True)
 
 
 def getAudioPath(videoPath: str):
     # assert any((videoPath.endswith(videoExt) for videoExt in videoExts))
+    basepath = getConfig('main.basepath')
+    videoExts = getConfig('internal.videoExts')
     assert videoPath.startswith(basepath)
     for videoExt in videoExts:
         if videoPath.endswith(videoExt):
@@ -58,10 +58,11 @@ readExistingAudioFiles()
 
 def extractAudio(target_file: str):
     audioPath = getAudioPath(target_file)
-    if audioPath not in audioFiles:
+    #if audioPath not in audioFiles:
+    if not os.path.isfile(audioPath):
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
         extractCommand = [
-            ffmpegPath + "ffmpeg",
+            getConfig('main.ffmpegPath') + "ffmpeg",
             "-i",
             target_file,
             "-vn",
@@ -167,28 +168,51 @@ def findAudioOffsets(within_file: str,
     logger.info(f"{withinAudioFile}, {findAudioFile}")
     logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     logger.detail(f"Initial offset = {initialOffset}")
-    y_within, sr_within = librosa.load(
-        withinAudioFile,
-        sr=None,
-        offset=start + (initialOffset if initialOffset > 0 else 0),
-        duration=duration,
-    )
+    try:
+        y_within, sr_within = librosa.load(
+            withinAudioFile,
+            sr=None,
+            offset=start + (initialOffset if initialOffset > 0 else 0),
+            duration=duration,
+        )
+    except Exception as ex:
+        logger.warning(f"Got {repr(ex)} when trying to load {withinAudioFile}, deleting file and retrying once")
+        os.remove(withinAudioFile)
+        withinAudioFile = extractAudio(within_file)
+        y_within, sr_within = librosa.load(
+            withinAudioFile,
+            sr=None,
+            offset=start + (initialOffset if initialOffset > 0 else 0),
+            duration=duration,
+        )
     logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     startTime = time.time()
-    y_find, _ = librosa.load(
-        findAudioFile,
-        sr=sr_within,
-        offset=start - (initialOffset if initialOffset < 0 else 0),
-        # duration=window if window is not None else duration,
-        duration=duration
-    )
+    try:
+        y_find, _ = librosa.load(
+            findAudioFile,
+            sr=sr_within,
+            offset=start - (initialOffset if initialOffset < 0 else 0),
+            # duration=window if window is not None else duration,
+            duration=duration
+        )
+    except Exception as ex:
+        logger.warning(f"Got {repr(ex)} when trying to load {findAudioFile}, deleting file and retrying once")
+        os.remove(findAudioFile)
+        findAudioFile = extractAudio(find_file)
+        y_find, _ = librosa.load(
+            findAudioFile,
+            sr=sr_within,
+            offset=start - (initialOffset if initialOffset < 0 else 0),
+            # duration=window if window is not None else duration,
+            duration=duration
+        )
     logger.detail(f"Second audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     startTime = time.time()
     withinLength = y_within.shape[0] / sr_within
     findLength = y_find.shape[0] / sr_within
     overlapLength = min(withinLength, findLength)
     offsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
-    threshold = max(100, 5 * microWindowSize) #500
+    threshold = max(150, 5 * microWindowSize) #500
     #allOffsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
     allOffsetsFound: List[tuple] = []
     for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
@@ -209,7 +233,7 @@ def findAudioOffsets(within_file: str,
             offsetStr = str(round(foundOffset / bucketSize) * bucketSize)
             offsetEntry = (foundOffset, c[peak], microWindowStart/sr_within)
             if c[peak] >= threshold:
-                logger.debug(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
+                logger.trace(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
                 if offsetStr in offsetsFound.keys():
                     offsetsFound[offsetStr].append(offsetEntry)
                 else:
@@ -235,7 +259,7 @@ def findAudioOffsets(within_file: str,
         for offset in range(1, bucketSpillover+1):
             upOneKey = str(keyInt+(bucketSize*offset))
             downOneKey = str(keyInt-(bucketSize*offset))
-            logger.debug(f"{key}, {upOneKey}, {downOneKey}")
+            logger.trace(f"{key}, {upOneKey}, {downOneKey}")
             if upOneKey in offsetsFound.keys():
                 spilledOffsets[key].extend(offsetsFound[upOneKey])
             if downOneKey in offsetsFound.keys():
@@ -279,6 +303,7 @@ def findPopularAudioOffsets(
         popularOffsets[key] = allOffsets[key]
     return popularOffsets
 
+__CUTOFF_OFFSET = 45
 
 def findAverageAudioOffset(
     within_file: str,
@@ -333,6 +358,9 @@ def findAverageAudioOffset(
                     raise NotImplementedError
                     assert len(popularOffsets) == 2 or len(allOffsets[popularOffsets[2]]) < len(allOffsets[mostPopularOffset])
                     return None
+            totalPopOffsetCount = sum((len(allOffsets[x]) for x in popularOffsets))
+            if len(allOffsets[mostPopularOffset]) < totalPopOffsetCount * 0.4:
+                return None
         #assert len(popularOffsets) <= 1 or len(allOffsets[popularOffsets[1]]) != len(allOffsets[mostPopularOffset])
     elif len(reoccurringOffsets) == 0:
         return None
@@ -342,7 +370,10 @@ def findAverageAudioOffset(
     chosenOffset = allOffsets[mostPopularOffset]
     logger.detail(f"{mostPopularOffset}, {chosenOffset}")
     weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
-    assert abs(weightedAverageOffset) < 120, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    assert abs(weightedAverageOffset) <= __CUTOFF_OFFSET, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    if abs(weightedAverageOffset) > __CUTOFF_OFFSET:
+        logger.error(f"Average offset {weightedAverageOffset} outside of normal range!\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}")
+        return None
     logger.info(weightedAverageOffset)
     return weightedAverageOffset
     #return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])

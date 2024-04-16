@@ -2,9 +2,11 @@ import urwid
 
 from . import BufferedText, SubMenu, InfoChoice, HorizontalBoxes, ActionChoice
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
+
+COPY_FILES = getConfig('main.copyFiles')
+ENABLE_URWID = getConfig('internal.ENABLE_URWID')
+
 from RenderWorker import endRendersAndExit, renderThread, renderThreadStarted, startRenderThread
 if COPY_FILES:
     from CopyWorker import copyThread

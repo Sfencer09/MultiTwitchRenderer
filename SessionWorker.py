@@ -1,26 +1,26 @@
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import os
-import time as ttime #avoid name conflict with import in config file
+import time
 
 from SharedUtils import convertToDatetime, getVideoOutputPath
 
-if __debug__:
-    from config import *
-exec(open("config.py").read(), globals())
+from MTRConfig import getConfig
 import scanned
 
 from SourceFile import initialize, saveFiledata, scanFiles
 from RenderTask import DEFAULT_PRIORITY, RenderTask, setRenderStatus, getRenderStatus
 from RenderConfig import RenderConfig
 from RenderWorker import renderQueue
-if COPY_FILES:
+if getConfig('main.copyFiles'):
     from CopyWorker import copyQueue
 
 from MTRLogging import getLogger
 logger = getLogger('SessionWorker')
 
 def scanForExistingVideos() -> None:
+    basepath = getConfig('main.basepath')
+    outputDirectory = getConfig('main.outputDirectory')
     for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
         fullpath = os.path.join(basepath, outputDirectory, "S1")
         nameparts = file.split(' - ')
@@ -48,7 +48,7 @@ def getAllStreamingDaysByStreamer():
             fileStartTimestamp = file.startTimestamp
             for chapter in chapters:
                 startTime = datetime.fromtimestamp(
-                    fileStartTimestamp+chapter['start_time'], LOCAL_TIMEZONE)
+                    fileStartTimestamp+chapter['start_time'], getConfig('main.localTimezone'))
                 startDate = datetime.strftime(startTime, "%Y-%m-%d")
                 days.add(startDate)
                 # endTime = datetime.fromtimestamp(fileStartTimestamp+chapter['end_time'], LOCAL_TIMEZONE)
@@ -59,9 +59,9 @@ def getAllStreamingDaysByStreamer():
     return daysByStreamer
 
 
-def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
-                  maxLookback: timedelta = DEFAULT_MAX_LOOKBACK,
-                  dataFilepath=DEFAULT_DATA_FILEPATH,
+def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
+                  maxLookback: timedelta = timedelta(days=getConfig('main.sessionLookbackDays')),
+                  dataFilepath=getConfig('main.dataFilepath'),
                   renderConfig=RenderConfig(),
                   sessionLog = None):
     #sessionLog = sessionText.addLine
@@ -76,6 +76,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
     scanForExistingVideos()
     changeCount = 0
     prevChangeCount = 0
+    COPY_FILES = getConfig('main.copyFiles')
     while True:
         oldFileCount = len(scanned.allFilesByVideoId)
         scanFiles(renderConfig.logLevel > 0)
@@ -97,7 +98,7 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
             if sessionLog is not None:
                 sessionLog(
                     f'Time since last download= {str(timeSinceLastDownload)}')
-        if __debug__ or timeSinceLastDownload > minimumSessionWorkerDelay:
+        if __debug__ or timeSinceLastDownload > timedelta(hours=getConfig('main.minimumSessionWorkerDelayHours')):
             streamingDays = getAllStreamingDaysByStreamer()
             for streamer in monitorStreamers:
                 # already sorted with the newest first
@@ -158,4 +159,4 @@ def sessionWorker(monitorStreamers=DEFAULT_MONITOR_STREAMERS,
         prevChangeCount = changeCount
         if __debug__:
             break
-        ttime.sleep(60*60)  # *24)
+        time.sleep(60*60)  # *24)
