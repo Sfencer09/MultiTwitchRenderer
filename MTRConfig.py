@@ -31,6 +31,21 @@ configFilePath = args.configFilePath
 
 trueStrings = ('t', 'y', 'true', 'yes')
 
+hardwareAccelDeviceSchema = {
+    'mask': (lambda x: x & (HW_DECODE | HW_ENCODE | HW_INPUT_SCALE | HW_OUTPUT_SCALE) == x),
+    Optional('priority', default=0): int,
+    Optional('maxDecodeStreams', default=0): And(int, lambda x: x >= 0)
+}
+
+def _isDevicePath(path: str):
+    if os.path.isdir(path) or os.path.isfile(path):
+        return False # Device paths are not considered files, and we can't use directories
+    try:
+        os.stat(path)
+    except OSError:
+        return False
+    return True
+
 #Unlike the one in RenderConfig, this one only validates the fields, it does not perform complex conversions
 renderConfigSchema = {
     Optional('drawLabels', default=True): #defaultRenderConfig['drawLabels']):
@@ -61,8 +76,14 @@ renderConfigSchema = {
     Optional('encodingSpeedPreset', default='medium'): #defaultRenderConfig['encodingSpeedPreset']):
     lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
                     'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    Optional('useHardwareAcceleration', default=0): #defaultRenderConfig['useHardwareAcceleration']):
-    And(Use(int), lambda x: x & 15 == x),
+    #Optional('useHardwareAcceleration', default=0): #defaultRenderConfig['useHardwareAcceleration']):
+    #And(Use(int), lambda x: x & 15 == x),
+    Optional('hardwareAccelDevices', default={}):
+        Or({},
+           hardwareAccelDeviceSchema, 
+           {Or(And(Use(int), lambda x: x>=0),
+               And(str, _isDevicePath)):
+                   hardwareAccelDeviceSchema}),
     # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
     Optional('maxHwaccelFiles', default=0): #defaultRenderConfig['maxHwaccelFiles']):
     And(Use(int), lambda x: x >= 0),

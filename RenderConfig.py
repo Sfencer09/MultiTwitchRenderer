@@ -11,7 +11,7 @@ from schema import Schema, Or, And, Optional, Use
 from MTRLogging import getLogger
 logger = getLogger('RenderConfig')
 
-from MTRConfig import trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, validateHwaccelFunctions, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES
+from MTRConfig import trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema
 
 defaultRenderConfig = getConfig('main.defaultRenderConfig')
 
@@ -330,11 +330,13 @@ renderConfigSchema = Schema({
     Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']):
         lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
                     'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    Optional('hardwareAccelOptions', default=defaultRenderConfig['hardwareAccelOptions']):
+    Optional('hardwareAccelDevices', default=defaultRenderConfig['hardwareAccelDevices']):
     #And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
-    And(Or(None, {}, {str:{'mask': lambda x: x & (HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE) == x,
-                           Optional('maxDecodeStrings'): lambda x: int(x) >= 0,
-                           Optional('priority'): int}}),
+    And(Or({},
+           hardwareAccelDeviceSchema, 
+           {Or(And(Use(int), lambda x: x>=0, Use(str)),
+               And(str, _isDevicePath)):
+                   hardwareAccelDeviceSchema}),
         Use(buildHardwareAccelList)),
     # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
     #Optional('maxHwaccelFiles', default=defaultRenderConfig['maxHwaccelFiles']):
