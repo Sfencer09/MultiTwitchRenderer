@@ -11,7 +11,7 @@ from schema import Schema, Or, And, Optional, Use
 from MTRLogging import getLogger
 logger = getLogger('RenderConfig')
 
-from MTRConfig import trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema
+from MTRConfig import isDevicePath, testHardwareFunctions, getHardwareAccelerationDevicesV2, trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema
 
 defaultRenderConfig = getConfig('main.defaultRenderConfig')
 
@@ -235,19 +235,17 @@ hardwareOutputCodecs = set()
 for device, info in HW_ACCEL_DEVICES.items():
     brand, device = info
     if function & HW_ENCODE:
-        codecs = HWACCEL_VALUES[brand]['encode_codecs']
+        codecs = HWACCEL_VALUES[brand].encode_codecs
         hardwareOutputCodecs.update(codecs)
-        acceptedOutputCodecs.update(codecs)
 
-def _isDevicePath(path: str):
-    if os.path.isdir(path) or os.path.isfile(path):
-        return False # Device paths are not considered files, and we can't use directories
-    try:
-        os.stat(path)
-    except OSError:
-        return False
-    return True
-    
+class VideoAccelDevice:
+    def __init__(self, devicePath:str, brand:str, functions:int, priority:int, maxDecodeDevices:int):
+        self.devicePath = devicePath
+        self.brand = brand
+        self.functions = functions
+        self.priority = priority
+        self.maxDecodeDevices = maxDecodeDevices
+        
 def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]:
     """Returns a sorted list of devices that can be used for hardware acceleration,
         sorted by priority and capabilities.
