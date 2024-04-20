@@ -62,9 +62,10 @@ outputCodec = "libx264"
 # FFMpeg encoding preset to use with output codec
 encodingSpeedPreset = "medium"
 # Whether to use hardware acceleration, to be changed soon
-useHardwareAcceleration = 0
+#useHardwareAcceleration = 0
+
 # Max number of simultaneous files to decode on GPU, to be removed soon
-maxHwaccelFiles = 0
+#maxHwaccelFiles = 0
 # Streamers that appear in the video for fewer than this many seconds will be removed
 minimumTimeInVideo = 900
 # Deprecated as "chunked" is the only option still implemented
@@ -77,6 +78,10 @@ useChat = true
 #    on end-to-end latency than total throughput, with the current implementation
 preciseAlign = false
 
+[main.defaultRenderConfig.hardwareAccelDevices]
+# Example config values:
+#"0" = {mask = 15, maxDecodeFiles = 0, priority = 0}
+#"/dev/dri/renderD128" = {mask = 9, maxDecodeFiles = 10, priority = 5}
 
 [gameAliases]
 # Keys are the primary names to replace with, values are lists of game titles to replace
