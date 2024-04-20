@@ -325,11 +325,14 @@ renderConfigSchema = Schema({
     # Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
     Optional('minGapSize', default=defaultRenderConfig['minGapSize']):
         And(Use(int), lambda x: x >= 0),
-    Optional('outputCodec', default=defaultRenderConfig['outputCodec']):
-        isAcceptedOutputCodec,
-    Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']):
-        lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
-                    'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
+    Optional('outputCodec', default=defaultRenderConfig['outputCodec']): #needs additional validation in constructor
+        lambda x: any((x in brandInfo['encode_codec_options'].keys()
+                      for brandInfo in HWACCEL_VALUES.values())),
+    Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']): #needs additional validation in constructor
+        #lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
+        #            'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
+        lambda x: any((any((x in codecOptions['validPresets'] for codecOptions in brandInfo['encode_codec_options']))
+                      for brandInfo in HWACCEL_VALUES.values())),
     Optional('hardwareAccelDevices', default=defaultRenderConfig['hardwareAccelDevices']):
     #And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
     And(Or({},

@@ -212,35 +212,126 @@ configSchema = Schema({
         {str: [str]},
 })
 
+__softwareEncodingPresets = ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow')
+__nvidiaEncodingPresets = tuple((f"p{n}" for n in range(1, 8)))
+__qsvEncodingPresets = ('veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow')
+# See AMD/Mesa section at https://trac.ffmpeg.org/wiki/Hardware/VAAPI#AMDMesa
+__amdEncodingPresets = tuple((str(i) for i in range(1, 8)))
+__h264DefaultOptions = ("-profile:v", "high",
+                        # "-maxrate",outputBitrates[maxTileWidth],
+                        # "-bufsize","4M",
+                        "-preset", "{preset}",
+                        "-crf", "22",
+                        )
+__h264DefaultReducedMemoryOptions = tuple(list(__h264DefaultOptions) + ['-rc-lookahead', '20', '-g', '60'])
+__h265DefaultOptions = ("-preset", "{preset}",
+                        "-crf", "26",
+                        "-tag:v", "hvc1"
+                        )
+__h265DefaultReducedMemoryOptions = __h265DefaultOptions
+
 
 HWACCEL_VALUES = {
     'NVIDIA': {
-        # 'support_mask': HW_DECODE|HW_INPUT_SCALE|HW_OUTPUT_SCALE|HW_ENCODE,
         'scale_filter': '_npp',
         'pad_filter': '_opencl',
+        'xstack_filter': None,
         'upload_filter': '_cuda',
         'decode_input_options': ('-threads', '1', '-c:v', 'h264_cuvid'),
         'scale_input_options': ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
-        'encode_codecs': ('h264_nvenc', 'hevc_nvenc'),
+        #'encode_codecs': ('h264_nvenc', 'hevc_nvenc'), # to be deprecated
+        'encode_codec_options': {
+            'h264_nvenc': {
+                'validPresets': __nvidiaEncodingPresets,
+                'defaultSettings': __h264DefaultOptions,
+                'reducedMemorySettings': __h264DefaultReducedMemoryOptions,
+            },
+            'hevc_nvenc': {
+                'validPresets': __nvidiaEncodingPresets,
+                'defaultSettings': __h264DefaultOptions,
+                'reducedMemorySettings': __h264DefaultReducedMemoryOptions,
+            }
+        }
     },
     'AMD': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
         'scale_filter': '',
         'pad_filter': '',
+        'xstack_filter': None,
         'upload_filter': '',
         # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
         'decode_input_options': ('-hwaccel', 'd3d11va'),
         'scale_input_options': None,
-        'encode_codecs': ('h264_amf', 'hevc_amf'),
+        #'encode_codecs': ('h264_amf', 'hevc_amf'), # to be deprecated
+        'encode_codec_options': {
+            'h264_amf': {
+                'validPresets': __amdEncodingPresets,
+                'defaultSettings': ("-profile:v", "high",
+                        # "-maxrate",outputBitrates[maxTileWidth],
+                        # "-bufsize","4M",
+                        "-compression_level", "{preset}",
+                        "-crf", "22",
+                        ),
+                'reducedMemorySettings': ("-profile:v", "high",
+                        # "-maxrate",outputBitrates[maxTileWidth],
+                        # "-bufsize","4M",
+                        "-compression_level", "{preset}",
+                        "-crf", "22",
+                        '-rc-lookahead', '20',
+                        '-g', '60',
+                        ),
+            },
+            'hevc_amf': {
+                'validPresets': __amdEncodingPresets,
+                'defaultSettings': ("-compression_level", "{preset}",
+                        "-crf", "26",
+                        "-tag:v", "hvc1"
+                        ),
+                'reducedMemorySettings': ("-compression_level", "{preset}",
+                        "-crf", "26",
+                        "-tag:v", "hvc1"
+                        ),
+            }
+        }
     },
     'Intel': {
-        # 'support_mask': HW_DECODE|HW_ENCODE,
-        'scale_filter': '',
-        'pad_filter': '',
-        'upload_filter': '',
+        'scale_filter': '_qsv',
+        'pad_filter': '_qsv',
+        'xstack_filter': '_qsv', # Not implemented yet
+        'upload_filter': '=extra_hw_frames=64,format=qsv',
         'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
         'scale_input_options': None,
-        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+        #'encode_codecs': ('h264_qsv', 'hevc_qsv'), # to be deprecated
+        'encode_codec_options': {
+            'h264_qsv': {
+                'validPresets': __qsvEncodingPresets,
+                'defaultSettings': ("-profile:v", "high",
+                        # "-maxrate",outputBitrates[maxTileWidth],
+                        # "-bufsize","4M",
+                        "-preset", "{preset}",
+                        "-q", "22",
+                        ),
+                'reducedMemorySettings': ("-profile:v", "high",
+                        # "-maxrate",outputBitrates[maxTileWidth],
+                        # "-bufsize","4M",
+                        "-preset", "{preset}",
+                        "-q", "22",
+                        ),
+            },
+            'hevc_qsv': {
+                'validPresets': __qsvEncodingPresets,
+                'defaultSettings': __h265DefaultOptions,
+                'reducedMemorySettings': __h265DefaultReducedMemoryOptions,
+            },
+            'av1_qsv':{
+                'validPresets': __qsvEncodingPresets,
+                'defaultSettings': ("-preset", "{preset}",
+                                    "-profile", "main",
+                                    "-crf", "30"),
+                'reducedMemorySettings': ("-preset", "{preset}",
+                                        "-profile", "main",
+                                        "-crf", "30"),
+            }
+        }
     },
     None: {
         'scale_filter': '',
@@ -248,12 +339,32 @@ HWACCEL_VALUES = {
         'upload_filter': '',
         'decode_input_options': ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
         'scale_input_options': None,
-        'encode_codecs': ('h264_qsv', 'hevc_qsv'),
+        #'encode_codecs': ('libx264', 'libx265'),#'libsvtav1'),  # to be deprecated
+        'encode_codec_options': {
+            'libx264': {
+                'validPresets': __softwareEncodingPresets,
+                'defaultSettings': __h264DefaultOptions,
+                'reducedMemorySettings':__h264DefaultReducedMemoryOptions,
+            },
+            'libx265': {
+                'validPresets': __softwareEncodingPresets,
+                'defaultSettings': __h265DefaultOptions,
+                'reducedMemorySettings':__h265DefaultReducedMemoryOptions,
+            },
+            'libsvtav1': {
+                'validPresets': [str(i) for i in range(9)],
+                'defaultPresets': ("-preset", "{preset}",
+                                   "-crf", "30"),
+                'reducedMemorySettings':  ("-preset", "{preset}",
+                                           "-crf", "30")
+            }
+        }
     }
 }
 HWACCEL_BRAND = None
 HWACCEL_FUNCTIONS = 0
 ACTIVE_HWACCEL_VALUES = None
+
 def getHasHardwareAceleration(ffmpegPath:str=""):
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
     process1 = subprocess.run(
