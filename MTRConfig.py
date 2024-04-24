@@ -1,8 +1,8 @@
 import os
 import re
-import argparse
 import subprocess
 import tomllib
+import MTRArgParse
 import MTRLogging
 from datetime import time as datetimetime
 
@@ -15,18 +15,8 @@ HW_INPUT_SCALE = 2
 HW_OUTPUT_SCALE = 4
 HW_ENCODE = 8
 
-def configFileType(val):
-    with open(val, 'rb') as file:
-        tomllib.load(file)
-        return val
+args = MTRArgParse.getArgs()
 
-argParser = argparse.ArgumentParser()
-argParser.add_argument('--config-file',
-                       help='Path to TOML config file',
-                       dest='configFilePath',
-                       type=configFileType,
-                       default='./config.toml')
-args, _ = argParser.parse_known_args()
 configFilePath = args.configFilePath
 
 trueStrings = ('t', 'y', 'true', 'yes')
