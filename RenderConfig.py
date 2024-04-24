@@ -266,7 +266,7 @@ renderConfigSchema = Schema({
     And(Or({},
            hardwareAccelDeviceSchema, 
            {Or(And(Use(int), lambda x: x>=0, Use(str)),
-               And(str, _isDevicePath)):
+               And(str, isDevicePath)):
                    hardwareAccelDeviceSchema}),
         Use(buildHardwareAccelList)),
     # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
@@ -302,7 +302,7 @@ class RenderConfig:
     minGapSize: int
     outputCodec: str
     encodingSpeedPreset: str
-    hardwareAccelerationDevices: List[Dict[str, str|int]]
+    hardwareAccelDevices: List[Dict[str, str|int]]
     #maxHwaccelFiles: int
     minimumTimeInVideo: int
     cutMode: str
@@ -313,7 +313,9 @@ class RenderConfig:
 
     def __init__(self, **kwargs):
         values:dict = renderConfigSchema.validate(kwargs)
-        if isHardwareOutputCodec(values['outputCodec']):
+        for key, value in values.items():
+            setattr(self, key, value)
+        """ if isHardwareOutputCodec(values['outputCodec']):
             if values['useHardwareAcceleration'] & HW_ENCODE == 0:
                 raise Exception(
                     f"Must enable hardware encoding bit in useHardwareAcceleration if using hardware-accelerated output codec {values['outputCodec']}")
@@ -328,9 +330,55 @@ class RenderConfig:
         if values['useHardwareAcceleration'] & HW_ENCODE != 0:
             if not isHardwareOutputCodec(values['outputCodec']):# not in hardwareOutputCodecs:
                 raise Exception(
-                    f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled")
-        for key, value in values.items():
-            setattr(self, key, value)
+                    f"Must specify hardware-accelerated output codec if hardware encoding bit in useHardwareAcceleration is enabled") """
+                    
+        # need to finish validating output codec and encoding preset, all we know
+        #       is that both are sane values, just not necessarily available given
+        #       current hardware or matching each other
+        
+        encodeDevices:List[dict] = self.getEncodeDevices()
+        #encodeDeviceBrand = None if encodeDevice is None else encodeDevice['brand']
+#        availableCodecs = set(list(HWACCEL_VALUES[encodeDeviceBrand].encode_codecs) +
+#                              list(HWACCEL_VALUES[None].encode_codecs))
+        availableHwBrands = set((device['brand'] for device in encodeDevices))
+        availableHardwareCodecOptions = reduce(dict.__or__, (HWACCEL_VALUES[brand].encode_codec_options for brand in availableHwBrands))
+        #availableCodecOptions = HWACCEL_VALUES[encodeDeviceBrand]encode_codec_options | HWACCEL_VALUES[None].encode_codec_options
+        availableCodecOptions = availableHardwareCodecOptions | HWACCEL_VALUES[None].encode_codec_options
+        availableCodecs = availableCodecOptions.keys()
+        if self.outputCodec not in availableCodecs:
+            raise ValueError(f"Output codec '{self.outputCodec}' is not currently available. If hardware based, check config file and drivers")
+        outputCodecHwBrand = None
+        for brand in availableHwBrands:
+            if self.outputCodec in HWACCEL_VALUES[brand].encode_codec_options.keys():
+                outputCodecHwBrand = brand
+                break
+        availablePresets = HWACCEL_VALUES[outputCodecHwBrand].encode_codec_options[self.outputCodec].validPresets
+        if self.encodingSpeedPreset not in availablePresets:
+            raise ValueError(f"Encoding preset {self.encodingSpeedPreset} does not match encoding codec {self.outputCodec}")
+        
+
+    
+    def getEncodeDeviceForCodec(self, codec:str) -> None|Dict[str:str|int]:
+        for device in self.hardwareAccelDevices:
+            if device['functions'] & HW_ENCODE != 0:
+                brand = device['brand']
+                if codec in HWACCEL_VALUES[brand].encode_codec_options.keys():
+                    return device
+        return None
+    
+    def getEncodeDevices(self) -> List[Dict[str:str|int]]:
+        encodeDevices = []
+        for device in self.hardwareAccelDevices:
+            if device['functions'] & HW_ENCODE != 0:
+                encodeDevices.append(device)
+        return encodeDevices
+    
+    def getDecodeDevices(self) -> List[Dict[str:str|int]]:
+        decodeDevices = []
+        for device in self.hardwareAccelDevices:
+            if device['functions'] & HW_DECODE != 0:
+                decodeDevices.append(device)
+        return decodeDevices
 
     def copy(self):
         return RenderConfig(**self.__dict__)
