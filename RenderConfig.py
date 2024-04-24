@@ -351,7 +351,7 @@ class RenderConfig:
 #        availableCodecs = set(list(HWACCEL_VALUES[encodeDeviceBrand].encode_codecs) +
 #                              list(HWACCEL_VALUES[None].encode_codecs))
         availableHwBrands = set((device['brand'] for device in encodeDevices))
-        availableHardwareCodecOptions = reduce(dict.__or__, (HWACCEL_VALUES[brand].encode_codec_options for brand in availableHwBrands))
+        availableHardwareCodecOptions = reduce(dict.__or__, (HWACCEL_VALUES[brand].encode_codec_options for brand in availableHwBrands), {})
         #availableCodecOptions = HWACCEL_VALUES[encodeDeviceBrand]encode_codec_options | HWACCEL_VALUES[None].encode_codec_options
         availableCodecOptions = availableHardwareCodecOptions | HWACCEL_VALUES[None].encode_codec_options
         availableCodecs = availableCodecOptions.keys()
@@ -368,7 +368,7 @@ class RenderConfig:
         
 
     
-    def getEncodeDeviceForCodec(self, codec:str) -> None|Dict[str:str|int]:
+    def getEncodeDeviceForCodec(self, codec:str) -> None|Dict[str, str|int]:
         for device in self.hardwareAccelDevices:
             if device['functions'] & HW_ENCODE != 0:
                 brand = device['brand']
@@ -376,14 +376,14 @@ class RenderConfig:
                     return device
         return None
     
-    def getEncodeDevices(self) -> List[Dict[str:str|int]]:
+    def getEncodeDevices(self) -> List[Dict[str, str|int]]:
         encodeDevices = []
         for device in self.hardwareAccelDevices:
             if device['functions'] & HW_ENCODE != 0:
                 encodeDevices.append(device)
         return encodeDevices
     
-    def getDecodeDevices(self) -> List[Dict[str:str|int]]:
+    def getDecodeDevices(self) -> List[Dict[str, str|int]]:
         decodeDevices = []
         for device in self.hardwareAccelDevices:
             if device['functions'] & HW_DECODE != 0:

@@ -18,7 +18,7 @@ print = partial(print, flush=True)
 #print(sys.executable)
 sys.path.append(os.path.dirname(sys.executable))
 
-from MTRConfig import getConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE, getActiveHwAccelValues
+from MTRConfig import getConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
 
 import scanned
 
@@ -1151,19 +1151,19 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     
-                    hwDevice = getHwDecodeInfoForFile(rowInputFileCount)
+                    hwDecodeDevice = getHwDecodeInfoForFile(rowInputFileCount)
                     useHwFilterAccel = False
                     useHwDecodeAccel = False
                     hwBrand = None
-                    if hwDevice is not None:
-                        hwBrand = hwDevice['brand']
-                        hwDevicePath = hwDevice['devicePath']
+                    if hwDecodeDevice is not None:
+                        hwBrand = hwDecodeDevice['brand']
+                        hwDevicePath = hwDecodeDevice['devicePath']
                         if len(hwAccelDevices) > 1:
                             rowInputOptions.extend([option % {'DEVICE_PATH':hwDevicePath} for option in HWACCEL_VALUES[brand].decode_multigpu_input_options])
                         else:
                             rowInputOptions.extend(HWACCEL_VALUES[hwBrand].decode_input_options)
                         useHwDecodeAccel = True
-                        if hwDevice['mask'] & HW_INPUT_SCALE != 0 and needToScale:
+                        if hwDecodeDevice['mask'] & HW_INPUT_SCALE != 0 and needToScale:
                             rowInputOptions.extend(HWACCEL_VALUES[hwBrand].scale_input_options)
                             useHwFilterAccel = True
                     # else:
@@ -1183,7 +1183,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     # else:
                     #    scaleAlgo = ''
                     scaleAlgo = getScaleAlgorithm(
-                        height, tileHeight, useHwFilterAccel)
+                        height, tileHeight, hwBrand)
                     decodeUploadFilter = "hwupload"
                     if useHwFilterAccel:
                         scaleSuffix = HWACCEL_VALUES[hwBrand].scale_filter

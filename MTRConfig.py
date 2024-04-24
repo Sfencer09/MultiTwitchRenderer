@@ -111,16 +111,18 @@ class HwAccelBrandValues:
                  xstack_filter:str,
                  upload_filter:str,
                  decode_input_options:Tuple[str],
-                 scale_input_options:Tuple[str],
+                 device_initialization_options:None|Tuple[str],
                  decode_multigpu_input_options:Tuple[str],
                  upscale_filter_options:str,
                  downscale_filter_options:str,
+                 scale_input_options:Tuple[str],
                  encode_codec_options:Dict[str, HwAccelCodecValues]):
         self.scale_filter = scale_filter
         self.pad_filter = pad_filter
         self.xstack_filter = xstack_filter
         self.upload_filter = upload_filter
         self.decode_input_options = decode_input_options
+        self.device_initialization_options = device_initialization_options
         self.decode_multigpu_input_options = decode_multigpu_input_options
         self.upscale_filter_options = upscale_filter_options
         self.downscale_filter_options = downscale_filter_options
@@ -274,7 +276,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
             ),
             'libsvtav1': HwAccelCodecValues(
                 validPresets= tuple((str(i) for i in range(9))),
-                defaultPresets= ("-preset", "%(preset)s",
+                defaultSettings= ("-preset", "%(preset)s",
                                    "-crf", "30"),
                 reducedMemorySettings=  ("-preset", "%(preset)s",
                                            "-crf", "30")
