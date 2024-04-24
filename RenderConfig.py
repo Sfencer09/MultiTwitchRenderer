@@ -1,3 +1,4 @@
+from functools import reduce
 from io import BytesIO
 import json
 import sys
@@ -124,77 +125,6 @@ def getAllHardwareAccelerationFunctions() -> Dict[str, int]:
         pass
     # Intel
     return functionsSupported  """
-
-def _generateTestVideo() -> bytes:
-    fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
-    testVideoBuildCommand = [fullFfmpegPath, 
-                             "-hide_banner", "-nostats",
-                             "-f", "lavfi",
-                             "-i", "testsrc=size=1280x720",
-                             "-t", "1",
-                             "-pix_fmt", "yuv420p",
-                             "-f", "matroska",
-                             "pipe:"]
-    testVideoData = subprocess.check_output(testVideoBuildCommand,
-                                            stdin=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL,
-                                            text=False)
-    return testVideoData
-
-def _testHardwareFunctions(deviceName:str|int, testVideoData:None|bytes=None) -> tuple:
-    if testVideoData is None:
-        testVideoData = _generateTestVideo()
-    fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
-    commandStart = [fullFfmpegPath, '-hwaccel_device', str(deviceName)]
-    def _testCommand(command):
-        proc = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        proc.communicate(testVideoData)
-        return proc.wait() == 0
-    functionMask = 0
-    for hwbrand, values in HWACCEL_VALUES.items():
-        decodingTestCommand = commandStart + \
-                            list(values['decode_input_options']) + \
-                                ['-f', 'matroska', '-i', 'pipe:',
-                                '-f', 'null', '-']
-
-        if _testCommand(decodingTestCommand):
-            functionMask |= HW_DECODE
-            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
-        else:
-            continue # if there's no decode acceleration, there's probably just no video hardware for this brand
-        
-        scalingTestCommand = commandStart + list(values['decode_input_options']) + \
-            list(values['scale_input_options']) + ['-f', 'matroska', '-i', 'pipe:', \
-                'vf', f'scale{values["scale_filter"]}=-1:480:force_original_aspect_ratio=decrease:format=yuv420p:', '-f', 'null', '-']
-        if _testCommand(scalingTestCommand):
-            functionMask |= HW_INPUT_SCALE | HW_OUTPUT_SCALE
-            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
-        
-        encodingTestCommand = commandStart + ['-f', 'matroska', '-i', 'pipe:', '-c:v', values['encode_codecs'][0], '-f', 'null', '-']
-        if _testCommand(encodingTestCommand):
-            functionMask |= HW_ENCODE
-            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
-        
-        return (hwbrand, functionMask)
-    return None
-
-"""Got tired of trying to figure out ways of scanning the video hardware available,
-and figured the most accurate way to check for hardware acceleration features is 
-simply to try and use them and see if that succeeds. The trick is to do it without
-packing a test video, or in fact writing anything to disk."""
-def getHardwareAccelerationDevicesV2() -> Dict[str, Tuple[str, int]]:
-    testVideoData = _generateTestVideo()
-    deviceIndex = 0
-    hwDeviceFunctions:Dict[Tuple[str, int]] = {}
-    functionMask = ...
-    while functionMask is not None:
-        functionMask = _testHardwareFunctions(deviceName=deviceIndex, testVideoData=testVideoData)
-        if functionMask is not None:
-            hwDeviceFunctions[str(deviceIndex)] = functionMask
-        deviceIndex += 1
-    return hwDeviceFunctions
-
-HW_ACCEL_DEVICES = getHardwareAccelerationDevicesV2()
 
 """ 
 if HWACCEL_BRAND is not None:

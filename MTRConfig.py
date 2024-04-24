@@ -1,9 +1,11 @@
+from functools import reduce
 import os
 import re
 import argparse
 import subprocess
 import tomllib
-from typing import Dict, Tuple
+from types import MappingProxyType
+from typing import Dict, Iterable, Tuple
 import MTRLogging
 from datetime import time as datetimetime
 
@@ -38,7 +40,7 @@ hardwareAccelDeviceSchema = {
     Optional('maxDecodeStreams', default=0): And(int, lambda x: x >= 0)
 }
 
-def _isDevicePath(path: str):
+def isDevicePath(path: str):
     if os.path.isdir(path) or os.path.isfile(path):
         return False # Device paths are not considered files, and we can't use directories
     try:
@@ -46,6 +48,16 @@ def _isDevicePath(path: str):
     except OSError:
         return False
     return True
+
+def isWriteableDir(prospectiveDir):
+    return os.path.isdir(prospectiveDir) and os.access(prospectiveDir, os.W_OK)
+
+# def isCreateableDir(prospectiveDir):
+#     ...
+
+def isWriteableFile(prospectiveFile):
+    # if file exists, test if it's writeable. If it doesn't exist, test if the parent directory is writeable
+    return os.access(prospectiveFile, os.W_OK) if os.path.isfile(prospectiveFile) else os.access(os.path.dirname(prospectiveFile), os.W_OK)
 
 #Unlike the one in RenderConfig, this one only validates the fields, it does not perform complex conversions
 renderConfigSchema = {
@@ -83,7 +95,7 @@ renderConfigSchema = {
         Or({},
            hardwareAccelDeviceSchema, 
            {Or(And(Use(int), lambda x: x>=0),
-               And(str, _isDevicePath)):
+               And(str, isDevicePath)):
                    hardwareAccelDeviceSchema}),
     # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
     Optional('maxHwaccelFiles', default=0): #defaultRenderConfig['maxHwaccelFiles']):
@@ -97,17 +109,6 @@ renderConfigSchema = {
     Optional('preciseAlign', default=True): #defaultRenderConfig['preciseAlign']):
     Or(bool, Use(lambda x: x.lower() in trueStrings)),
 }
-
-
-def isWriteableDir(prospectiveDir):
-    return os.path.isdir(prospectiveDir) and os.access(prospectiveDir, os.W_OK)
-
-def isCreateableDir(prospectiveDir):
-    ...
-
-def isWriteableFile(prospectiveFile):
-    # if file exists, test if it's writeable. If it doesn't exist, test if the parent directory is writeable
-    return os.access(prospectiveFile, os.W_OK) if os.path.isfile(prospectiveFile) else os.access(os.path.dirname(prospectiveFile), os.W_OK)
 
 streamerNameRegex = r"[a-zA-Z0-9][a-zA-Z0-9_]{3,24}"
 
@@ -416,7 +417,93 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
 })
 HWACCEL_BRAND = None
 HWACCEL_FUNCTIONS = 0
-ACTIVE_HWACCEL_VALUES = None
+
+def generateTestVideo(ffmpegPath:str="") -> bytes:
+    #fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
+    fullFfmpegPath = ffmpegPath + "ffmpeg"
+    testVideoBuildCommand = [fullFfmpegPath, 
+                             "-hide_banner", "-nostats",
+                             "-f", "lavfi",
+                             "-i", "testsrc=size=1280x720",
+                             "-t", "1",
+                             "-pix_fmt", "yuv420p",
+                             "-f", "matroska",
+                             "pipe:"]
+    testVideoData = subprocess.check_output(testVideoBuildCommand,
+                                            stdin=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL,
+                                            text=False)
+    return testVideoData
+
+"""Got tired of trying to figure out ways of scanning the video hardware available,
+and figured the most accurate way to check for hardware acceleration features is 
+simply to try and use them and see if that succeeds. The trick is to do it without
+packing a test video, or in fact reading or writing anything to disk."""
+def testHardwareFunctions(ffmpegPath:str, deviceName:str|int, testVideoData:None|bytes=None) -> tuple:
+    if testVideoData is None:
+        testVideoData = generateTestVideo(ffmpegPath=ffmpegPath)
+    #fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
+    fullFfmpegPath = ffmpegPath + "ffmpeg"
+    commandStart = [fullFfmpegPath, '-hwaccel_device', str(deviceName)]
+    def _testCommand(command):
+        proc = subprocess.Popen(command,
+                                stdin=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL)
+        proc.communicate(testVideoData)
+        return proc.wait() == 0
+    functionMask = 0
+    for hwbrand, values in HWACCEL_VALUES.items():
+        if hwbrand is None:
+            continue # no need to check software functions, and codecs can simply be queried
+        decodingTestCommand = commandStart + \
+                            list(values['decode_input_options']) + \
+                                ['-f', 'matroska', '-i', 'pipe:',
+                                '-f', 'null', '-']
+
+        if _testCommand(decodingTestCommand):
+            functionMask |= HW_DECODE
+            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
+        else:
+            continue # if there's no decode acceleration, there's probably just no video hardware for this brand
+        
+        scalingTestCommand = commandStart + list(values['decode_input_options']) + \
+            list(values['scale_input_options']) + ['-f', 'matroska', '-i', 'pipe:', \
+                'vf', f'scale{values["scale_filter"]}=-1:480:force_original_aspect_ratio=decrease:format=yuv420p:', '-f', 'null', '-']
+        if _testCommand(scalingTestCommand):
+            functionMask |= HW_INPUT_SCALE | HW_OUTPUT_SCALE
+            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
+        
+        encodingTestCommand = commandStart + ['-f', 'matroska', '-i', 'pipe:', '-c:v', values['encode_codecs'][0], '-f', 'null', '-']
+        if _testCommand(encodingTestCommand):
+            functionMask |= HW_ENCODE
+            logger.detail(f"Found decode function from brand {hwbrand} on device {deviceName}")
+        
+        return (hwbrand, functionMask)
+    return None
+
+def getHardwareAccelerationDevicesV2(ffmpegPath: str, deviceNames:None|Iterable[str]=None) -> Dict[str, Tuple[str, int]]:
+    testVideoData = generateTestVideo(ffmpegPath=ffmpegPath)
+    deviceIndex = 0
+    hwDeviceFunctions:Dict[Tuple[str, int]] = {}
+    functionMask = ...
+    while functionMask is not None:
+        functionMask = testHardwareFunctions(ffmpegPath=ffmpegPath, 
+                                              deviceName=deviceIndex,
+                                              testVideoData=testVideoData)
+        if functionMask is not None:
+            hwDeviceFunctions[str(deviceIndex)] = functionMask
+        deviceIndex += 1
+    if deviceNames is not None:
+        for deviceName in deviceName:
+            functionMask = testHardwareFunctions(ffmpegPath=ffmpegPath, 
+                                              deviceName=deviceName,
+                                              testVideoData=testVideoData)
+            if functionMask is not None:
+                hwDeviceFunctions[deviceName] = functionMask
+    return hwDeviceFunctions
+
+#HW_ACCEL_DEVICES = getHardwareAccelerationDevicesV2("")
 
 def getHasHardwareAceleration(ffmpegPath:str=""):
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
