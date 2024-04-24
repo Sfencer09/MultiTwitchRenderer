@@ -25,7 +25,7 @@ from MultiTwitchRenderer import generateTilingCommandMultiSegment
 
 renderThread:threading.Thread = None
 activeRenderTask:RenderTask = None
-activeRenderTaskSubindex:int = None
+activeRenderTaskSubindex:int|None = None
 activeRenderSubprocess:subprocess.Popen = None
 
 renderQueue: queue.PriorityQueue[Tuple[int, RenderTask]] = queue.PriorityQueue()
@@ -208,6 +208,8 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                     renderLog(f"Removing intermediate file {file}")
                 assert getConfig('main.basepath') not in file
                 os.remove(file)
+        activeRenderTask = None
+        activeRenderTaskSubindex = None
         renderQueue.task_done()
         if __debug__:
             break
