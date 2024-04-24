@@ -24,7 +24,7 @@ import scanned
 
 from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
-from RenderConfig import HW_ACCEL_DEVICES, HWACCEL_VALUES, RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from RenderConfig import HWACCEL_VALUES, RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
 from SharedUtils import calcGameCounts, getVideoOutputPath
 from Session import Session
 
@@ -132,7 +132,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     minGapSize = renderConfig.minGapSize
     outputCodec = renderConfig.outputCodec
     encodingSpeedPreset = renderConfig.encodingSpeedPreset
-    hwAccelDevices = renderConfig.hardwareAccelerationDevices
+    hwAccelDevices = renderConfig.hardwareAccelDevices
     #maxHwaccelFiles = renderConfig.maxHwaccelFiles
     minimumTimeInVideo = renderConfig.minimumTimeInVideo
     cutMode = renderConfig.cutMode
@@ -147,7 +147,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     ffmpegPath = getConfig('main.ffmpegPath')
     basepath = getConfig('main.basepath')
     localBasepath = getConfig('main.localBasepath')
-    ACTIVE_HWACCEL_VALUES = getActiveHwAccelValues()
+    #ACTIVE_HWACCEL_VALUES = getActiveHwAccelValues()
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
     targetDateStartTime = datetime.combine(

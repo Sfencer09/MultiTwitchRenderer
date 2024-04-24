@@ -59,57 +59,6 @@ def isWriteableFile(prospectiveFile):
     # if file exists, test if it's writeable. If it doesn't exist, test if the parent directory is writeable
     return os.access(prospectiveFile, os.W_OK) if os.path.isfile(prospectiveFile) else os.access(os.path.dirname(prospectiveFile), os.W_OK)
 
-#Unlike the one in RenderConfig, this one only validates the fields, it does not perform complex conversions
-renderConfigSchema = {
-    Optional('drawLabels', default=True): #defaultRenderConfig['drawLabels']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
-    Optional('startTimeMode', default='mainSessionStart'): #defaultRenderConfig['startTimeMode']):
-    lambda x: x in ('mainSessionStart', 'allOverlapStart'),
-    Optional('endTimeMode', default='mainSessionEnd'): #defaultRenderConfig['endTimeMode']):
-    lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
-    Optional('logLevel', default=0): #defaultRenderConfig['logLevel']):
-    And(Use(int), lambda x: 0 <= x <= 4),  # max logLevel = 4
-    Optional('sessionTrimLookback', default=0): #defaultRenderConfig['sessionTrimLookback']):
-    # TODO: convert from number of segments to number of seconds. Same for lookahead
-    Use(int),
-    Optional('sessionTrimLookahead', default=0): #defaultRenderConfig['sessionTrimLookahead']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('sessionTrimLookbackSeconds', default=0): #defaultRenderConfig['sessionTrimLookbackSeconds']):
-    And(Use(int), lambda x: x >= 0),  # Not implemented yet
-    Optional('sessionTrimLookaheadSeconds', default=0): #defaultRenderConfig['sessionTrimLookaheadSeconds']):
-    And(Use(int), lambda x: x >= 0),
-    # Optional(Or(Optional('sessionTrimLookback', default=0),
-    # Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): And(int, lambda x: x>=-1),
-    # Optional(Or(Optional('sessionTrimLookahead', default=0),
-    # Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
-    Optional('minGapSize', default=0): #defaultRenderConfig['minGapSize']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('outputCodec', default='libx264'): #defaultRenderConfig['outputCodec']):
-    lambda x: x in acceptedOutputCodecs,
-    Optional('encodingSpeedPreset', default='medium'): #defaultRenderConfig['encodingSpeedPreset']):
-    lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
-                    'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-    #Optional('useHardwareAcceleration', default=0): #defaultRenderConfig['useHardwareAcceleration']):
-    #And(Use(int), lambda x: x & 15 == x),
-    Optional('hardwareAccelDevices', default={}):
-        Or({},
-           hardwareAccelDeviceSchema, 
-           {Or(And(Use(int), lambda x: x>=0),
-               And(str, isDevicePath)):
-                   hardwareAccelDeviceSchema}),
-    # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
-    Optional('maxHwaccelFiles', default=0): #defaultRenderConfig['maxHwaccelFiles']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('minimumTimeInVideo', default=0): #defaultRenderConfig['minimumTimeInVideo']):
-    And(Use(int), lambda x: x >= 0),
-    Optional('cutMode', default='chunked'): #defaultRenderConfig['cutMode']):
-    lambda x: x in ('chunked', ),  # 'trim', 'segment'),
-    Optional('useChat', default=True): #defaultRenderConfig['useChat']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
-    Optional('preciseAlign', default=True): #defaultRenderConfig['preciseAlign']):
-    Or(bool, Use(lambda x: x.lower() in trueStrings)),
-}
-
 streamerNameRegex = r"[a-zA-Z0-9][a-zA-Z0-9_]{3,24}"
 
 def isValidStreamerName(prospectiveName):
@@ -123,97 +72,15 @@ def convertTimezoneString(prospectiveTz):
     tempTime = datetimetime.fromisoformat(f'00:00:00{prospectiveTz}')
     return tempTime.tzinfo
 
-acceptedOutputCodecs = ['libx264', 'libx265']
-hardwareOutputCodecs = []
+def isKnownOutputCodec(codec:str):
+    return codec in knownOutputCodecs
 
-def isAcceptedOutputCodec(codec:str):
-    return codec in acceptedOutputCodecs
+def isKnownEncodingPreset(preset:str):
+    return preset in knownEncodingPresets
 
 def isHardwareOutputCodec(codec:str):
     return codec in hardwareOutputCodecs
 
-configSchema = Schema({
-    'main': {
-        'basepath': isWriteableDir,
-        'localBasepath': isWriteableDir,
-        Optional('outputDirectory', default='Rendered_Multiviews'):
-            And(str, lambda val: all((x not in val for x in ("\\/")))),
-        Optional('streamersParseChatList', default=[]):
-            [isValidStreamerName],
-        Optional('dataFilepath', default='./knownFiles.pickle'):
-            isWriteableFile,
-        Optional('nongroupGames', default=['Just Chatting', "I'm Only Sleeping"]):
-            [str],
-        Optional('ffmpegPath', default=''):
-            And(str, lambda x: x == '' or x[-1]=='/'),
-        'localTimezone':
-            And(str, Use(convertTimezoneString)),
-        #Optional('errorFilePath', default='./erroredCommands.log'):
-        #    str,
-        Optional('statusFilePath', default='./renderStatuses.pickle'):
-            str,
-        Optional('logFolder', default='./logs/'):
-            str,
-        Optional('copyFiles', default=False):
-            bool,
-        'minimumSessionWorkerDelayHours':
-            And(int, lambda x: x > 0),
-        'monitorStreamers':
-            [isValidStreamerName],
-        Optional('overwriteIntermediateFiles', default=True):
-            bool,
-        Optional('overwriteOutputFiles', default=False):
-            bool,
-        'sessionLookbackDays':
-            And(int, lambda x: x>=0),
-        'defaultRenderConfig': 
-            renderConfigSchema,
-    },
-    'internal': {
-        Optional('threadCount', default=0):
-            And(int, lambda x: x>=0),
-        Optional('videoExts', default= [ ".mp4", ".mkv" ]):
-            And([str], lambda x: len(x) >= 2 and all((ext.startswith('.') for ext in x))),
-        Optional('infoExt', default= '.info.json'):
-            And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')),
-        Optional('chatExt', default= '.rechat.twitch-gql-20221228.json'):
-            And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')
-        Optional('otherExts', default= ['.description', '.jpg']):
-            And([str], lambda x: all((len(ext) >= 2 and ext.startswith('.') for ext in x))),
-        # Regex of the video id within the filename. Should be exact enough to avoid false positives
-        Optional('videoIdRegex', default= "(v?[\\d]{9,11})"):
-            str,
-        Optional('characterReplacements', default = {'?':'？', '/':'⧸', '\\':'⧹', ':':'：', '<':'＜', '>':'＞'}):
-            And({str:str}, lambda x: all((len(key)==1 for key in x.keys()))),
-        Optional('reducedFfmpegMemory', default=False):
-            bool,
-        Optional('ENABLE_URWID', default=False):
-            And(bool, False),
-        Optional('outputResolutions', default=[[],
-                    [1920,1080],
-                    [3840,1080],
-                    [3840,2160],
-                    [3840,2160],
-                    [3840,2160],
-                    [3840,2160],
-                    [4480,2520]]):
-            Or([], [lambda x: len(x) == 0 or (len(x) == 2 and all((int(y)==y) for y in x))]),
-        Optional('outputBitrates', default=["",
-                                            "6M",
-                                            "12M",
-                                            "20M",
-                                            "25M",
-                                            "25M",
-                                            "30M",
-                                            "40M"]):
-            ["", Regex('[0-9]+(\\.[0-9]+)?[KMG]')]
-    },
-    Optional('gameAliases', default={}):
-        {str: [str]},
-    Optional('streamerAliases', default={}):
-        {str: [str]},
-})
- 
 __softwareEncodingPresets = ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow')
 __nvidiaEncodingPresets = tuple((f"p{n}" for n in range(1, 8)))
 __qsvEncodingPresets = ('veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow')
@@ -417,6 +284,144 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
 })
 HWACCEL_BRAND = None
 HWACCEL_FUNCTIONS = 0
+#ACTIVE_HWACCEL_VALUES = None
+
+knownOutputCodecs = reduce(set.union, (set(habv.encode_codec_options.keys()) for habv in HWACCEL_VALUES.values()), set())
+hardwareOutputCodecs = reduce(set.union, (set(HWACCEL_VALUES[brand].encode_codec_options.keys()) for brand in HWACCEL_VALUES.keys() if brand is not None), set())
+knownEncodingPresets = reduce(set.union, (reduce(set.union, (set(codecValues.validPresets)
+                              for codecValues in brandValues.encode_codec_options.values()), set()) for brandValues in HWACCEL_VALUES.values()), set())
+
+#Unlike the one in RenderConfig, this one only validates the fields, it does not perform complex conversions
+renderConfigSchema = {
+    Optional('drawLabels', default=True): #defaultRenderConfig['drawLabels']):
+    Or(bool, Use(lambda x: x.lower() in trueStrings)),
+    Optional('startTimeMode', default='mainSessionStart'): #defaultRenderConfig['startTimeMode']):
+    lambda x: x in ('mainSessionStart', 'allOverlapStart'),
+    Optional('endTimeMode', default='mainSessionEnd'): #defaultRenderConfig['endTimeMode']):
+    lambda x: x in ('mainSessionEnd', 'allOverlapEnd'),
+    Optional('logLevel', default=0): #defaultRenderConfig['logLevel']):
+    And(Use(int), lambda x: 0 <= x <= 4),  # max logLevel = 4
+    Optional('sessionTrimLookback', default=0): #defaultRenderConfig['sessionTrimLookback']):
+    # TODO: convert from number of segments to number of seconds. Same for lookahead
+    Use(int),
+    Optional('sessionTrimLookahead', default=0): #defaultRenderConfig['sessionTrimLookahead']):
+    And(Use(int), lambda x: x >= 0),
+    Optional('sessionTrimLookbackSeconds', default=0): #defaultRenderConfig['sessionTrimLookbackSeconds']):
+    And(Use(int), lambda x: x >= 0),  # Not implemented yet
+    Optional('sessionTrimLookaheadSeconds', default=0): #defaultRenderConfig['sessionTrimLookaheadSeconds']):
+    And(Use(int), lambda x: x >= 0),
+    # Optional(Or(Optional('sessionTrimLookback', default=0),
+    # Optional('sessionTrimLookbackSeconds', default=0), only_one=True), ''): And(int, lambda x: x>=-1),
+    # Optional(Or(Optional('sessionTrimLookahead', default=0),
+    # Optional('sessionTrimLookaheadSeconds', default=600), only_one=True): And(int, lambda x: x>=0),
+    Optional('minGapSize', default=0): #defaultRenderConfig['minGapSize']):
+    And(Use(int), lambda x: x >= 0),
+    Optional('outputCodec', default='libx264'): #defaultRenderConfig['outputCodec']):
+    isKnownOutputCodec,
+    Optional('encodingSpeedPreset', default='medium'): #defaultRenderConfig['encodingSpeedPreset']):
+    isKnownEncodingPreset,
+    #Optional('useHardwareAcceleration', default=0): #defaultRenderConfig['useHardwareAcceleration']):
+    #And(Use(int), lambda x: x & 15 == x),
+    Optional('hardwareAccelDevices', default={}):
+        Or({},
+           hardwareAccelDeviceSchema, 
+           {Or(And(Use(int), lambda x: x>=0),
+               And(str, isDevicePath)):
+                   hardwareAccelDeviceSchema}),
+    # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
+    Optional('maxHwaccelFiles', default=0): #defaultRenderConfig['maxHwaccelFiles']):
+    And(Use(int), lambda x: x >= 0),
+    Optional('minimumTimeInVideo', default=0): #defaultRenderConfig['minimumTimeInVideo']):
+    And(Use(int), lambda x: x >= 0),
+    Optional('cutMode', default='chunked'): #defaultRenderConfig['cutMode']):
+    lambda x: x in ('chunked', ),  # 'trim', 'segment'),
+    Optional('useChat', default=True): #defaultRenderConfig['useChat']):
+    Or(bool, Use(lambda x: x.lower() in trueStrings)),
+    Optional('preciseAlign', default=True): #defaultRenderConfig['preciseAlign']):
+    Or(bool, Use(lambda x: x.lower() in trueStrings)),
+}
+
+configSchema = Schema({
+    'main': {
+        'basepath': isWriteableDir,
+        'localBasepath': isWriteableDir,
+        Optional('outputDirectory', default='Rendered_Multiviews'):
+            And(str, lambda val: all((x not in val for x in ("\\/")))),
+        Optional('streamersParseChatList', default=[]):
+            [isValidStreamerName],
+        Optional('dataFilepath', default='./knownFiles.pickle'):
+            isWriteableFile,
+        Optional('nongroupGames', default=['Just Chatting', "I'm Only Sleeping"]):
+            [str],
+        Optional('ffmpegPath', default=''):
+            And(str, lambda x: x == '' or x[-1]=='/'),
+        'localTimezone':
+            And(str, Use(convertTimezoneString)),
+        #Optional('errorFilePath', default='./erroredCommands.log'):
+        #    str,
+        Optional('statusFilePath', default='./renderStatuses.pickle'):
+            str,
+        Optional('logFolder', default='./logs/'):
+            str,
+        Optional('copyFiles', default=False):
+            bool,
+        'minimumSessionWorkerDelayHours':
+            And(int, lambda x: x > 0),
+        'monitorStreamers':
+            [isValidStreamerName],
+        Optional('overwriteIntermediateFiles', default=True):
+            bool,
+        Optional('overwriteOutputFiles', default=False):
+            bool,
+        'sessionLookbackDays':
+            And(int, lambda x: x>=0),
+        'defaultRenderConfig': 
+            renderConfigSchema,
+    },
+    'internal': {
+        Optional('threadCount', default=0):
+            And(int, lambda x: x>=0),
+        Optional('videoExts', default= [ ".mp4", ".mkv" ]):
+            And([str], lambda x: len(x) >= 2 and all((ext.startswith('.') for ext in x))),
+        Optional('infoExt', default= '.info.json'):
+            And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')),
+        Optional('chatExt', default= '.rechat.twitch-gql-20221228.json'):
+            And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')
+        Optional('otherExts', default= ['.description', '.jpg']):
+            And([str], lambda x: all((len(ext) >= 2 and ext.startswith('.') for ext in x))),
+        # Regex of the video id within the filename. Should be exact enough to avoid false positives
+        Optional('videoIdRegex', default= "(v?[\\d]{9,11})"):
+            str,
+        Optional('characterReplacements', default = {'?':'？', '/':'⧸', '\\':'⧹', ':':'：', '<':'＜', '>':'＞'}):
+            And({str:str}, lambda x: all((len(key)==1 for key in x.keys()))),
+        Optional('reducedFfmpegMemory', default=False):
+            bool,
+        Optional('ENABLE_URWID', default=False):
+            And(bool, False),
+        Optional('outputResolutions', default=[[],
+                    [1920,1080],
+                    [3840,1080],
+                    [3840,2160],
+                    [3840,2160],
+                    [3840,2160],
+                    [3840,2160],
+                    [4480,2520]]):
+            Or([], [lambda x: len(x) == 0 or (len(x) == 2 and all((int(y)==y) for y in x))]),
+        Optional('outputBitrates', default=["",
+                                            "6M",
+                                            "12M",
+                                            "20M",
+                                            "25M",
+                                            "25M",
+                                            "30M",
+                                            "40M"]):
+            ["", Regex('[0-9]+(\\.[0-9]+)?[KMG]')]
+    },
+    Optional('gameAliases', default={}):
+        {str: [str]},
+    Optional('streamerAliases', default={}):
+        {str: [str]},
+})
 
 def generateTestVideo(ffmpegPath:str="") -> bytes:
     #fullFfmpegPath = getConfig("main.ffmpegPath") + "ffmpeg"
@@ -550,8 +555,8 @@ def getHasHardwareAceleration(ffmpegPath:str=""):
 def loadHardwareAcceleration(ffmpegPath:str=""):
     global HWACCEL_BRAND
     global HWACCEL_FUNCTIONS
-    global ACTIVE_HWACCEL_VALUES
-    global acceptedOutputCodecs
+    #global ACTIVE_HWACCEL_VALUES
+    global knownOutputCodecs
     global hardwareOutputCodecs
     HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
     if HWACCEL_BRAND is not None:
@@ -567,40 +572,44 @@ def loadHardwareAcceleration(ffmpegPath:str=""):
         logger.info('No hardware video decoding detected!')
 
     #if HWACCEL_BRAND is not None:
-    ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
+    #ACTIVE_HWACCEL_VALUES = HWACCEL_VALUES[HWACCEL_BRAND]
     #else:
     #    ACTIVE_HWACCEL_VALUES = None
 
 
-    if ACTIVE_HWACCEL_VALUES is not None:
-        hardwareOutputCodecs = ACTIVE_HWACCEL_VALUES['encode_codecs']
-        acceptedOutputCodecs.extend(hardwareOutputCodecs)
-    else:
-        hardwareOutputCodecs = []
+    # if ACTIVE_HWACCEL_VALUES is not None:
+    #     hardwareOutputCodecs = list(ACTIVE_HWACCEL_VALUES.encode_codec_options.keys())
+    #     acceptedOutputCodecs.extend(hardwareOutputCodecs)
+    # else:
+    #     hardwareOutputCodecs = []
 
 def validateHwaccelFunctions(functions:int):
     return functions & HWACCEL_FUNCTIONS == functions        
 
-def getActiveHwAccelValues():
-    return ACTIVE_HWACCEL_VALUES
+# def getActiveHwAccelValues():
+#     return ACTIVE_HWACCEL_VALUES
 
-loadHardwareAcceleration()
+#loadHardwareAcceleration()
 
 loadedConfig:dict|None = None
 
 def loadConfigFile(path:str):
     global loadedConfig
+    #global HW_ACCEL_DEVICES
     if loadedConfig is not None:
         raise Exception("Configuration already loaded!")
     with open(path, 'rb') as configFile:
         tempConfig = tomllib.load(configFile)
-        if "main" in tempConfig.keys():
-            ffmpegPath = tempConfig['main']['ffmpegPath'] if 'ffmpegPath' in tempConfig['main'] else ""
-            if ffmpegPath != "":
-                loadHardwareAcceleration(ffmpegPath)
+        # if "main" in tempConfig.keys():
+        #     ffmpegPath = tempConfig['main']['ffmpegPath'] if 'ffmpegPath' in tempConfig['main'] else ""
+        #     if ffmpegPath != "":
+        #         loadHardwareAcceleration(ffmpegPath)
         loadedConfig = configSchema.validate(tempConfig)
         if os.path.samefile(loadedConfig['main']['basepath'], loadedConfig['main']['localBasepath']):
             raise Exception("Values for 'basepath' and 'localBasepath' must be different directories")
+        #configFfmpegPath = loadedConfig['main']['ffmpegPath']
+        #if configFfmpegPath != "":
+        #    HW_ACCEL_DEVICES = getHardwareAccelerationDevicesV2(configFfmpegPath)
         
 def getConfig(configPath:str):
     pathParts = configPath.split('.')

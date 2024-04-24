@@ -12,7 +12,7 @@ from schema import Schema, Or, And, Optional, Use
 from MTRLogging import getLogger
 logger = getLogger('RenderConfig')
 
-from MTRConfig import isDevicePath, testHardwareFunctions, getHardwareAccelerationDevicesV2, trueStrings, getConfig, isAcceptedOutputCodec, isHardwareOutputCodec, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema
+from MTRConfig import isDevicePath, getHardwareAccelerationDevicesV2, isKnownEncodingPreset, isKnownOutputCodec, trueStrings, getConfig, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema
 
 defaultRenderConfig = getConfig('main.defaultRenderConfig')
 
@@ -159,7 +159,7 @@ else:
 # except:
 #     print("Coult not load renderConfig.json, using defaults from config.py")
 
-acceptedOutputCodecs = set(['libx264', 'libx265'])
+""" acceptedOutputCodecs = set(['libx264', 'libx265'])
 hardwareOutputCodecs = set()
 #for brand, function in HW_ACCEL_DEVICES:
 for device, info in HW_ACCEL_DEVICES.items():
@@ -167,6 +167,16 @@ for device, info in HW_ACCEL_DEVICES.items():
     if function & HW_ENCODE:
         codecs = HWACCEL_VALUES[brand].encode_codecs
         hardwareOutputCodecs.update(codecs)
+        acceptedOutputCodecs.update(codecs) """
+
+# def _isDevicePath(path: str):
+#     if os.path.isdir(path) or os.path.isfile(path):
+#         return False # Device paths are not considered files, and we can't use directories
+#     try:
+#         os.stat(path)
+#     except OSError:
+#         return False
+#     return True
 
 class VideoAccelDevice:
     def __init__(self, devicePath:str, brand:str, functions:int, priority:int, maxDecodeDevices:int):
@@ -175,7 +185,7 @@ class VideoAccelDevice:
         self.functions = functions
         self.priority = priority
         self.maxDecodeDevices = maxDecodeDevices
-        
+
 def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]:
     """Returns a sorted list of devices that can be used for hardware acceleration,
         sorted by priority and capabilities.
@@ -193,18 +203,18 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]
     __default_priority = 100000000000000000000
     __default_decode_streams = 0
     permittedDevices = []
-    
+    hwAccelDevices = getHardwareAccelerationDevicesV2(getConfig("main.ffmpegPath"), deviceNames=(str(x) for x in settings.keys()))
     for device, info in settings.items():
-        if device not in HW_ACCEL_DEVICES.keys():
-            try:
-                int(device)
-            except:
-                if not _isDevicePath(device):
-                    logger.error(f"{device} is not an accessible device path!")
-                    #raise ValueError(f"{device} is not accessible!")
-                    continue
-            HW_ACCEL_DEVICES[device] = _testHardwareFunctions(device)
-        deviceBrand, functionMask = HW_ACCEL_DEVICES[device]
+        # if device not in HW_ACCEL_DEVICES.keys():
+        #     try:
+        #         int(device)
+        #     except:
+        #         if not _isDevicePath(device):
+        #             logger.error(f"{device} is not an accessible device path!")
+        #             #raise ValueError(f"{device} is not accessible!")
+        #             continue
+        #     HW_ACCEL_DEVICES[device] = _testHardwareFunctions(device)
+        deviceBrand, functionMask = hwAccelDevices[device]
         permittedMask = info['mask']
         if 'maxDecodeStreams' in info:
             maxDecodeStreams = int(info['maxDecodeStrings'])
@@ -254,13 +264,13 @@ renderConfigSchema = Schema({
     Optional('minGapSize', default=defaultRenderConfig['minGapSize']):
         And(Use(int), lambda x: x >= 0),
     Optional('outputCodec', default=defaultRenderConfig['outputCodec']): #needs additional validation in constructor
-        lambda x: any((x in brandInfo['encode_codec_options'].keys()
-                      for brandInfo in HWACCEL_VALUES.values())),
+        # lambda x: any((x in brandInfo['encode_codec_options'].keys()
+        #               for brandInfo in HWACCEL_VALUES.values())),
+        isKnownOutputCodec,
     Optional('encodingSpeedPreset', default=defaultRenderConfig['encodingSpeedPreset']): #needs additional validation in constructor
         #lambda x: x in ('ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium',
         #            'slow', 'slower', 'veryslow') or x in [f'p{i}' for i in range(1, 8)],
-        lambda x: any((any((x in codecOptions['validPresets'] for codecOptions in brandInfo['encode_codec_options']))
-                      for brandInfo in HWACCEL_VALUES.values())),
+        isKnownEncodingPreset,
     Optional('hardwareAccelDevices', default=defaultRenderConfig['hardwareAccelDevices']):
     #And(Use(int), lambda x: x & HWACCEL_FUNCTIONS == x),
     And(Or({},
