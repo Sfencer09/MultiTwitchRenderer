@@ -281,7 +281,7 @@ def loadHardwareAcceleration(ffmpegPath:str=""):
     global ACTIVE_HWACCEL_VALUES
     global acceptedOutputCodecs
     global hardwareOutputCodecs
-    HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
+    HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration(ffmpegPath)
     if HWACCEL_BRAND is not None:
         logger.info(f'{HWACCEL_BRAND} hardware video acceleration detected')
         logger.info(f'Functions:')
