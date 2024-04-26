@@ -159,4 +159,5 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
         prevChangeCount = changeCount
         if __debug__:
             break
+        logger.detail("Reached end of session worker loop, sleeping!")
         time.sleep(60*60)  # *24)
