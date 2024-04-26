@@ -122,7 +122,7 @@ class SourceFile:
         return self.videoInfo
 
 
-def scanFiles(log=False):
+def scanFiles():
     # newFiles = set()
     # newFilesByStreamer = dict()
     newFilesByVideoId = dict()
@@ -278,7 +278,7 @@ def initialize():
     if len(scanned.allFilesByVideoId) == 0:
         loadFiledata(dataFilepath)
     oldCount = len(scanned.allFilesByVideoId)
-    scanFiles(log=True)
+    scanFiles()
     if len(scanned.allFilesByVideoId) != oldCount:
         saveFiledata(dataFilepath)
 
@@ -298,6 +298,6 @@ def reloadAndSave():
     scanned.allStreamerSessions = {}
     scanned.allScannedFiles = set()
     scanned.filesBySourceVideoPath = {}
-    scanFiles(log=True)
+    scanFiles()
     saveFiledata(dataFilepath)
 
