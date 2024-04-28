@@ -361,7 +361,8 @@ def inputManualJob(initialRenderConfig=None):
 
     outputPath = input("Enter output path (Leave blank for default):\n")
     if outputPath == '':
-        outputPath = getVideoOutputPath(mainStreamer, fileDate)
+        #outputPath = getVideoOutputPath(mainStreamer, fileDate)
+        outputPath = None
 
     if currentStatus == 'RENDER_QUEUE':
         raise Exception("Editing queued renders not supported yet")
