@@ -464,7 +464,7 @@ def testHardwareFunctions(ffmpegPath:str, deviceName:str|int, testVideoData:None
         if hwbrand is None:
             continue # no need to check software functions, and codecs can simply be queried
         decodingTestCommand = commandStart + \
-                            list(values['decode_input_options']) + \
+                            list(values.decode_input_options) + \
                                 ['-f', 'matroska', '-i', 'pipe:',
                                 '-f', 'null', '-']
 
@@ -474,7 +474,7 @@ def testHardwareFunctions(ffmpegPath:str, deviceName:str|int, testVideoData:None
         else:
             continue # if there's no decode acceleration, there's probably just no video hardware for this brand
         
-        scalingTestCommand = commandStart + list(values['decode_input_options']) + \
+        scalingTestCommand = commandStart + list(values.decode_input_options) + \
             list(values['scale_input_options']) + ['-f', 'matroska', '-i', 'pipe:', \
                 'vf', f'scale{values["scale_filter"]}=-1:480:force_original_aspect_ratio=decrease:format=yuv420p:', '-f', 'null', '-']
         if _testCommand(scalingTestCommand):
@@ -502,7 +502,7 @@ def getHardwareAccelerationDevicesV2(ffmpegPath: str, deviceNames:None|Iterable[
             hwDeviceFunctions[str(deviceIndex)] = functionMask
         deviceIndex += 1
     if deviceNames is not None:
-        for deviceName in deviceName:
+        for deviceName in deviceNames:
             functionMask = testHardwareFunctions(ffmpegPath=ffmpegPath, 
                                               deviceName=deviceName,
                                               testVideoData=testVideoData)
