@@ -4,6 +4,8 @@ import os
 from pprint import pprint
 import sys
 
+#print = functools.partial(print, end='\n\n')
+
 print(os.getcwd())
 print(__file__)
 
@@ -50,7 +52,7 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
 testStreamer = getConfig('main.monitorStreamers')[0]
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-04-02')
+#testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-04-02')
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()
 while testCommands is None:
@@ -85,7 +87,8 @@ for testCommand in testCommands:
         testCommand.insert(-1, '-stats_period')
         testCommand.insert(-1, '30')
         #testCommand.insert(-1, )
-#print(testCommands)
+pprint(testCommands)
+print('\n\n')
 #testCommandString = formatCommand(testCommand)
 testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
 #print(testCommandStrings)
@@ -121,7 +124,7 @@ targetGroups = scanned.allFilesByVideoId['v2076440501'].parsedChat.groups
 pprint([targetGroups[i] for i in range(len(targetGroups)) if i == 0 or set(targetGroups[i]) != set(targetGroups[i-1])])
 #print(allStreamersWithVideos)
 #parsePlayersFromGroupMessage("Chilled is playing with AstarriApple, BryceMcQuaid, CheesyBlueNips, DooleyNotedGaming (Jeremy), HeckMuffins, KaraCorvus, KYR_SP33DY, LarryFishburger, VikramAFC, X33N, and ZeRoyalViking!!  ")
-print(parsePlayersFromGroupMessage("Chilled is playing with APlatypuss(Soon), AriBunnie, AstarriApple(Soon), HeckMuffins, JonSandman, KaraCorvus, OzzaWorld(Soon), Reenyy, TayderTot, X33N, and VikramAFC!!"))
+#print(parsePlayersFromGroupMessage("Chilled is playing with APlatypuss(Soon), AriBunnie, AstarriApple(Soon), HeckMuffins, JonSandman, KaraCorvus, OzzaWorld(Soon), Reenyy, TayderTot, X33N, and VikramAFC!!"))
 
 # %%
 pprint(scanned.allFilesByVideoId['v2082233820'])
@@ -130,9 +133,9 @@ testCommands = generateTilingCommandMultiSegment(testStreamer, "2024-03-05")
 
 testInputFiles = [extractInputFiles(testCommand) for testCommand in testCommands]
 uniqueFiles = sorted(set(functools.reduce(list.__add__, testInputFiles, [])))
-print(testInputFiles)
-print(uniqueFiles)
-print("\n\n")
+print(testInputFiles, end='\n\n')
+print(uniqueFiles, end='\n\n')
+
 
 saveFiledata(getConfig('main.dataFilepath'))
 

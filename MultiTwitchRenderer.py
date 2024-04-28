@@ -119,8 +119,6 @@ def printSegmentMatrix(segmentSessionMatrix: List[List[None|List[Session]]], uni
 def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=RenderConfig(), outputFile=None) -> List[List[str]]:
     otherStreamers = [
         name for name in scanned.allStreamersWithVideos if name != mainStreamer]
-    if outputFile is None:
-        outputFile = getVideoOutputPath(mainStreamer, targetDate)
     #########
     drawLabels = renderConfig.drawLabels
     startTimeMode = renderConfig.startTimeMode
@@ -638,6 +636,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         inputOptions.extend(('-f',  'lavfi', '-i', f'anullsrc=r={rateStr}'))
         nullAudioStreamsBySamplerates[rateStr] = inputIndex
 
+    if outputFile is None:
+        gameList = [segmentSessionMatrix[0][0][0].game]
+        for row in segmentSessionMatrix:
+            for session in row[0]:
+                if session.game != gameList[-1]:
+                    gameList.append(session.game)
+        outputFile = getVideoOutputPath(mainStreamer, targetDate, gameList=gameList)
+    
     # 13. Use #5 and #12 to build output stream mapping orders and build final command along with #12 and #11
     segmentTileCounts = [len(list(filter(lambda x: x is not None, row)))
                          for row in segmentFileMatrix]
@@ -680,6 +686,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
     downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
     timeFilter = f"setpts=PTS-STARTPTS"
+    
 
     # 14. For each row of #8:
     # filtergraphStringSegments = []

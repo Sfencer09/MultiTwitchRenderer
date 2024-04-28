@@ -125,9 +125,9 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                             sessionLog(f'Status for {day} = {status}')
                     if status is None:
                         # new file, build command and add to queue
-                        outPath = getVideoOutputPath(streamer, day)
+                        #outPath = getVideoOutputPath(streamer, day)
                         command = generateTilingCommandMultiSegment(
-                            streamer, day, renderConfig, outPath)
+                            streamer, day, renderConfig) #, outPath)
                         if command is None:  # command cannot be made, maybe solo stream or only one
                             if changeCount != prevChangeCount:
                                 logger.info(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
@@ -136,7 +136,7 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                                         f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
                             setRenderStatus(streamer, day, "SOLO")
                             continue
-                        item = RenderTask(streamer, day, renderConfig, outPath)
+                        item = RenderTask(streamer, day, renderConfig) #, outPath)
                         logger.info(f"Adding render for streamer {streamer} from {day}")
                         if sessionLog is not None:
                             sessionLog(
