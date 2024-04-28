@@ -79,8 +79,10 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
     COPY_FILES = getConfig('main.copyFiles')
     while True:
         oldFileCount = len(scanned.allFilesByVideoId)
+        logger.debug(f"{oldFileCount=}")
         scanFiles()
         newFileCount = len(scanned.allFilesByVideoId)
+        logger.debug(f"{newFileCount=}")
         if oldFileCount != newFileCount:
             changeCount += 1
             saveFiledata(dataFilepath)
