@@ -39,10 +39,14 @@ def extractInputFiles(ffmpegCommand: List[str]):
 #    dt = datetime.fromtimestamp(timestamp, LOCAL_TIMEZONE)
     # startDate = datetime.strftime(startTime, "%Y-%m-%d")
 
-def getVideoOutputPath(streamer, date):
+def getVideoOutputPath(streamer:str, date:str, gameList:None|List[str]=None):
     basepath = getConfig('main.basepath')
     outputDirectory = getConfig('main.outputDirectory')
-    return os.path.join(basepath, outputDirectory, "S1", f"{outputDirectory} - {date} - {streamer}.mkv")
+    if gameList is None:
+        filename = f"{outputDirectory} - {date} - {streamer}.mkv"
+    else:
+        filename = f"{outputDirectory} - {date} - {streamer} ({', '.join(gameList)}).mkv"
+    return os.path.join(basepath, outputDirectory, "S1", filename)
 
 
 def calcGameCounts():

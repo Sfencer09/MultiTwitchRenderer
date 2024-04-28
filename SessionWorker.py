@@ -16,6 +16,7 @@ if getConfig('main.copyFiles'):
     from CopyWorker import copyQueue
 
 from MTRLogging import getLogger
+from MultiTwitchRenderer import generateTilingCommandMultiSegment
 logger = getLogger('SessionWorker')
 
 def scanForExistingVideos() -> None:
@@ -65,7 +66,6 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                   renderConfig=RenderConfig(),
                   sessionLog = None):
     #sessionLog = sessionText.addLine
-    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     #allStreamersWithVideos = SourceFile.allStreamersWithVideos
     #global allFilesByStreamer
     #allFilesByStreamer = SourceFile.allFilesByStreamer
@@ -79,8 +79,10 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
     COPY_FILES = getConfig('main.copyFiles')
     while True:
         oldFileCount = len(scanned.allFilesByVideoId)
-        scanFiles(renderConfig.logLevel > 0)
+        logger.debug(f"{oldFileCount=}")
+        scanFiles()
         newFileCount = len(scanned.allFilesByVideoId)
+        logger.debug(f"{newFileCount=}")
         if oldFileCount != newFileCount:
             changeCount += 1
             saveFiledata(dataFilepath)
@@ -123,9 +125,9 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                             sessionLog(f'Status for {day} = {status}')
                     if status is None:
                         # new file, build command and add to queue
-                        outPath = getVideoOutputPath(streamer, day)
+                        #outPath = getVideoOutputPath(streamer, day)
                         command = generateTilingCommandMultiSegment(
-                            streamer, day, renderConfig, outPath)
+                            streamer, day, renderConfig) #, outPath)
                         if command is None:  # command cannot be made, maybe solo stream or only one
                             if changeCount != prevChangeCount:
                                 logger.info(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
@@ -134,7 +136,7 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                                         f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
                             setRenderStatus(streamer, day, "SOLO")
                             continue
-                        item = RenderTask(streamer, day, renderConfig, outPath)
+                        item = RenderTask(streamer, day, renderConfig) #, outPath)
                         logger.info(f"Adding render for streamer {streamer} from {day}")
                         if sessionLog is not None:
                             sessionLog(
@@ -159,4 +161,5 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
         prevChangeCount = changeCount
         if __debug__:
             break
+        logger.detail("Reached end of session worker loop, sleeping!")
         time.sleep(60*60)  # *24)

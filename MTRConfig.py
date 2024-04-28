@@ -1,9 +1,9 @@
 from functools import reduce
 import os
 import re
-import argparse
 import subprocess
 import tomllib
+import MTRArgParse
 from types import MappingProxyType
 from typing import Dict, Iterable, Tuple
 import MTRLogging
@@ -18,18 +18,8 @@ HW_INPUT_SCALE = 2
 HW_OUTPUT_SCALE = 4
 HW_ENCODE = 8
 
-def configFileType(val):
-    with open(val, 'rb') as file:
-        tomllib.load(file)
-        return val
+args = MTRArgParse.getArgs()
 
-argParser = argparse.ArgumentParser()
-argParser.add_argument('--config-file',
-                       help='Path to TOML config file',
-                       dest='configFilePath',
-                       type=configFileType,
-                       default='./config.toml')
-args, _ = argParser.parse_known_args()
 configFilePath = args.configFilePath
 
 trueStrings = ('t', 'y', 'true', 'yes')
@@ -560,7 +550,7 @@ def loadHardwareAcceleration(ffmpegPath:str=""):
     #global ACTIVE_HWACCEL_VALUES
     global knownOutputCodecs
     global hardwareOutputCodecs
-    HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration()
+    HWACCEL_BRAND, HWACCEL_FUNCTIONS = getHasHardwareAceleration(ffmpegPath)
     if HWACCEL_BRAND is not None:
         logger.info(f'{HWACCEL_BRAND} hardware video acceleration detected')
         logger.info(f'Functions:')

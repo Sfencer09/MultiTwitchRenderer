@@ -1,49 +1,10 @@
 import os
 import sys
 import logging
-import argparse
 
-# TODO: move argparsing to own module
-class readableDir(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        prospectiveDir=values
-        if not os.path.isdir(prospectiveDir):
-            raise argparse.ArgumentError("readable_dir:{0} is not a valid path".format(prospectiveDir))
-        if os.access(prospectiveDir, os.R_OK):
-            setattr(namespace,self.dest,prospectiveDir)
-        else:
-            raise argparse.ArgumentError("readable_dir:{0} is not a readable dir".format(prospectiveDir))
+import MTRArgParse
 
-class writeableDir(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        prospectiveDir=values
-        if not os.path.isdir(prospectiveDir):
-            
-            raise argparse.ArgumentTypeError("readableDir:{0} is not a valid path".format(prospectiveDir))
-        if os.access(prospectiveDir, os.W_OK):
-            setattr(namespace, self.dest, prospectiveDir)
-        else:
-            raise argparse.ArgumentTypeError("readableDir:{0} is not a readable dir".format(prospectiveDir))
-
-argParser = argparse.ArgumentParser()
-argParser.add_argument('--log-level', '--file-log-level',
-                       choices=('trace', 'debug', 'detail', 'info', 'warning', 'error'),
-                       help="Valid values are 'error', 'warning', 'info', 'detail', 'debug', and 'trace'",
-                       dest='fileLogLevel',
-                       default='debug')
-argParser.add_argument('--console-log-level',
-                       choices=('trace', 'debug', 'detail', 'info', 'warning', 'error'),
-                       help="Valid values are 'error', 'warning', 'info', 'detail', 'debug', and 'trace'",
-                       dest='consoleLogLevel',
-                       default='warning')
-argParser.add_argument('--log-folder',
-                       dest='logFolder',
-                       #type=writeableDir, # need to modify to allow for new 
-                       default='./logs')
-args, _ = argParser.parse_known_args()
-logFolder = args.logFolder
-
-
+args = MTRArgParse.getArgs()
 
 def addLoggingLevelModuleLevel(levelName, levelNum, methodName=None):
     # Copied from https://stackoverflow.com/a/35804945
@@ -65,7 +26,6 @@ def addLoggingLevelModuleLevel(levelName, levelNum, methodName=None):
     setattr(logging.getLoggerClass(), methodName, logForLevel)
     setattr(logging, methodName, logToRoot)
 
-    
 addLoggingLevelModuleLevel('TRACE', logging.DEBUG - 5)
 #addLoggingLevelModuleLevel('NOTIFY', logging.WARNING + 5)
 addLoggingLevelModuleLevel('DETAIL', logging.INFO - 5)
@@ -83,6 +43,7 @@ def setUpLogging():
     suffix = ""
     fmt = '%(name)s : %(levelname)s [%(asctime)s] %(message)s'
     datefmt= '%m/%d/%Y %H:%M:%S'
+    logFolder = args.logFolder
     os.makedirs(logFolder, exist_ok=True)
     while os.path.isfile(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) and os.path.getsize(os.path.join(logFolder, f"MultiTwitchRenderer{suffix}.log")) > 0:
         suffix = f"-{count}"

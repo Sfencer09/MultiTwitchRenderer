@@ -8,8 +8,10 @@ if not sys.version_info >= (3, 11, 0):
     raise EnvironmentError(
         "Python version too low (<3.11), relies on new iso format parsing in datetime.time")
 
-from MTRLogging import getLogger, logFolder
+from MTRLogging import getLogger
+import MTRArgParse
 logger = getLogger('Main')
+logFolder = MTRArgParse.getArgs().logFolder
 
 logger.info(sys.executable)
 sys.path.insert(0, os.path.dirname(sys.executable))
