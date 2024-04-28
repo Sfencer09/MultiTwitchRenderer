@@ -16,6 +16,7 @@ if getConfig('main.copyFiles'):
     from CopyWorker import copyQueue
 
 from MTRLogging import getLogger
+from MultiTwitchRenderer import generateTilingCommandMultiSegment
 logger = getLogger('SessionWorker')
 
 def scanForExistingVideos() -> None:
@@ -65,7 +66,6 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                   renderConfig=RenderConfig(),
                   sessionLog = None):
     #sessionLog = sessionText.addLine
-    from MultiTwitchRenderer import generateTilingCommandMultiSegment
     #allStreamersWithVideos = SourceFile.allStreamersWithVideos
     #global allFilesByStreamer
     #allFilesByStreamer = SourceFile.allFilesByStreamer
