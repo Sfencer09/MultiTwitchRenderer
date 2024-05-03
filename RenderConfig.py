@@ -179,14 +179,14 @@ for device, info in HW_ACCEL_DEVICES.items():
 #     return True
 
 class VideoAccelDevice:
-    def __init__(self, devicePath:str, brand:str, functions:int, priority:int, maxDecodeDevices:int):
+    def __init__(self, devicePath:str, brand:str, functions:int, priority:int, maxDecodeStreams:int):
         self.devicePath = devicePath
         self.brand = brand
         self.functions = functions
         self.priority = priority
-        self.maxDecodeDevices = maxDecodeDevices
+        self.maxDecodeStreams = maxDecodeStreams
 
-def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]:
+def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[VideoAccelDevice]:
     """Returns a sorted list of devices that can be used for hardware acceleration,
         sorted by priority and capabilities.
         
@@ -202,7 +202,7 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]
         return []
     __default_priority = 100000000000000000000
     __default_decode_streams = 0
-    permittedDevices = []
+    permittedDevices:List[VideoAccelDevice] = []
     hwAccelDevices = getHardwareAccelerationDevicesV2(getConfig("main.ffmpegPath"), deviceNames=(str(x) for x in settings.keys()))
     for device, info in settings.items():
         # if device not in HW_ACCEL_DEVICES.keys():
@@ -226,15 +226,16 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[dict]
             priority = __default_priority
         finalMask = permittedMask & functionMask
         if finalMask & (HW_ENCODE | HW_DECODE) != 0:
-            permittedDevices.append({'devicePath': device, 'brand':deviceBrand, 'functions':finalMask, 'priority':priority, 'maxDecodeStreams':maxDecodeStreams})
+            #permittedDevices.append({'devicePath': device, 'brand':deviceBrand, 'functions':finalMask, 'priority':priority, 'maxDecodeStreams':maxDecodeStreams})
+            permittedDevices.append(VideoAccelDevice(devicePath=device, brand=deviceBrand, functions=finalMask, priority=priority, maxDecodeStreams=maxDecodeStreams))
     
-    permittedDevices.sort(key=lambda x: (x['priority'], -x['maxDecodeStreams'], -x['functions']))
+    permittedDevices.sort(key=lambda x: (x.priority, -x.maxDecodeStreams, -x.functions))
     
     for entry in permittedDevices:
-        if entry['priority'] == __default_priority:
-            del entry['priority']
-        if entry['maxDecodeStreams'] == __default_decode_streams:
-            del entry['maxDecodeStreams']
+        if entry.priority == __default_priority:
+            del entry.priority
+        if entry.maxDecodeStreams == __default_decode_streams:
+            del entry.maxDecodeStreams
     
     return permittedDevices
         
@@ -312,7 +313,7 @@ class RenderConfig:
     minGapSize: int
     outputCodec: str
     encodingSpeedPreset: str
-    hardwareAccelDevices: List[Dict[str, str|int]]
+    hardwareAccelDevices: List[VideoAccelDevice]
     #maxHwaccelFiles: int
     minimumTimeInVideo: int
     cutMode: str
@@ -370,8 +371,8 @@ class RenderConfig:
     
     def getEncodeDeviceForCodec(self, codec:str) -> None|Dict[str, str|int]:
         for device in self.hardwareAccelDevices:
-            if device['functions'] & HW_ENCODE != 0:
-                brand = device['brand']
+            if device.functions & HW_ENCODE != 0:
+                brand = device.brand
                 if codec in HWACCEL_VALUES[brand].encode_codec_options.keys():
                     return device
         return None
@@ -379,14 +380,14 @@ class RenderConfig:
     def getEncodeDevices(self) -> List[Dict[str, str|int]]:
         encodeDevices = []
         for device in self.hardwareAccelDevices:
-            if device['functions'] & HW_ENCODE != 0:
+            if device.functions & HW_ENCODE != 0:
                 encodeDevices.append(device)
         return encodeDevices
     
     def getDecodeDevices(self) -> List[Dict[str, str|int]]:
         decodeDevices = []
         for device in self.hardwareAccelDevices:
-            if device['functions'] & HW_DECODE != 0:
+            if device.functions & HW_DECODE != 0:
                 decodeDevices.append(device)
         return decodeDevices
 
@@ -394,4 +395,4 @@ class RenderConfig:
         return RenderConfig(**self.__dict__)
 
     def __repr__(self):
-        return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items()))})"
+        return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items() if defaultRenderConfig[key] is not value and defaultRenderConfig[key] != value))})"

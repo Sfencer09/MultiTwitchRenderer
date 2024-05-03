@@ -24,7 +24,7 @@ import scanned
 
 from SourceFile import SourceFile
 from ParsedChat import convertToDatetime
-from RenderConfig import HWACCEL_VALUES, RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE
+from RenderConfig import HWACCEL_VALUES, RenderConfig, HW_DECODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HW_ENCODE, VideoAccelDevice
 from SharedUtils import calcGameCounts, getVideoOutputPath
 from Session import Session
 
@@ -581,19 +581,20 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
 
     encodeDevice = None
-    decodeDevices = []
+    decodeDevices:List[VideoAccelDevice] = []
     
     for device in hwAccelDevices:
-        functions = device['mask']
-        if encodeDevice is None and functions & HW_ENCODE != 0:
+        functions = device.functions
+        if encodeDevice is None and functions & HW_ENCODE != 0 and outputCodec in HWACCEL_VALUES[device.brand].encode_codec_options.keys():
             encodeDevice = device
         if functions & HW_DECODE != 0:
             decodeDevices.append(device)
     
-    def getHwDecodeInfoForFile(fileIndex:int):
+    def getHwDecodeInfoForFile(fileIndex:int) -> VideoAccelDevice:
         for device in decodeDevices:
-            if 'maxDecodeStreams' in device:
-                deviceStreams = device['maxDecodeStreams']
+            if hasattr(device, 'maxDecodeStreams'):
+            #if 'maxDecodeStreams' in device:
+                deviceStreams = device.maxDecodeStreams
                 if deviceStreams == 0 or deviceStreams > fileIndex:
                     return device
                 fileIndex -= deviceStreams
@@ -625,13 +626,13 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         file = inputFilesSorted[i]
         hwDevice = getHwDecodeInfoForFile(i)
         if hwDevice is not None:
-            brand = hwDevice['brand']
-            hwDevicePath = hwDevice['devicePath']
+            brand = hwDevice.brand
+            hwDevicePath = hwDevice.devicePath
             if len(hwAccelDevices) > 1:
                 inputOptions.extend([option % {'DEVICE_PATH':hwDevicePath} for option in HWACCEL_VALUES[brand].decode_multigpu_input_options])
             else:
                 inputOptions.extend(HWACCEL_VALUES[brand].decode_input_options)
-            if hwDevice['mask'] & HW_INPUT_SCALE != 0:
+            if hwDevice.functions & HW_INPUT_SCALE != 0:
                 inputOptions.extend(HWACCEL_VALUES[brand].scale_input_options)
         # else:
         #    inputOptions.extend(('-threads', str(threadCount//2)))
