@@ -121,10 +121,13 @@ class HwAccelBrandValues:
         self.scale_input_options = scale_input_options
         self.encode_codec_options = encode_codec_options
 
-# variables: {DEVICE_PATH, INITIALIZED_DEVICE_NAME, preset
+# variables: {DEVICE_PATH, INITIALIZED_DEVICE_NAME, preset}
 # TODO: remove assumption of h264 input file
 HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
-    'NVIDIA': HwAccelBrandValues(scale_filter='_npp',
+    #'NVIDIA': HwAccelBrandValues(
+    'cuvid': HwAccelBrandValues(
+    #'cuda': HwAccelBrandValues(
+        scale_filter='_npp',
         pad_filter= '_opencl',
         xstack_filter= '',
         upload_filter= '_cuda',
@@ -151,7 +154,8 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
             )
         })
     ),
-    'AMD': HwAccelBrandValues(
+    #'AMD': HwAccelBrandValues(
+    'vaapi': HwAccelBrandValues(
         scale_filter= '',
         pad_filter= '',
         xstack_filter= '', #'_vaapi'
@@ -197,7 +201,8 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
             )
         })
     ),
-    'Intel': HwAccelBrandValues(
+    #'Intel': HwAccelBrandValues(
+    'qsv': HwAccelBrandValues(
         scale_filter= '_qsv',
         pad_filter= '_qsv',
         xstack_filter= '', #'_qsv', # Not implemented yet
