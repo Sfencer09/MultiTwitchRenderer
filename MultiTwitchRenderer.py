@@ -593,7 +593,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     def getHwDecodeInfoForFile(fileIndex:int) -> VideoAccelDevice:
         for device in decodeDevices:
             if hasattr(device, 'maxDecodeStreams'):
-            #if 'maxDecodeStreams' in device:
                 deviceStreams = device.maxDecodeStreams
                 if deviceStreams == 0 or deviceStreams > fileIndex:
                     return device
@@ -1107,6 +1106,42 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         if file is not None]
             neededNullSampleRates = set()
             numFilesInRow = len(rowFiles)
+            
+            allUsedDevices:Set[VideoAccelDevice] = set() # can also just be a single number (likely still as a string)
+            if encodeDevice is not None:
+                allUsedDevices.add(encodeDevice)
+            #for device in decodeDevices:
+            for i in range(numFilesInRow):
+                fileDecodeDevice = getHwDecodeInfoForFile(i)
+                if fileDecodeDevice is not None:
+                    allUsedDevices.add(fileDecodeDevice)
+            deviceInitializationOptions = []
+            deviceArgsByPath = {}
+            multiGpuMode = (len(allUsedDevices) > 1)
+            for deviceCount, device in enumerate(sorted(allUsedDevices, key=lambda x:x.devicePath)):
+                brand = device.brand
+                initOptions = HWACCEL_VALUES[brand].device_initialization_options
+                devicePath = device.devicePath
+                if initOptions is not None:
+                    initializedName = f"dev{brand}{deviceCount}"
+                    optionsArgs = {'DEVICE_PATH': devicePath,
+                                'INITIALIZED_DEVICE_NAME': initializedName}
+                else:
+                    optionsArgs = {'DEVICE_PATH': devicePath}
+                deviceArgsByPath[devicePath] = optionsArgs
+            
+            if encodeDevice is not None:
+                encodeBrand = encodeDevice.brand
+                initOptions = HWACCEL_VALUES[encodeBrand].encode_initialization_options
+                if initOptions is not None:
+                    devicePath = encodeDevice.devicePath
+                    encodeOptionArgs = deviceArgsByPath[devicePath]
+                    deviceInitializationOptions.extend((option % encodeOptionArgs for option in initOptions))
+            
+            # else:
+            #     multiGpuMode = False
+            #     optionArgs = {}
+            
             for streamerIndex in range(len(allInputStreamers)):
                 if segmentFileMatrix[segIndex][streamerIndex] is None:
                     neededNullSampleRates.add(
@@ -1170,7 +1205,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         else:
                             rowInputOptions.extend(HWACCEL_VALUES[hwBrand].decode_input_options)
                         useHwDecodeAccel = True
-                        if hwDecodeDevice['mask'] & HW_INPUT_SCALE != 0 and needToScale:
+                        if hwDecodeDevice.functions & HW_INPUT_SCALE != 0 and needToScale:
                             rowInputOptions.extend(HWACCEL_VALUES[hwBrand].scale_input_options)
                             useHwFilterAccel = True
                     # else:
