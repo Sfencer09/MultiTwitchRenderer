@@ -68,6 +68,13 @@ def generateLayout(numTiles):
         return f"{generateLEC(x,'w')}_{generateLEC(y,'h')}"
     return "|".join([generateLE(n) for n in range(numTiles)])
 
+def getScaleAlgorithm(inputDim:int, outputDim:int, hwScalingBrand:None|str):
+    if outputDim > inputDim:
+        return HWACCEL_VALUES[hwScalingBrand].upscale_filter_options
+    elif outputDim < inputDim:
+        return HWACCEL_VALUES[hwScalingBrand].downscale_filter_options
+    else: # outputDim == inputDim
+        return ''
 
 def toFfmpegTimestamp(ts: int | float):
     return f"{int(ts)//3600:02d}:{(int(ts)//60)%60:02d}:{float(ts%60):02f}"
@@ -724,13 +731,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     # filtergraphStringSegmentsV2 = []
     logger.info(f"Step 13.v2: {segmentTileCounts}, {maxSegmentTiles}, {outputResolution}")
     
-    def getScaleAlgorithm(inputDim:int, outputDim:int, hwScalingBrand:None|str):
-        if outputDim > inputDim:
-            return HWACCEL_VALUES[hwScalingBrand].upscale_filter_options if hwScalingBrand is not None else ':flags=lanczos'
-        elif outputDim < inputDim:
-            return HWACCEL_VALUES[hwScalingBrand].downscale_filter_options if hwScalingBrand is not None else ''  # ':flags=area'
-        else: # outputDim == inputDim
-            return ''
     
     # v2()
     """
@@ -1218,12 +1218,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     # print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     tileHeight = int(tileResolution.split(':')[1])
                     logger.debug(f"tileHeight={tileHeight}, video height={height}")
-                    # if tileHeight > height: #upscaling
-                    #    scaleAlgo = '' if useHwFilterAccel else ':flags=lanczos'
-                    # elif tileHeight < height:
-                    #    scaleAlgo = ':interp_algo=super' if useHwFilterAccel else '' #':flags=area'
-                    # else:
-                    #    scaleAlgo = ''
                     scaleAlgo = getScaleAlgorithm(
                         height, tileHeight, hwBrand)
                     decodeUploadFilter = "hwupload"
