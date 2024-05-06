@@ -1182,7 +1182,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fileIndex = inputFileIndexes[file]
                     # audioFiltergraph = f"[{inputIndex}:a] atrim={startOffset}:{endOffset}, asetpts={apts} [{audioSegmentName}]"
                     fileInfo = inputVideoInfo[fileIndex]
-                    videoStreamInfo = [
+                    videoStreamInfo:dict = [
                         stream for stream in fileInfo['streams'] if stream['codec_type'] == 'video'][0]
                     height = videoStreamInfo['height']
                     width = videoStreamInfo['width']
@@ -1194,42 +1194,41 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
                     
                     hwDecodeDevice = getHwDecodeInfoForFile(rowInputFileCount)
-                    useHwFilterAccel = False
-                    useHwDecodeAccel = False
-                    hwBrand = None
+                    useHwInputScaleAccel = False
+                    decodeHwBrand = hwDecodeDevice.brand if hwDecodeDevice is not None else None
                     if hwDecodeDevice is not None:
-                        hwBrand = hwDecodeDevice.brand
-                        hwDevicePath = hwDecodeDevice.devicePath
-                        if len(hwAccelDevices) > 1:
-                            rowInputOptions.extend([option % {'DEVICE_PATH':hwDevicePath} for option in HWACCEL_VALUES[brand].decode_multigpu_input_options])
-                        else:
-                            rowInputOptions.extend(HWACCEL_VALUES[hwBrand].decode_input_options)
+                        optionArgs = deviceArgsByPath[hwDecodeDevice.devicePath]
                         useHwDecodeAccel = True
-                        if hwDecodeDevice.functions & HW_INPUT_SCALE != 0 and needToScale:
-                            rowInputOptions.extend(HWACCEL_VALUES[hwBrand].scale_input_options)
-                            useHwFilterAccel = True
+                    else:
+                        optionArgs = {}
+                        useHwDecodeAccel = False
+                    if multiGpuMode:
+                        rowInputOptions.extend([option % optionArgs for option in HWACCEL_VALUES[decodeHwBrand].decode_multigpu_input_options])
+                    else:
+                        rowInputOptions.extend([option % optionArgs for option in HWACCEL_VALUES[decodeHwBrand].decode_input_options])
+                    if useHwDecodeAccel and hwDecodeDevice.functions & HW_INPUT_SCALE != 0 and needToScale:
+                        rowInputOptions.extend(HWACCEL_VALUES[decodeHwBrand].scale_input_options)
+                        useHwInputScaleAccel = True
+                    
                     # else:
                     #    rowInputOptions.extend(('-threads', str(threadCount//2)))
                     if startOffset != 0:
                         rowInputOptions.extend(('-ss', str(startOffset)))
                     rowInputOptions.extend(('-i', fileVideoPath))
-                    # useHwFilterAccel = hwAccelDevices & HW_INPUT_SCALE != 0 and (
-                    #     maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
-                    # print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                     tileHeight = int(tileResolution.split(':')[1])
                     logger.debug(f"tileHeight={tileHeight}, video height={height}")
                     scaleAlgo = getScaleAlgorithm(
-                        height, tileHeight, hwBrand)
+                        height, tileHeight, decodeHwBrand)
                     decodeUploadFilter = "hwupload"
-                    if useHwFilterAccel:
-                        scaleSuffix = HWACCEL_VALUES[hwBrand].scale_filter
-                        padSuffix = HWACCEL_VALUES[hwBrand].pad_filter
-                        decodeUploadFilter += HWACCEL_VALUES[hwBrand].upload_filter
+                    if useHwInputScaleAccel:
+                        scaleSuffix = HWACCEL_VALUES[decodeHwBrand].scale_filter
+                        padSuffix = HWACCEL_VALUES[decodeHwBrand].pad_filter
+                        decodeUploadFilter += HWACCEL_VALUES[decodeHwBrand].upload_filter
                     else:
                         scaleSuffix = ''
                         padSuffix = ''
                     downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
-                    scaleFilter = f"scale{scaleSuffix}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwFilterAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
+                    scaleFilter = f"scale{scaleSuffix}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwInputScaleAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                     padFilter = f"pad{padSuffix}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                     fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
                     labelFilter = f"drawtext=text='{str(streamerIndex+1)} {file.streamer}':fontsize=40:fontcolor=white:x=100:y=10:shadowx=4:shadowy=4" if drawLabels else ''
@@ -1239,15 +1238,15 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     if needToScale or not isSixteenByNine:
                         #mask = HW_DECODE | HW_INPUT_SCALE
                         #if hwAccelDevices & mask == HW_DECODE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
-                        if useHwDecodeAccel and not useHwFilterAccel:
+                        if useHwDecodeAccel and not useHwInputScaleAccel:
                             filtergraphBody = [
                                 fpsFilter, trimFilter, timeFilter, scaleFilter, padFilter, labelFilter]
                         #elif hwAccelDevices & mask == HW_INPUT_SCALE and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
-                        elif not useHwDecodeAccel and useHwFilterAccel: # Idk why you'd be doing this, but it's supported
+                        elif not useHwDecodeAccel and useHwInputScaleAccel: # Idk why you'd be doing this, but it's supported
                             filtergraphBody = [fpsFilter, trimFilter, timeFilter, decodeUploadFilter,
                                                scaleFilter, padFilter, downloadFilter, labelFilter]
                         #elif hwAccelDevices & mask == (HW_DECODE | HW_INPUT_SCALE) and (maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles):
-                        elif useHwDecodeAccel and useHwFilterAccel:
+                        elif useHwDecodeAccel and useHwInputScaleAccel:
                             filtergraphBody = [
                                 scaleFilter, padFilter, downloadFilter, fpsFilter, trimFilter, timeFilter, labelFilter]
                         # elif useHardwareAcceleration >= 4:
@@ -1283,10 +1282,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 segmentRes = [int(x) for x in segmentResolution.split(':')]
                 #useHwOutscaleAccel = hwAccelDevices & HW_OUTPUT_SCALE != 0
                 if encodeDevice is not None:
-                    hwBrand = encodeDevice.brand
+                    decodeHwBrand = encodeDevice.brand
                     useHwOutscaleAccel = encodeDevice.functions & HW_OUTPUT_SCALE != 0
-                    scaleSuffix = HWACCEL_VALUES[hwBrand].scale_filter if useHwOutscaleAccel else ''
-                    padSuffix = HWACCEL_VALUES[hwBrand].pad_filter if useHwOutscaleAccel else ''
+                    scaleSuffix = HWACCEL_VALUES[decodeHwBrand].scale_filter if useHwOutscaleAccel else ''
+                    padSuffix = HWACCEL_VALUES[decodeHwBrand].pad_filter if useHwOutscaleAccel else ''
                 else:
                     scaleSuffix = ''
                     padSuffix = ''
