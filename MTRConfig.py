@@ -102,6 +102,7 @@ class HwAccelBrandValues:
                  upload_filter:str,
                  decode_input_options:Tuple[str],
                  device_initialization_options:None|Tuple[str],
+                 encode_initialization_options:None|Tuple[str],
                  decode_multigpu_input_options:Tuple[str],
                  upscale_filter_options:str,
                  downscale_filter_options:str,
@@ -113,6 +114,7 @@ class HwAccelBrandValues:
         self.upload_filter = upload_filter
         self.decode_input_options = decode_input_options
         self.device_initialization_options = device_initialization_options
+        self.encode_initialization_options = encode_initialization_options
         self.decode_multigpu_input_options = decode_multigpu_input_options
         self.upscale_filter_options = upscale_filter_options
         self.downscale_filter_options = downscale_filter_options
@@ -128,6 +130,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         upload_filter= '_cuda',
         decode_input_options= ('-threads', '1', '-c:v', 'h264_cuvid'),
         device_initialization_options = None,
+        encode_initialization_options = None,
         decode_multigpu_input_options= ('-hwaccel_device', '%(DEVICE_PATH)s',
                                         '-hwaccel', 'cuda',
                                         '-threads', '1',
@@ -135,7 +138,6 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         upscale_filter_options="",
         downscale_filter_options=":interp_algo=super",
         scale_input_options= ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
-        #'encode_codecs': ('h264_nvenc', 'hevc_nvenc'), # to be deprecated
         encode_codec_options= MappingProxyType({
             'h264_nvenc': HwAccelCodecValues(
                 validPresets= __nvidiaEncodingPresets,
@@ -157,13 +159,13 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         # ('-hwaccel', 'dxva2'), #for AV1 inputs only: ('-extra_hw_frames', '10'),
         #decode_input_options= ('-hwaccel', 'd3d11va'),
         decode_input_options=('-hwaccel', 'vaapi'),
-        device_initialization_options=('-init_hw_device', 'vaapi=%(INITIALIZED_DEVICE_NAME)s:%(DEVICE_PATH)s'),
+        device_initialization_options = ('-init_hw_device', 'vaapi=%(INITIALIZED_DEVICE_NAME)s:%(DEVICE_PATH)s'),
+        encode_initialization_options = ('-filter_hw_device', '%(INITIALIZED_DEVICE_NAME)s'),
         decode_multigpu_input_options= ('-hwaccel', 'vaapi',
                                         '-hwaccel_device', '%(INITIALIZED_DEVICE_NAME)s'),
         upscale_filter_options="",
         downscale_filter_options="",
         scale_input_options= ("-hwaccel_output_format", "vaapi"),
-        #'encode_codecs': ('h264_amf', 'hevc_amf'), # to be deprecated
         encode_codec_options= MappingProxyType({
             'h264_amf': HwAccelCodecValues(
                 validPresets= __amdEncodingPresets,
@@ -201,14 +203,14 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         xstack_filter= '', #'_qsv', # Not implemented yet
         upload_filter= '=extra_hw_frames=64,format=qsv',
         decode_input_options= ('-hwaccel', 'qsv', '-c:v', 'h264_qsv'),
-        device_initialization_options=None, #('-init_hw_device', 'vaapi=%(INITIALIZED_DEVICE_NAME)s:%(DEVICE_PATH)s'),
+        device_initialization_options = None, #('-init_hw_device', 'vaapi=%(INITIALIZED_DEVICE_NAME)s:%(DEVICE_PATH)s'),
+        encode_initialization_options = None,
         decode_multigpu_input_options= ('-hwaccel', 'qsv',
                                         '-qsv_device', '%(DEVICE_PATH)s',
                                         '-c:v', 'h264_qsv'),
         upscale_filter_options="",
         downscale_filter_options="",
         scale_input_options= (),
-        #'encode_codecs': ('h264_qsv', 'hevc_qsv'), # to be deprecated
         encode_codec_options= MappingProxyType({
             'h264_qsv': HwAccelCodecValues(
                 validPresets= __qsvEncodingPresets,
@@ -248,6 +250,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         upload_filter= '',
         decode_input_options= (),
         device_initialization_options=None,
+        encode_initialization_options = None,
         decode_multigpu_input_options= (),
         upscale_filter_options=":flags=lanczos",
         downscale_filter_options=":flags=area",

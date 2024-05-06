@@ -1163,8 +1163,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     useHwDecodeAccel = False
                     hwBrand = None
                     if hwDecodeDevice is not None:
-                        hwBrand = hwDecodeDevice['brand']
-                        hwDevicePath = hwDecodeDevice['devicePath']
+                        hwBrand = hwDecodeDevice.brand
+                        hwDevicePath = hwDecodeDevice.devicePath
                         if len(hwAccelDevices) > 1:
                             rowInputOptions.extend([option % {'DEVICE_PATH':hwDevicePath} for option in HWACCEL_VALUES[brand].decode_multigpu_input_options])
                         else:
@@ -1254,8 +1254,8 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 segmentRes = [int(x) for x in segmentResolution.split(':')]
                 #useHwOutscaleAccel = hwAccelDevices & HW_OUTPUT_SCALE != 0
                 if encodeDevice is not None:
-                    hwBrand = encodeDevice['brand']
-                    useHwOutscaleAccel = encodeDevice['mask'] & HW_OUTPUT_SCALE != 0
+                    hwBrand = encodeDevice.brand
+                    useHwOutscaleAccel = encodeDevice.functions & HW_OUTPUT_SCALE != 0
                     scaleSuffix = HWACCEL_VALUES[hwBrand].scale_filter if useHwOutscaleAccel else ''
                     padSuffix = HWACCEL_VALUES[hwBrand].pad_filter if useHwOutscaleAccel else ''
                 else:
@@ -1269,7 +1269,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 # xstackString = f"[{']['.join(rowVideoSegmentNames)}] xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter}{uploadFilter if useHardwareAcceleration&HW_ENCODE!=0 else ''} [vseg{segIndex}]"
                 #if hwAccelDevices & HW_ENCODE != 0:
                 if encodeDevice is not None:
-                    encodeUploadFilter = HWACCEL_VALUES[encodeDevice['brand']].upload_filter
+                    encodeUploadFilter = HWACCEL_VALUES[encodeDevice.brand].upload_filter
                     if useHwOutscaleAccel:
                         xstackBody = [xstackFilter, encodeUploadFilter,
                                       scaleToFitFilter, padFilter]
