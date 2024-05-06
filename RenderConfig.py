@@ -185,6 +185,12 @@ class VideoAccelDevice:
         self.functions = functions
         self.priority = priority
         self.maxDecodeStreams = maxDecodeStreams
+    
+    def __hash__(self):
+        return hash(self.devicePath)
+    
+    def __eq__(self, value: object) -> bool:
+        return self.devicePath == value.devicePath
 
 def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[VideoAccelDevice]:
     """Returns a sorted list of devices that can be used for hardware acceleration,
