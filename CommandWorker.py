@@ -4,7 +4,6 @@ import os
 from typing import List
 from thefuzz import process as fuzzproc
 import time as ttime #avoid name conflict with import in config file
-from CopyWorker import getActiveCopyTaskInfo
 
 import scanned
 import RenderWorker
@@ -20,7 +19,7 @@ from SharedUtils import calcGameCounts
 from RenderConfig import RenderConfig
 from RenderTask import DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, RenderTask, clearErroredStatuses, deleteRenderStatus, getRenderStatus, getRendersWithStatus, setRenderStatus
 from SessionWorker import getAllStreamingDaysByStreamer
-from SharedUtils import getVideoOutputPath
+from SourceFile import reloadAndSave
 
 
 class Command:
@@ -149,6 +148,9 @@ def clearErroredJobs():
 
 
 commandArray.append(Command(clearErroredJobs, 'Clean up errored jobs'))
+
+commandArray.append(Command(reloadAndSave, 'Force reload all files'))
+
 
 quitOptions = ('quit', 'exit', 'q')
 
