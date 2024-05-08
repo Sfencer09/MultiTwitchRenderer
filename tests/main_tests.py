@@ -27,10 +27,10 @@ from SessionWorker import getAllStreamingDaysByStreamer, sessionWorker
 import scanned
 
 # %%
-#reloadAndSave()
+reloadAndSave()
 
 
-initialize()
+#initialize()
 #loadFiledata(DEFAULT_DATA_FILEPATH+'.bak')
 #scanFiles(log=True)
 print("Initialization complete!")
@@ -39,6 +39,9 @@ print(len(scanned.allFilesByVideoId))
 # %%
 #pprint(scanned.allFilesByStreamer['BryceMcQuaid'][-2].infoJson)
 #pprint(scanned.allStreamerSessions['BryceMcQuaid'])
+pprint(scanned.allFilesByStreamer['TheOrionSound'])
+pprint(scanned.allFilesByVideoId['v2137233054'].parsedChat.nightbotGroupComments)
+pprint(scanned.allFilesByVideoId['v2137233054'].parsedChat.groups)
 
 # %%
 
@@ -52,7 +55,7 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
 testStreamer = getConfig('main.monitorStreamers')[0]
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-02')
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-04')
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()
 while testCommands is None:

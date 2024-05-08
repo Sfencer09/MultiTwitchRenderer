@@ -112,8 +112,13 @@ class SourceFile:
         assert chatFile.endswith(getConfig('internal.chatExt')) and os.path.isfile(
             chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
+        
+    def tryParsingChatFile(self) -> bool:
         if self.streamer in getConfig('main.streamersParseChatList'):
-            self.parsedChat = ParsedChat(self, chatFile)
+            if self.chatFile is not None:
+                self.parsedChat = ParsedChat(self, self.chatFile)
+                return True
+        return False
 
     def getVideoFileInfo(self):
         if self.videoInfo is None:
@@ -125,7 +130,7 @@ class SourceFile:
 def scanFiles():
     # newFiles = set()
     # newFilesByStreamer = dict()
-    newFilesByVideoId = dict()
+    newFilesByVideoId:Dict[str, SourceFile] = dict()
     basepath = getConfig('main.basepath')
     outputDirectory = getConfig('main.outputDirectory')
     videoExts = getConfig('internal.videoExts')
@@ -220,6 +225,10 @@ def scanFiles():
                 scanned.allFilesByStreamer[streamer] = newCompleteFiles
             else:  # streamer already had videos scanned in
                 scanned.allFilesByStreamer[streamer].extend(newCompleteFiles)
+    #Can only parse chat files properly when all streamers have been scanned in
+    for file in newFilesByVideoId.values():
+        file.tryParsingChatFile()
+    
     scanned.allStreamersWithVideos = list(scanned.allFilesByStreamer.keys())
     logger.info(f"Step 0: {scanned.allStreamersWithVideos}")
 
