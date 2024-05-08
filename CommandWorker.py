@@ -5,9 +5,10 @@ from typing import List
 from thefuzz import process as fuzzproc
 import time as ttime #avoid name conflict with import in config file
 
+from MTRArgParse import getArgs
 import scanned
 import RenderWorker
-from MTRConfig import getConfig
+from MTRConfig import getConfig, loadConfigFile
 
 COPY_FILES = getConfig('main.copyFiles')
 
@@ -151,6 +152,10 @@ commandArray.append(Command(clearErroredJobs, 'Clean up errored jobs'))
 
 commandArray.append(Command(reloadAndSave, 'Force reload all files'))
 
+def reloadConfigFile():
+    loadConfigFile(getArgs().configFilePath)
+
+commandArray.append(Command(reloadConfigFile, 'Reload config file'))
 
 quitOptions = ('quit', 'exit', 'q')
 
