@@ -37,8 +37,8 @@ print("Initialization complete!")
 print(len(scanned.allFilesByVideoId))
 
 # %%
-pprint(scanned.allFilesByStreamer['BryceMcQuaid'][-2].infoJson)
-pprint(scanned.allStreamerSessions['BryceMcQuaid'])
+#pprint(scanned.allFilesByStreamer['BryceMcQuaid'][-2].infoJson)
+#pprint(scanned.allStreamerSessions['BryceMcQuaid'])
 
 # %%
 
@@ -52,7 +52,7 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
 testStreamer = getConfig('main.monitorStreamers')[0]
-#testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-04-02')
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-02')
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()
 while testCommands is None:
@@ -81,13 +81,13 @@ while testCommands is None:
 
 pprint([extractInputFiles(testCommand) for testCommand in testCommands])
 print("\n\n")
-for testCommand in testCommands:
+""" for testCommand in testCommands:
     if 'ffmpeg' in testCommand[0]:
         testCommand.insert(-1, '-y')
         testCommand.insert(-1, '-stats_period')
         testCommand.insert(-1, '30')
-        #testCommand.insert(-1, )
-pprint(testCommands)
+        #testCommand.insert(-1, ) """
+#pprint(testCommands)
 print('\n\n')
 #testCommandString = formatCommand(testCommand)
 testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]
@@ -127,14 +127,14 @@ pprint([targetGroups[i] for i in range(len(targetGroups)) if i == 0 or set(targe
 #print(parsePlayersFromGroupMessage("Chilled is playing with APlatypuss(Soon), AriBunnie, AstarriApple(Soon), HeckMuffins, JonSandman, KaraCorvus, OzzaWorld(Soon), Reenyy, TayderTot, X33N, and VikramAFC!!"))
 
 # %%
-pprint(scanned.allFilesByVideoId['v2082233820'])
+#pprint(scanned.allFilesByVideoId['v2082233820'])
 
-testCommands = generateTilingCommandMultiSegment(testStreamer, "2024-03-05")
+#testCommands = generateTilingCommandMultiSegment(testStreamer, "2024-03-05")
 
-testInputFiles = [extractInputFiles(testCommand) for testCommand in testCommands]
-uniqueFiles = sorted(set(functools.reduce(list.__add__, testInputFiles, [])))
-print(testInputFiles, end='\n\n')
-print(uniqueFiles, end='\n\n')
+#testInputFiles = [extractInputFiles(testCommand) for testCommand in testCommands]
+#uniqueFiles = sorted(set(functools.reduce(list.__add__, testInputFiles, [])))
+#print(testInputFiles, end='\n\n')
+#print(uniqueFiles, end='\n\n')
 
 
 saveFiledata(getConfig('main.dataFilepath'))
