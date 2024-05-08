@@ -150,7 +150,11 @@ def clearErroredJobs():
 
 commandArray.append(Command(clearErroredJobs, 'Clean up errored jobs'))
 
-commandArray.append(Command(reloadAndSave, 'Force reload all files'))
+def forceReloadFiles():
+    print("This may take a while if there's a lot of files, don't panic if it looks frozen")
+    reloadAndSave()
+
+commandArray.append(Command(forceReloadFiles, 'Force reload all files'))
 
 def reloadConfigFile():
     loadConfigFile(getArgs().configFilePath)
