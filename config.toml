@@ -126,6 +126,7 @@ ElainaExe = [
 emerome = [
   "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
 ]
+Feinberg = ["mcc.live","https://mcc.live"]
 FlanelJoe = [
   "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
 ]
@@ -139,7 +140,9 @@ Junkyard129 = [
 ]
 KaraCorvus = [
   "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
-  " Kara,"
+  " Kara,",
+  "mcc.live",
+  "https://mcc.live"
 ]
 KDoolz = [ "Kat" ]
 Kn0vis = [
@@ -167,6 +170,7 @@ MG4R = [
 MicheleBoyd = [
   "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
 ]
+TheOrionSound = ["mcc.live","https://mcc.live"]
 ozzaworld = [ "ozza" ]
 PastaroniRavioli = [
   "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
