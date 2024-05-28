@@ -143,8 +143,10 @@ configSchema = Schema({
             And([str], lambda x: len(x) >= 2 and all((ext.startswith('.') for ext in x))),
         Optional('infoExt', default= '.info.json'):
             And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')),
-        Optional('chatExt', default= '.rechat.twitch-gql-20221228.json'):
+        Optional('ytdlpChatExt', default= '.rechat.twitch-gql-20221228.json'):
             And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')
+        Optional('renderableChatExts', default=['.chat.twitchdownloadercli.json', '.chat.live.twitchdownloadercli.json']):
+            And([str], lambda x: all(len(ext) >= 6 and ext.startswith('.') and any(ext.endswith(post) for post in ('.json', '.json.gz')) for ext in x)),
         Optional('otherExts', default= ['.description', '.jpg']):
             And([str], lambda x: all((len(ext) >= 2 and ext.startswith('.') for ext in x))),
         # Regex of the video id within the filename. Should be exact enough to avoid false positives
