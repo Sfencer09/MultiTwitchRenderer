@@ -32,7 +32,7 @@ logFolder = './logs/'
 # If set to true, 
 copyFiles = false
 
-minimumSessionWorkerDelayHours = 3 #timedelta(hours=3)
+minimumSessionWorkerDelayHours = 3
 
 overwriteIntermediateFiles = true
 # Whether to overwrite existing output files
