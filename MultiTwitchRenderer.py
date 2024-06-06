@@ -332,10 +332,16 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     def logSegmentMatrix(level: int, showGameChanges=True):
         for i in range(len(segmentSessionMatrix)):
             if showGameChanges and i > 0:
-                prevRowGames = [
-                    session.game for session in segmentSessionMatrix[i-1][0]]
-                currRowGames = [
-                    session.game for session in segmentSessionMatrix[i][0]]
+                if segmentSessionMatrix[i-1][0] is not None:
+                    prevRowGames = [
+                        session.game for session in segmentSessionMatrix[i-1][0]]
+                else:
+                    prevRowGames = []
+                if segmentSessionMatrix[i][0] is not None:
+                    currRowGames = [
+                        session.game for session in segmentSessionMatrix[i][0]]
+                else:
+                    currRowGames = []
                 # if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
                 if any((game not in currRowGames for game in prevRowGames)):
                     logger.log(level, '-'*(2*len(allInputStreamers)+1))
@@ -543,6 +549,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     compressRows()
 
     logSegmentMatrix(logging.DETAIL)
+    
     # def sortByEntryTime():
     finalSortKeys = [-1]
     endFactor = len(allInputStreamers) + 1
@@ -639,9 +646,10 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     if outputFile is None:
         gameList = [segmentSessionMatrix[0][0][0].game]
         for row in segmentSessionMatrix:
-            for session in row[0]:
-                if session.game != gameList[-1]:
-                    gameList.append(session.game)
+            if row[0] is not None:
+                for session in row[0]:
+                    if session.game != gameList[-1]:
+                        gameList.append(session.game)
         outputFile = getVideoOutputPath(mainStreamer, targetDate, gameList=gameList)
     
     # 13. Use #5 and #12 to build output stream mapping orders and build final command along with #12 and #11
