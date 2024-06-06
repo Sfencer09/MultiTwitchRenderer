@@ -6,6 +6,7 @@ import math
 import random
 import sys
 import json
+import numpy as np
 
 from datetime import datetime, timedelta, timezone
 from datetime import time as datetimetime
@@ -325,8 +326,89 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                             assert segmentFileMatrix[segIndex][streamerIndex] is session.file
     logger.info(f"Step 8: {allInputStreamers}")
     logger.trace(pformat(segmentFileMatrix))
+    
+    # Detect if there are any complete gaps, and only keep the largest segment.
+    # used when there are stray segments from previous or next days
+    
+    if any((all((item is None for item in row)) for row in segmentFileMatrix)):
+        #if we get in here, we know we have the above problem.
+        ...
+        logger.info("Found major gap!")
+        segmentGroups:List[Tuple[int]] = []  # [start, end)   - (math notation)
+        segmentLengths:List[int|float] = [0]
+        segmentStart = -1
+        for i in range(len(segmentFileMatrix)):
+            if all(item is None for item in segmentFileMatrix[i]):
+                if segmentStart != -1:
+                    segmentGroups.append((segmentStart, i))
+                    segmentLengths.append(0)
+                    segmentStart = -1
+            else:
+                segmentLengths[-1] += uniqueTimestampsSorted[i+1] - uniqueTimestampsSorted[i]
+                if segmentStart == -1:
+                    segmentStart = i
+        assert segmentStart != -1
+        segmentGroups.append((segmentStart, len(segmentFileMatrix)))
+        logger.info(f"{segmentGroups=}")
+        logger.info(f"{segmentLengths=}")
+        
+        largestSegmentIndex = np.argmax(segmentLengths)
+        keepStart, keepEnd = segmentGroups[largestSegmentIndex]
+        def removeFile(sf:SourceFile):
+            ...
+            inputFileIndex = inputFileIndexes[sf]
+            del inputFileIndexes[sf]
+            for key in inputFileIndexes:
+                if inputFileIndexes[key] > inputFileIndex:
+                    inputFileIndexes[key] -= 1
+            del inputFilesSorted[inputFileIndex]
+        def removeSession(sess:Session):
+            ...
+            foundInputSessionByStreamer = False
+            for streamer in inputSessionsByStreamer.keys():
+                try:
+                    inputSessionsByStreamer[streamer].remove(sess)
+                    foundInputSessionByStreamer = True
+                except ValueError:
+                    continue
+                try:
+                    inputSessionTimestampsByStreamer[streamer].remove(sess.startTimestamp)
+                except ValueError:
+                    pass
+                try:
+                    inputSessionTimestampsByStreamer[streamer].remove(sess.endTimestamp)
+                except ValueError:
+                    pass
+                break
+            assert foundInputSessionByStreamer
+            secondarySessionsArray.remove(sess)
+                
+        for i in range(0, keepStart):
+            for file in segmentFileMatrix[i]:
+                if file is not None:
+                    removeFile(file)
+            for sessionList in segmentSessionMatrix[i]:
+                if sessionList is not None:
+                    for s in sessionList:
+                        removeSession(s)
+        for i in range(keepEnd, len(segmentFileMatrix)):
+            for file in segmentFileMatrix[i]:
+                if file is not None:
+                    removeFile(file)
+            for sessionList in segmentSessionMatrix[i]:
+                if sessionList is not None:
+                    for s in sessionList:
+                        removeSession(s)
+        segmentFileMatrix = segmentFileMatrix[keepStart:keepEnd]
+        segmentSessionMatrix = segmentSessionMatrix[keepStart:keepEnd]
+        
+        uniqueTimestampsSorted = uniqueTimestampsSorted[keepStart:keepEnd+1]
+        uniqueTimestamps = set(uniqueTimestampsSorted)
+        
+        allSessionsStartTime = uniqueTimestampsSorted[0]
+        allSessionsEndTime = uniqueTimestampsSorted[-1]
+        logger.info(f"Step 7: {allSessionsStartTime=}, {allSessionsEndTime=}, {mainSessionsStartTime=}, {mainSessionsEndTime=}, {uniqueTimestampsSorted=}")
 
-    # 9. Remove segments of secondary streamers still in games that main streamer has left
     logger.info("Step 9:")
 
     def logSegmentMatrix(level: int, showGameChanges=True):
