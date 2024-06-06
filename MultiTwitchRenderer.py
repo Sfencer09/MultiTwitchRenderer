@@ -559,9 +559,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     # 6. For each streamer in #5, build an array of pairs of start & end timestamps for sessions from #3 while
         # combining those that connect
-    inputSessionTimestampsByStreamer = {}
+    inputSessionTimestampsByStreamer:Dict[str, List[int|float]] = {}
     for streamer in allInputStreamers:
-        timePairs = []
+        timePairs:List[int|float] = []
         inputSessionTimestampsByStreamer[streamer] = timePairs
         for session in inputSessionsByStreamer[streamer]:
             start, end = session.startTimestamp, session.endTimestamp
@@ -596,7 +596,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     uniqueTimestampsSorted = sorted(uniqueTimestamps)
     allSessionsStartTime = uniqueTimestampsSorted[0]
     allSessionsEndTime = uniqueTimestampsSorted[-1]
-    logger.info(f"Step 7: {allSessionsStartTime}, {allSessionsEndTime}, {mainSessionsStartTime}, {mainSessionsEndTime}, {uniqueTimestampsSorted}")
+    logger.info(f"Step 7: {allSessionsStartTime=}, {allSessionsEndTime=}, {mainSessionsStartTime=}, {mainSessionsEndTime=}, {uniqueTimestampsSorted=}")
     for ts in uniqueTimestampsSorted:
         logger.info(convertToDatetime(ts))
     logger.info(convertToDatetime(uniqueTimestampsSorted[-1])-
