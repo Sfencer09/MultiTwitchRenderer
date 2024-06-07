@@ -1105,7 +1105,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     # filtergraphStringSegmentsV2 = []
     logger.info(f"Step 13.v2: {segmentTileCounts}, {maxSegmentTiles}, {outputResolution}")
     # v2()
-
+    """ 
     def filtergraphSegmentVersion():
         filtergraphParts = []
         inputSegmentNumbers = [[None for i in range(
@@ -1396,7 +1396,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 outputMetadataOptions,
                 codecOptions,
                 ["-movflags", "faststart", outputFile]])]
-
+ """
     if cutMode == 'segment':
         raise Exception("version outdated")
         #return filtergraphSegmentVersion()
