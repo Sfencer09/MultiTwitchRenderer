@@ -162,7 +162,11 @@ def scanFiles():
                     file = SourceFile(streamer, videoId, videoFile=filepath)
                     # filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
-                    file = SourceFile(streamer, videoId, infoFile=filepath)
+                    try:
+                        file = SourceFile(streamer, videoId, infoFile=filepath)
+                    except Exception as ex:
+                        logger.error(f"Unable to parse info file {filepath}")
+                        logger.exception(ex)
                 else:
                     assert filename.endswith(chatExt)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
@@ -176,7 +180,11 @@ def scanFiles():
                     file.setVideoFile(filepath)
                     # filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
-                    file.setInfoFile(filepath)
+                    try:
+                        file.setInfoFile(filepath)
+                    except Exception as ex:
+                        logger.error(f"Unable to parse info file {filepath}")
+                        logger.exception(ex)
                 else:
                     assert filename.endswith(chatExt)
                     file.setChatFile(filepath)
