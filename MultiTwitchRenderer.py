@@ -770,16 +770,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         
         largestSegmentIndex = np.argmax(segmentLengths)
         keepStart, keepEnd = segmentGroups[largestSegmentIndex]
-        def removeFile(sf:SourceFile):
-            ...
-            inputFileIndex = inputFileIndexes[sf]
-            del inputFileIndexes[sf]
-            for key in inputFileIndexes:
-                if inputFileIndexes[key] > inputFileIndex:
-                    inputFileIndexes[key] -= 1
-            del inputFilesSorted[inputFileIndex]
         def removeSession(sess:Session):
-            ...
             foundInputSessionByStreamer = False
             for streamer in inputSessionsByStreamer.keys():
                 try:
@@ -797,29 +788,34 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                     pass
                 break
             assert foundInputSessionByStreamer
-            secondarySessionsArray.remove(sess)
+            try:
+                secondarySessionsArray.remove(sess)
+            except:
+                pass
+            try:
+                mainSessionsOnTargetDate.remove(sess)
+            except:
+                pass
                 
         for i in range(0, keepStart):
-            for file in segmentFileMatrix[i]:
-                if file is not None:
-                    removeFile(file)
             for sessionList in segmentSessionMatrix[i]:
                 if sessionList is not None:
                     for s in sessionList:
                         removeSession(s)
         for i in range(keepEnd, len(segmentFileMatrix)):
-            for file in segmentFileMatrix[i]:
-                if file is not None:
-                    removeFile(file)
             for sessionList in segmentSessionMatrix[i]:
                 if sessionList is not None:
                     for s in sessionList:
                         removeSession(s)
         segmentFileMatrix = segmentFileMatrix[keepStart:keepEnd]
         segmentSessionMatrix = segmentSessionMatrix[keepStart:keepEnd]
+        numSegments = len(segmentFileMatrix)
         
         uniqueTimestampsSorted = uniqueTimestampsSorted[keepStart:keepEnd+1]
         uniqueTimestamps = set(uniqueTimestampsSorted)
+        
+        mainSessionsStartTime = mainSessionsOnTargetDate[0].startTimestamp
+        mainSessionsEndTime = mainSessionsOnTargetDate[-1].endTimestamp
         
         allSessionsStartTime = uniqueTimestampsSorted[0]
         allSessionsEndTime = uniqueTimestampsSorted[-1]
