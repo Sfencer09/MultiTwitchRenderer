@@ -111,13 +111,13 @@ threadCount : Passed to ffmpeg as '-threads' option. Default: 0 (FFmpeg deterrmi
 
 #### File extensions, only change if absolutely necessary:
 
-videoExts = [ ".mp4", ".mkv" ]
+videoExts : Extensions of video files. Default: [ ".mp4", ".mkv" ]
 
-infoExt = '.info.json'
+infoExt : Extensions of info JSON files. Default: '.info.json'
 
-chatExt = '.rechat.twitch-gql-20221228.json'
+chatExt : Extensions of chat files. Default: '.rechat.twitch-gql-20221228.json'
 
-otherExts = ['.description', '.jpg']
+otherExts : Default ['.description', '.jpg']
 
 videoIdRegex : Regex of the video id within the filename. Should be exact enough to avoid false positives. Default: "(v?[\\d]{9,11})"
 
