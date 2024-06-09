@@ -389,12 +389,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                 # print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
                 tileHeight = int(tileResolution.split(':')[1])
                 logger.debug(f"tileHeight={tileHeight}, video height={height}")
-                # if tileHeight > height: #upscaling
-                #    scaleAlgo = '' if useHwFilterAccel else ':flags=lanczos'
-                # elif tileHeight < height:
-                #    scaleAlgo = ':interp_algo=super' if useHwFilterAccel else '' #':flags=area'
-                # else:
-                #    scaleAlgo = ''
+                
                 scaleAlgo = getScaleAlgorithm(
                     height, tileHeight, useHwFilterAccel)
                 scaleSuffix = ACTIVE_HWACCEL_VALUES['scale_filter'] if useHwFilterAccel else ''
@@ -537,7 +532,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     otherStreamers = [
         name for name in scanned.allStreamersWithVideos if name != mainStreamer]
     #########
-    drawLabels = renderConfig.drawLabels
     startTimeMode = renderConfig.startTimeMode
     endTimeMode = renderConfig.endTimeMode
     sessionTrimLookback = renderConfig.sessionTrimLookback
@@ -545,23 +539,14 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     sessionTrimLookbackSeconds = renderConfig.sessionTrimLookbackSeconds
     sessionTrimLookaheadSeconds = renderConfig.sessionTrimLookaheadSeconds
     minGapSize = renderConfig.minGapSize
-    outputCodec = renderConfig.outputCodec
-    encodingSpeedPreset = renderConfig.encodingSpeedPreset
     useHardwareAcceleration = renderConfig.useHardwareAcceleration
     maxHwaccelFiles = renderConfig.maxHwaccelFiles
     minimumTimeInVideo = renderConfig.minimumTimeInVideo
     cutMode = renderConfig.cutMode
     useChat = renderConfig.useChat
     excludeStreamers = renderConfig.excludeStreamers
-    preciseAlign = renderConfig.preciseAlign
-    # includeStreamers = renderConfig.includeStreamers
-    threadCount = getConfig('internal.threadCount')
+    includeStreamers = renderConfig.includeStreamers
     nongroupGames = getConfig('main.nongroupGames')
-    outputResolutions = getConfig('internal.outputResolutions')
-    REDUCED_MEMORY = getConfig('internal.reducedFfmpegMemory')
-    ffmpegPath = getConfig('main.ffmpegPath')
-    basepath = getConfig('main.basepath')
-    localBasepath = getConfig('main.localBasepath')
     ACTIVE_HWACCEL_VALUES = getActiveHwAccelValues()
     #########
     # 2. For a given day, target a streamer and find the start and end times of their sessions for the day
@@ -598,7 +583,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     #         chat = mainFile.parsedChat
     #         if chat is not None:
     #             pprint(chat.groups)
-    mainFiles = set((session.file for session in mainSessionsOnTargetDate))
+    #mainFiles = set((session.file for session in mainSessionsOnTargetDate))
     
     logger.info(f"Step 2.1: {pformat(groupsFromMainFiles)}")
 
