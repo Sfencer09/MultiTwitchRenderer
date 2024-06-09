@@ -138,22 +138,27 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
     
     #########
     drawLabels = renderConfig.drawLabels
+    outputCodec = renderConfig.outputCodec
+    encodingSpeedPreset = renderConfig.encodingSpeedPreset
     useHardwareAcceleration = renderConfig.useHardwareAcceleration
     maxHwaccelFiles = renderConfig.maxHwaccelFiles
+    cutMode = renderConfig.cutMode
+    preciseAlign = renderConfig.preciseAlign
+    threadCount = getConfig('internal.threadCount')
+    outputResolutions = getConfig('internal.outputResolutions')
+    REDUCED_MEMORY = getConfig('internal.reducedFfmpegMemory')
+    ffmpegPath = getConfig('main.ffmpegPath')
+    localBasepath = getConfig('main.localBasepath')
     ACTIVE_HWACCEL_VALUES = getActiveHwAccelValues()
+    #########
     # print("CHUNKED", numSegments)
     numSegments = len(segmentFileMatrix)
     mainStreamer = allInputStreamers[0]
-    localBasepath = getConfig('main.localBasepath')
-    ffmpegPath = getConfig('main.ffmpegPath')
-    preciseAlign = renderConfig.preciseAlign
-    drawLabels = renderConfig.drawLabels
     
     logger.info(f"CHUNKED {numSegments}")
     commandList = []
     intermediateFilepaths = [os.path.join(
         localBasepath, 'temp', f"{mainStreamer} - {str(targetDate)} - part {i}.mkv") for i in range(numSegments)]
-    audioFiltergraphParts = []
     fileOffsets = audioOffsetCache #:Dict[str, Dict[str, float]]
     if preciseAlign:
         import AudioAlignment
@@ -207,6 +212,95 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                          for row in segmentFileMatrix]
     maxSegmentTiles = max(segmentTileCounts)
     
+    maxTileWidth = calcTileWidth(maxSegmentTiles)
+    outputResolution = outputResolutions[maxTileWidth]
+    outputResolutionStr = f"{str(outputResolution[0])}:{str(outputResolution[1])}"
+    inputFilesSorted:List[SourceFile] = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
+                              key=lambda x: allInputStreamers.index(x.streamer))
+    # 12a. Build reverse-lookup dictionary
+    
+        # 12b. Build input options in order
+    inputOptions = []
+    inputVideoInfo = []
+    for i in range(len(inputFilesSorted)):
+        file = inputFilesSorted[i]
+        if useHardwareAcceleration & HW_DECODE != 0:
+            if maxHwaccelFiles == 0 or i < maxHwaccelFiles:
+                decodeOptions = ACTIVE_HWACCEL_VALUES['decode_input_options']
+                scaleOptions = ACTIVE_HWACCEL_VALUES['scale_input_options']
+                inputOptions.extend(decodeOptions)
+                # inputOptions.extend(('-threads', '1', '-c:v', 'h264_cuvid'))
+                # inputOptions.extend(('-threads', '1', '-hwaccel', 'nvdec'))
+                if useHardwareAcceleration & HW_INPUT_SCALE != 0 and cutMode in ('trim', 'chunked') and scaleOptions is not None:
+                    inputOptions.extend(scaleOptions)
+                    # inputOptions.extend(('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'))
+            # else:
+            #    inputOptions.extend(('-threads', str(threadCount//2)))
+        inputOptions.append('-i')
+        if file.localVideoFile is not None:
+            inputOptions.append(file.localVideoFile)
+            logger.info(file.localVideoFile)
+            inputVideoInfo.append(file.getVideoFileInfo())
+        else:
+            inputOptions.append(file.videoFile)
+            logger.info(file.videoFile)
+            inputVideoInfo.append(file.getVideoFileInfo())
+            
+    inputFileIndexes = {}
+    for i in range(len(inputFilesSorted)):
+        inputFileIndexes[inputFilesSorted[i]] = i
+    
+    allInputStreamersSortKey = {}
+    for i in range(len(allInputStreamers)):
+        allInputStreamersSortKey[allInputStreamers[i]] = i
+    
+    audioSampleRatesByStreamer = {streamer:None for streamer in allInputStreamers}
+    for i in range(len(inputFilesSorted)):
+        file = inputFilesSorted[i]
+        fileInfo = inputVideoInfo[i]
+        streamerIndex = allInputStreamersSortKey[file.streamer]
+        audioStreamInfo = [
+            stream for stream in fileInfo['streams'] if stream['codec_type'] == 'audio'][0]
+        audioRate = audioStreamInfo['sample_rate']
+        #streamerAudioSampleRates[streamerIndex] = audioRate
+        audioSampleRatesByStreamer[allInputStreamers[streamerIndex]] = audioRate
+        logger.detail(f"{file.streamer}, {audioRate}")
+    nullAudioStreamsBySamplerates = {}
+    #for samplerate in set(streamerAudioSampleRates):
+    for samplerate in set(audioSampleRatesByStreamer.values()):
+        rateStr = str(samplerate)
+        inputIndex = len([x for x in inputOptions if x == '-i'])
+        assert inputIndex == len(inputFilesSorted) + \
+            len(nullAudioStreamsBySamplerates)
+        inputOptions.extend(('-f',  'lavfi', '-i', f'anullsrc=r={rateStr}'))
+        nullAudioStreamsBySamplerates[rateStr] = inputIndex
+    
+    codecOptions = ["-c:a", "aac",
+                    "-c:v", outputCodec,
+                    "-s", outputResolutionStr]
+    if outputCodec in ('libx264', 'h264_nvenc'):
+        codecOptions.extend(("-profile:v", "high",
+                             # "-maxrate",outputBitrates[maxTileWidth],
+                             # "-bufsize","4M",
+                             "-preset", encodingSpeedPreset,
+                             "-crf", "22",
+                             ))
+        if REDUCED_MEMORY:
+            codecOptions.extend('-rc-lookahead', '20', '-g', '60')
+    elif outputCodec in ('libx265', 'hevc_nvenc'):
+        codecOptions.extend((
+            "-preset", encodingSpeedPreset,
+            "-crf", "26",
+            "-tag:v", "hvc1"
+        ))
+        if REDUCED_MEMORY:
+            logger.warning("Reduced memory mode not available yet for libx265 codec")
+    threadOptions = ['-threads', str(threadCount),
+                     '-filter_threads', str(threadCount),
+                     '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
+    uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
+    downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
+    timeFilter = f"setpts=PTS-STARTPTS"
     for segIndex in range(numSegments):
         filtergraphParts = []
         segmentStartTime = uniqueTimestampsSorted[segIndex]
@@ -229,7 +323,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
         for streamerIndex in range(len(allInputStreamers)):
             if segmentFileMatrix[segIndex][streamerIndex] is None:
                 neededNullSampleRates.add(
-                    streamerAudioSampleRates[streamerIndex])
+                    audioSampleRatesByStreamer[allInputStreamers[streamerIndex]])
         rowNullAudioStreamsBySamplerates = {}
         nullAudioInputOptions = []
         for samplerate in neededNullSampleRates:
@@ -338,7 +432,8 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                 rowInputFileCount += 1
                 logger.trace(f"Step 13b: {segIndex}, {streamerIndex}, {file}, {startOffset}, {endOffset}, {inputIndex}, {streamerIndex}, {videoSegmentName}, {audioSegmentName}")
             else:
-                audioRate = streamerAudioSampleRates[streamerIndex]
+                #audioRate = streamerAudioSampleRates[streamerIndex]
+                audioRate = audioSampleRatesByStreamer[allInputStreamers[streamerIndex]]
                 nullAudioIndex = rowNullAudioStreamsBySamplerates[str(
                     audioRate)]
                 emptyAudioFiltergraph = f"[{nullAudioIndex}] atrim=duration={segmentDuration} [{audioSegmentName}]"
@@ -919,7 +1014,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
             # 11. Combine adjacent segments that now have the same set of streamers
         logger.info("Step 11:")
-        
+
     def trimSessionsV2():
         def splitRow(rowNum, timestamp):
             assert uniqueTimestampsSorted[rowNum] < timestamp < uniqueTimestampsSorted[rowNum+1]
@@ -994,9 +1089,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     inputFilesSorted:List[SourceFile] = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
                               key=lambda x: allInputStreamers.index(x.streamer))
     # 12a. Build reverse-lookup dictionary
-    inputFileIndexes = {}
-    for i in range(len(inputFilesSorted)):
-        inputFileIndexes[inputFilesSorted[i]] = i
+    
         # 12b. Build input options in order
     inputOptions = []
     inputVideoInfo = []
@@ -1027,8 +1120,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
     logger.info(f"Step 12: {inputOptions}")
     forceKeyframeTimes = [toFfmpegTimestamp(
         uniqueTimestampsSorted[i]-allSessionsStartTime) for i in range(1, numSegments)]
-    keyframeOptions = ['-force_key_frames', ','.join(forceKeyframeTimes)]
-    streamerAudioSampleRates = [None for i in range(len(allInputStreamers))]
+    """ keyframeOptions = ['-force_key_frames', ','.join(forceKeyframeTimes)]
+    #streamerAudioSampleRates = [None for i in range(len(allInputStreamers))]
+    audioSampleRatesByStreamer = {streamer:None for streamer in allInputStreamers}
     for i in range(len(inputFilesSorted)):
         file = inputFilesSorted[i]
         fileInfo = inputVideoInfo[i]
@@ -1036,16 +1130,18 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         audioStreamInfo = [
             stream for stream in fileInfo['streams'] if stream['codec_type'] == 'audio'][0]
         audioRate = audioStreamInfo['sample_rate']
-        streamerAudioSampleRates[streamerIndex] = audioRate
+        #streamerAudioSampleRates[streamerIndex] = audioRate
+        audioSampleRatesByStreamer[allInputStreamers[streamerIndex]] = audioRate
         logger.detail(f"{file.streamer}, {audioRate}")
     nullAudioStreamsBySamplerates = {}
-    for samplerate in set(streamerAudioSampleRates):
+    #for samplerate in set(streamerAudioSampleRates):
+    for samplerate in set(audioSampleRatesByStreamer.values()):
         rateStr = str(samplerate)
         inputIndex = len([x for x in inputOptions if x == '-i'])
         assert inputIndex == len(inputFilesSorted) + \
             len(nullAudioStreamsBySamplerates)
         inputOptions.extend(('-f',  'lavfi', '-i', f'anullsrc=r={rateStr}'))
-        nullAudioStreamsBySamplerates[rateStr] = inputIndex
+        nullAudioStreamsBySamplerates[rateStr] = inputIndex """
 
     if outputFile is None:
         gameList = [segmentSessionMatrix[0][0][0].game]
@@ -1056,54 +1152,11 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                         gameList.append(session.game)
         outputFile = getVideoOutputPath(mainStreamer, targetDate, gameList=gameList)
     
-    # 13. Use #5 and #12 to build output stream mapping orders and build final command along with #12 and #11
-    segmentTileCounts = [len(list(filter(lambda x: x is not None, row)))
-                         for row in segmentFileMatrix]
-    maxSegmentTiles = max(segmentTileCounts)
-    maxTileWidth = calcTileWidth(maxSegmentTiles)
-    outputResolution = outputResolutions[maxTileWidth]
-    outputResolutionStr = f"{str(outputResolution[0])}:{str(outputResolution[1])}"
-    outputMapOptions = ['-map', '[vout]']
-    outputMetadataOptions = []
-    for streamerIndex in range(len(allInputStreamers)):
-        outputMapOptions.extend(('-map', f"[aout{streamerIndex}]"))
-        streamerName = allInputStreamers[streamerIndex]
-        outputMetadataOptions.extend((f"-metadata:s:a:{streamerIndex}",
-                                      f"title=\"{str(streamerIndex+1)+' - ' if drawLabels else ''}{streamerName}\"",
-                                      f"-metadata:s:a:{streamerIndex}",
-                                      "language=eng"))
-    codecOptions = ["-c:a", "aac",
-                    "-c:v", outputCodec,
-                    "-s", outputResolutionStr]
-    if outputCodec in ('libx264', 'h264_nvenc'):
-        codecOptions.extend(("-profile:v", "high",
-                             # "-maxrate",outputBitrates[maxTileWidth],
-                             # "-bufsize","4M",
-                             "-preset", encodingSpeedPreset,
-                             "-crf", "22",
-                             ))
-        if REDUCED_MEMORY:
-            codecOptions.extend('-rc-lookahead', '20', '-g', '60')
-    elif outputCodec in ('libx265', 'hevc_nvenc'):
-        codecOptions.extend((
-            "-preset", encodingSpeedPreset,
-            "-crf", "26",
-            "-tag:v", "hvc1"
-        ))
-        if REDUCED_MEMORY:
-            logger.warning("Reduced memory mode not available yet for libx265 codec")
-    threadOptions = ['-threads', str(threadCount),
-                     '-filter_threads', str(threadCount),
-                     '-filter_complex_threads', str(threadCount)] if useHardwareAcceleration else []
-    uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
-    downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
-    timeFilter = f"setpts=PTS-STARTPTS"
-    
 
     # 14. For each row of #8:
     # filtergraphStringSegments = []
     # filtergraphStringSegmentsV2 = []
-    logger.info(f"Step 13.v2: {segmentTileCounts}, {maxSegmentTiles}, {outputResolution}")
+    #logger.info(f"Step 13.v2: {segmentTileCounts}, {maxSegmentTiles}, {outputResolution}")
     # v2()
     """ 
     def filtergraphSegmentVersion():
