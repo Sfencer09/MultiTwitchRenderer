@@ -1453,7 +1453,12 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         raise Exception("version outdated")
         #return filtergraphTrimVersion()
     elif cutMode == 'chunked':
-        return filtergraphChunkedVersion()
+        return filtergraphChunkedVersion(segmentFileMatrix=segmentFileMatrix,
+                              uniqueTimestampsSorted=uniqueTimestampsSorted,
+                              allInputStreamers=allInputStreamers,
+                              renderConfig=renderConfig,
+                              targetDate=targetDate,
+                              outputFile=outputFile)#,                              audioSampleRatesByStreamer)
 
 loggerGames = MTRLogging.getLogger('MultiTwitchRendererMain.GameNormalizer')
 
