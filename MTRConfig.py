@@ -145,7 +145,7 @@ configSchema = Schema({
             And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')),
         Optional('chatExt', default= '.rechat.twitch-gql-20221228.json'):
             And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')
-        Optional('otherExts', default= ['.description', '.jpg']):
+        Optional('descriptionExt', default= '.description'):
             And([str], lambda x: all((len(ext) >= 2 and ext.startswith('.') for ext in x))),
         # Regex of the video id within the filename. Should be exact enough to avoid false positives
         Optional('videoIdRegex', default= "(v?[\\d]{9,11})"):

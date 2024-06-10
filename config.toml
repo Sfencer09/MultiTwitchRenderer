@@ -219,7 +219,8 @@ threadCount = 0
 videoExts = [ ".mp4", ".mkv" ]
 infoExt = '.info.json'
 chatExt = '.rechat.twitch-gql-20221228.json'
-otherExts = ['.description', '.jpg']
+descriptionExt = '.description'
+#otherExts = ['.jpg']
 # Regex of the video id within the filename. Should be exact enough to avoid false positives
 videoIdRegex = "(v?[\\d]{9,11})" #r"(v[\d]+)"
 
