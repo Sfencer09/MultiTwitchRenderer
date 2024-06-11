@@ -10,9 +10,12 @@ from MTRLogging import getLogger
 logger = getLogger('RenderTask')
 
 from RenderConfig import RenderConfig
+fileDatePattern:re.Pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 class RenderTask:
     def __init__(self, mainStreamer:str, fileDate:str, renderConfig: RenderConfig, outputPath:str=None):
+        if fileDatePattern.fullmatch(fileDate) is None:
+            raise ValueError(f"Invalid date format! {fileDate=}")
         self.fileDate = fileDate
         self.mainStreamer = mainStreamer
         self.renderConfig = renderConfig
@@ -98,7 +101,7 @@ def decrFileRefCount(filename:str):
 def setRenderStatus(streamer:str, date:str, status:str):
     assert status in ("RENDERING", "RENDER_QUEUE",
                       "COPY_QUEUE", "COPYING", "FINISHED", "ERRORED", "SOLO")
-    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
+    assert fileDatePattern.fullmatch(date)
     assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"
     with renderStatusLock:
@@ -111,7 +114,7 @@ def setRenderStatus(streamer:str, date:str, status:str):
 
 def getRenderStatus(streamer:str, date:str):
     # print('grs1', date)
-    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
+    assert fileDatePattern.fullmatch(date)
     # print('grs2', streamer, scanned.allStreamersWithVideos)
     assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"
@@ -122,7 +125,7 @@ def getRenderStatus(streamer:str, date:str):
 
 
 def deleteRenderStatus(streamer:str, date:str, *, lock:bool=True):
-    assert re.match(r"[\d]{4}-[\d]{2}-[\d]{2}", date)
+    assert fileDatePattern.fullmatch(date)
     assert streamer in scanned.allStreamersWithVideos
     key = f"{streamer}|{date}"
     if lock:
