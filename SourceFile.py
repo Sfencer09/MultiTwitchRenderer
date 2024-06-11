@@ -112,7 +112,7 @@ class SourceFile:
         assert chatFile.endswith(getConfig('internal.chatExt')) and os.path.isfile(
             chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
-        
+
     def tryParsingChatFile(self) -> bool:
         if self.streamer in getConfig('main.streamersParseChatList'):
             if self.chatFile is not None:
@@ -140,7 +140,7 @@ def scanFiles():
     globalAllStreamers = [name for name in os.listdir(basepath) if
                       (name not in ("NA", outputDirectory) and 
                        os.path.isdir(os.path.join(basepath, name)))]
-    for streamer in globalAllStreamers:
+    for streamer in sorted(globalAllStreamers):
         logger.info(f"Scanning streamer {streamer} ")
         newStreamerFiles:List[SourceFile] = []
         streamerBasePath = os.path.join(basepath, streamer, 'S1')
@@ -162,7 +162,11 @@ def scanFiles():
                     file = SourceFile(streamer, videoId, videoFile=filepath)
                     # filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
-                    file = SourceFile(streamer, videoId, infoFile=filepath)
+                    try:
+                        file = SourceFile(streamer, videoId, infoFile=filepath)
+                    except Exception as ex:
+                        logger.error(f"Unable to parse info file {filepath}")
+                        logger.exception(ex)
                 else:
                     assert filename.endswith(chatExt)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
@@ -176,7 +180,11 @@ def scanFiles():
                     file.setVideoFile(filepath)
                     # filesBySourceVideoPath[filepath] = file
                 elif filename.endswith(infoExt):
-                    file.setInfoFile(filepath)
+                    try:
+                        file.setInfoFile(filepath)
+                    except Exception as ex:
+                        logger.error(f"Unable to parse info file {filepath}")
+                        logger.exception(ex)
                 else:
                     assert filename.endswith(chatExt)
                     file.setChatFile(filepath)
@@ -226,8 +234,13 @@ def scanFiles():
             else:  # streamer already had videos scanned in
                 scanned.allFilesByStreamer[streamer].extend(newCompleteFiles)
     #Can only parse chat files properly when all streamers have been scanned in
+    
+    logger.info("Parsing new chat files")
+    parsedChatCount = 0
     for file in newFilesByVideoId.values():
-        file.tryParsingChatFile()
+        if file.tryParsingChatFile():
+            parsedChatCount += 1
+    logger.info(f"Done parsing {parsedChatCount} new chat files")
     
     scanned.allStreamersWithVideos = list(scanned.allFilesByStreamer.keys())
     logger.info(f"Step 0: {scanned.allStreamersWithVideos}")
