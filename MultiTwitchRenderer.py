@@ -163,6 +163,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
     if preciseAlign:
         import AudioAlignment
         measurements:Dict[str, Dict[str, List[int, int]]] = {}
+        logger.debug("Starting audio alignment")
         for rowNum, row in enumerate(segmentFileMatrix):
             primaryFile = row[0]
             if primaryFile is None:
@@ -188,6 +189,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                         #assert currentMeasurements[secondaryVideoPath][1] == streamOffsetStart, f"{currentMeasurements[secondaryVideoPath]} != {streamOffsetStart}"
                         assert currentMeasurements[secondaryVideoPath][1] <= streamOffsetStart
                         currentMeasurements[secondaryVideoPath][1] = streamOffsetEnd
+        logger.debug(f"Built measurements, {measurements=}")
         for primaryFilePath, secondaryFilePaths in measurements.items():
             if primaryFilePath not in fileOffsets:
                 fileOffsets[primaryFilePath] = {}

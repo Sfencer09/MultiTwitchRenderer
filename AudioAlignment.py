@@ -163,7 +163,9 @@ def findAudioOffsets(within_file: str,
         macroStride = macroWindowSize #// 2
     if microStride is None:
         microStride = microWindowSize / 2
+    logger.debug(f"Extracting audio from {within_file=}")
     withinAudioFile = extractAudio(within_file)
+    logger.debug(f"Extracting audio from {find_file=}")
     findAudioFile = extractAudio(find_file)
     logger.info(f"{withinAudioFile}, {findAudioFile}")
     logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
