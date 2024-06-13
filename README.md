@@ -68,6 +68,8 @@ overwriteOutputFiles : Whether to overwrite existing output files. Default: Fals
 
 sessionLookbackDays : How many days back from the current date the program should attempt to queue renders for. Does not delete queued renders if this threshold is passed before the render starts or finishes. Default: 14
 
+queueOldestFirst : Whether to queue the oldest (within lookback time) unfinished renders first, rather than the newest first. Default: false
+
 
 ### [main.defaultRenderConfig]
 

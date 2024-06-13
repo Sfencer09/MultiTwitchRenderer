@@ -39,6 +39,8 @@ overwriteIntermediateFiles = true
 overwriteOutputFiles = false
 sessionLookbackDays = 14
 
+#Whether to queue and process the oldest renders first, rather than the newest
+#queueOldestFirst = true
 
 [main.defaultRenderConfig]
 # Render streamer names and audio track index at top of view
