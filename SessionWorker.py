@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 import os
 import time
+from typing import Dict
 
 from SharedUtils import convertToDatetime, getVideoOutputPath
 
@@ -39,8 +40,9 @@ def scanForExistingVideos() -> None:
         else:
             logger.info(f"Streamer {streamer} not known")
 
-
-def getAllStreamingDaysByStreamer():
+    """Days will be sorted with the most recent first
+    """
+def getAllStreamingDaysByStreamer() -> Dict[str, str]:
     daysByStreamer = {}
     for streamer in sorted(scanned.allFilesByStreamer.keys()):
         days = set()
@@ -61,7 +63,7 @@ def getAllStreamingDaysByStreamer():
 
 
 def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
-                  maxLookback: timedelta = timedelta(days=getConfig('main.sessionLookbackDays')),
+                  maxLookbackDays: int = getConfig('main.sessionLookbackDays'),
                   dataFilepath=getConfig('main.dataFilepath'),
                   renderConfig=RenderConfig(),
                   sessionLog = None):
@@ -69,7 +71,7 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
     #allStreamersWithVideos = SourceFile.allStreamersWithVideos
     #global allFilesByStreamer
     #allFilesByStreamer = SourceFile.allFilesByStreamer
-    
+    maxLookback = timedelta(days=maxLookbackDays)
     if len(scanned.allFilesByVideoId) == 0:
         # loadFiledata(dataFilepath)
         initialize()
@@ -102,14 +104,17 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                     f'Time since last download= {str(timeSinceLastDownload)}')
         if __debug__ or timeSinceLastDownload > timedelta(hours=getConfig('main.minimumSessionWorkerDelayHours')):
             streamingDays = getAllStreamingDaysByStreamer()
+            oldestFirst = getConfig('main.queueOldestFirst')
             for streamer in monitorStreamers:
-                # already sorted with the newest first
                 allDays = streamingDays[streamer]
                 if changeCount != prevChangeCount:
                     logger.info(f'Latest streaming days for {streamer}: {allDays[:25]}')
                     if sessionLog is not None:
                         sessionLog(
                             f'Latest streaming days for {streamer}: {allDays[:25]}')
+                # allDays comes sorted with the newest first, but that may not be what we want
+                # #sorted(allDays[:streamingDays], reverse=oldestFirst)
+                daysQueue = []
                 for day in allDays:
                     dt = convertToDatetime(day)
                     if maxLookback is not None and datetime.now() - dt > maxLookback:
@@ -126,26 +131,8 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                     if status is None:
                         # new file, build command and add to queue
                         #outPath = getVideoOutputPath(streamer, day)
-                        command = generateTilingCommandMultiSegment(
-                            streamer, day, renderConfig) #, outPath)
-                        if command is None:  # command cannot be made, maybe solo stream or only one
-                            if changeCount != prevChangeCount:
-                                logger.info(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
-                                if sessionLog is not None:
-                                    sessionLog(
-                                        f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
-                            setRenderStatus(streamer, day, "SOLO")
-                            continue
-                        item = RenderTask(streamer, day, renderConfig) #, outPath)
-                        logger.info(f"Adding render for streamer {streamer} from {day}")
-                        if sessionLog is not None:
-                            sessionLog(
-                                f"Adding render for streamer {streamer} from {day}")
-                        (copyQueue if COPY_FILES else renderQueue).put(
-                            (DEFAULT_PRIORITY, item))
-                        setRenderStatus(
-                            streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
-                        changeCount += 1
+                        daysQueue.append(day)
+                        
                         # break #
                     elif maxLookback is None:
                         if changeCount != prevChangeCount:
@@ -154,6 +141,29 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                                 sessionLog(
                                     "Reached last rendered date for streamer, stopping\n")
                         break
+                if oldestFirst:
+                    daysQueue.reverse()
+                for day in daysQueue:
+                    command = generateTilingCommandMultiSegment(
+                            streamer, day, renderConfig) #, outPath)
+                    if command is None:  # command cannot be made, maybe solo stream or only one
+                        if changeCount != prevChangeCount:
+                            logger.info(f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
+                            if sessionLog is not None:
+                                sessionLog(
+                                    f"Skipping render for streamer {streamer} from {day}, no render could be built (possibly solo stream?)")
+                        setRenderStatus(streamer, day, "SOLO")
+                        continue
+                    item = RenderTask(streamer, day, renderConfig) #, outPath)
+                    logger.info(f"Adding render for streamer {streamer} from {day}")
+                    if sessionLog is not None:
+                        sessionLog(
+                            f"Adding render for streamer {streamer} from {day}")
+                    (copyQueue if COPY_FILES else renderQueue).put(
+                        (DEFAULT_PRIORITY, item))
+                    setRenderStatus(
+                        streamer, day, "COPY_QUEUE" if COPY_FILES else "RENDER_QUEUE")
+                    changeCount += 1
         else:
             logger.info("Files are too new, waiting longer...")
             if sessionLog is not None:

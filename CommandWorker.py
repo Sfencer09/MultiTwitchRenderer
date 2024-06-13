@@ -4,11 +4,11 @@ import os
 from typing import List
 from thefuzz import process as fuzzproc
 import time as ttime #avoid name conflict with import in config file
-from CopyWorker import getActiveCopyTaskInfo
 
+from MTRArgParse import getArgs
 import scanned
 import RenderWorker
-from MTRConfig import getConfig
+from MTRConfig import getConfig, loadConfigFile
 
 COPY_FILES = getConfig('main.copyFiles')
 
@@ -20,7 +20,7 @@ from SharedUtils import calcGameCounts
 from RenderConfig import RenderConfig
 from RenderTask import DEFAULT_PRIORITY, MANUAL_PRIORITY, MAXIMUM_PRIORITY, RenderTask, clearErroredStatuses, deleteRenderStatus, getRenderStatus, getRendersWithStatus, setRenderStatus
 from SessionWorker import getAllStreamingDaysByStreamer
-from SharedUtils import getVideoOutputPath
+from SourceFile import reloadAndSave
 
 
 class Command:
@@ -149,6 +149,17 @@ def clearErroredJobs():
 
 
 commandArray.append(Command(clearErroredJobs, 'Clean up errored jobs'))
+
+def forceReloadFiles():
+    print("This may take a while if there's a lot of files, don't panic if it looks frozen")
+    reloadAndSave()
+
+commandArray.append(Command(forceReloadFiles, 'Force reload all files'))
+
+def reloadConfigFile():
+    loadConfigFile(getArgs().configFilePath)
+
+commandArray.append(Command(reloadConfigFile, 'Reload config file'))
 
 quitOptions = ('quit', 'exit', 'q')
 

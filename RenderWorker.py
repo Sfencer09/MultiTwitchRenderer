@@ -51,6 +51,9 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                  overwrite_output=getConfig('main.overwriteOutputFiles'),
                  renderLog=None):
     #renderLog = renderText.addLine
+    global activeRenderTask
+    global activeRenderTaskSubindex
+    global activeRenderSubprocess
     queueEmpty = False
     logFolder = getConfig('main.logFolder')
     localBasepath = getConfig('main.localBasepath')
@@ -69,8 +72,6 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
 
         assert getRenderStatus(
             task.mainStreamer, task.fileDate) == 'RENDER_QUEUE'
-        global activeRenderTask
-        global activeRenderTaskSubindex
         activeRenderTask = task
         taskCommands = generateTilingCommandMultiSegment(task.mainStreamer,
                                                          task.fileDate,
@@ -109,7 +110,8 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
             with open(os.path.join(logFolder, f"{task.mainStreamer}_{task.fileDate}{'' if len(renderCommands)==1 else f'_{i}'}.log"), 'a') as logFile:
                 currentCommand = taskCommands[i]
                 trueOutpath = None
-                if 'ffmpeg' in currentCommand[0]:
+                #if 'ffmpeg' in currentCommand[0]:
+                if currentCommand[0].endswith('ffmpeg'):
                     if not overwrite_intermediate:
                         trueOutpath = currentCommand[-1]
                         if trueOutpath != finalOutpath:

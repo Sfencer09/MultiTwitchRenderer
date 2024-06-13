@@ -375,6 +375,8 @@ configSchema = Schema({
             bool,
         'sessionLookbackDays':
             And(int, lambda x: x>=0),
+        Optional('queueOldestFirst', default=True):
+            bool,
         'defaultRenderConfig': 
             renderConfigSchema,
     },
