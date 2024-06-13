@@ -28,17 +28,19 @@ class RenderTask:
         # self.sourceFiles = [filesBySourceVideoPath[filepath] for filepath in allInputFiles if filepath not in allOutputFiles]
         # self.intermediateFiles = set([command[-1] for command in commandArray[:-1]])
 
+    # Since there's no way to reverse the sort order of a PriorityQueue, the easiest way to change the order is to change the
+    #     comparison functions that sort will use. Is it hacky and terrible? Yes. Does it work? Also yes.
     def __lt__(self, cmp):
-        return self.fileDate > cmp.fileDate
+        return (self.fileDate < cmp.fileDate) if getConfig('main.queueOldestFirst') else (self.fileDate > cmp.fileDate)
 
     def __gt__(self, cmp):
-        return self.fileDate < cmp.fileDate
+        return (self.fileDate > cmp.fileDate) if getConfig('main.queueOldestFirst') else (self.fileDate < cmp.fileDate)
 
     def __lte__(self, cmp):
-        return self.fileDate >= cmp.fileDate
+        return (self.fileDate <= cmp.fileDate) if getConfig('main.queueOldestFirst') else (self.fileDate >= cmp.fileDate)
 
     def __gte__(self, cmp):
-        return self.fileDate <= cmp.fileDate
+        return (self.fileDate >= cmp.fileDate) if getConfig('main.queueOldestFirst') else (self.fileDate <= cmp.fileDate)
 
     def __str__(self):
         return f"{self.mainStreamer} {self.fileDate}"

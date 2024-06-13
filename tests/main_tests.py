@@ -20,6 +20,7 @@ from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from MTRConfig import getConfig
 from ParsedChat import parsePlayersFromGroupMessage
 from RenderConfig import RenderConfig
+import CommandWorker
 from RenderWorker import formatCommand
 from SharedUtils import extractInputFiles
 from SourceFile import initialize, reloadAndSave, saveFiledata
@@ -45,7 +46,11 @@ print("Initialization complete!")
 
 # %%
 
-#sessionWorker()
+sessionWorker(
+#    renderConfig=RenderConfig(preciseAlign=True)
+)
+
+CommandWorker.printQueuedJobs()
 
 # %%
 
