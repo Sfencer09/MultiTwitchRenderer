@@ -86,7 +86,8 @@ class SourceFile:
     def setInfoFile(self, infoFile:str):
         if self.infoFile == infoFile:
             return
-        assert self.infoFile is None, f"Cannot overwrite existing info file {self.chatFile} with new file {infoFile}"
+        if self.infoFile is not None:
+            raise ValueError(f"Info file already found for video id {self.videoId}. Cannot overwrite existing info file {self.infoFile} with new file {infoFile}")
         assert infoFile.endswith(getConfig('internal.infoExt')) and os.path.isfile(
             infoFile) and os.path.isabs(infoFile)
         self.infoFile = infoFile
@@ -99,7 +100,8 @@ class SourceFile:
     def setVideoFile(self, videoFile:str):
         if self.videoFile == videoFile:
             return
-        assert self.videoFile is None, f"Cannot overwrite existing video file {self.chatFile} with new file {videoFile}"
+        if self.videoFile is not None:
+            raise ValueError(f"Video file already found for video id {self.videoId}. Cannot overwrite existing video file {self.videoFile} with new file {videoFile}")
         assert any((videoFile.endswith(videoExt) for videoExt in getConfig('internal.videoExts'))
                    ) and os.path.isfile(videoFile) and os.path.isabs(videoFile)
         self.videoFile = videoFile
@@ -108,7 +110,8 @@ class SourceFile:
     def setChatFile(self, chatFile:str):
         if self.chatFile == chatFile:
             return
-        assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
+        if self.chatFile is not None:
+            raise ValueError(f"Video file already found for video id {self.videoId}. Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}")
         assert chatFile.endswith(getConfig('internal.chatExt')) and os.path.isfile(
             chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
