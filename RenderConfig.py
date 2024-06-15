@@ -401,4 +401,4 @@ class RenderConfig:
         return RenderConfig(**self.__dict__)
 
     def __repr__(self):
-        return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items() if defaultRenderConfig[key] is not value and defaultRenderConfig[key] != value))})"
+        return f"RenderConfig({', '.join(('='.join((key, str(value))) for key, value in self.__dict__.items() if key not in defaultRenderConfig or (defaultRenderConfig[key] is not value and defaultRenderConfig[key] != value)))})"
