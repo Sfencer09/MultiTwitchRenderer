@@ -376,6 +376,11 @@ def findAverageAudioOffset(
     weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
     assert abs(weightedAverageOffset) <= getConfig('internal.audioOffsetCutoff'), f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
     if abs(weightedAverageOffset) > getConfig('internal.audioOffsetCutoff'):
+        logger.error(f"Average offset {weightedAverageOffset} outside of normal range! Aligning {find_file} to {within_file}")
+        logger.info(f"Chosen Bucket: {chosenOffset}")
+        logger.detail(f"Reoccurring offsets: {reoccurringOffsets}")
+        logger.info(f"Popular offsets: {popularOffsets}")
+        logger.debug(f"All offsets: {allOffsets}")
         return None
     logger.info(weightedAverageOffset)
     return weightedAverageOffset
