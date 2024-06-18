@@ -217,6 +217,9 @@ Zentreya = [
 # Passed to ffmpeg as '-threads' option, default is 0 (optimal)
 threadCount = 0
 
+#maximum offset allowed to be used from audio alignment. offsets higher than this will be considered anomalies and logged, but otherwise ignored
+audioOffsetCutoff = 90
+
 # File extensions, only change if absolutely necessary
 videoExts = [ ".mp4", ".mkv" ]
 infoExt = '.info.json'

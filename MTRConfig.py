@@ -140,7 +140,9 @@ configSchema = Schema({
     },
     'internal': {
         Optional('threadCount', default=0):
-            And(int, lambda x: x>=0),
+            And(int, lambda x: x >= 0),
+        Optional('audioOffsetCutoff', default=60):
+            And(int, lambda x: x > 0),
         Optional('videoExts', default= [ ".mp4", ".mkv" ]):
             And([str], lambda x: len(x) >= 2 and all((ext.startswith('.') for ext in x))),
         Optional('infoExt', default= '.info.json'):

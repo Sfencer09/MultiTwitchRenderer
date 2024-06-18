@@ -308,7 +308,6 @@ def findPopularAudioOffsets(
         popularOffsets[key] = allOffsets[key]
     return popularOffsets
 
-__CUTOFF_OFFSET = 45
 
 def findAverageAudioOffset(
     within_file: str,
@@ -375,9 +374,8 @@ def findAverageAudioOffset(
     chosenOffset = allOffsets[mostPopularOffset]
     logger.detail(f"{mostPopularOffset}, {chosenOffset}")
     weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
-    assert abs(weightedAverageOffset) <= __CUTOFF_OFFSET, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
-    if abs(weightedAverageOffset) > __CUTOFF_OFFSET:
-        logger.error(f"Average offset {weightedAverageOffset} outside of normal range!\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}")
+    assert abs(weightedAverageOffset) <= getConfig('internal.audioOffsetCutoff'), f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    if abs(weightedAverageOffset) > getConfig('internal.audioOffsetCutoff'):
         return None
     logger.info(weightedAverageOffset)
     return weightedAverageOffset
