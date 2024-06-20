@@ -20,6 +20,7 @@ from MultiTwitchRenderer import generateTilingCommandMultiSegment
 from MTRConfig import getConfig
 from ParsedChat import parsePlayersFromGroupMessage
 from RenderConfig import RenderConfig
+import CommandWorker
 from RenderWorker import formatCommand
 from SharedUtils import extractInputFiles
 from SourceFile import initialize, reloadAndSave, saveFiledata
@@ -27,25 +28,29 @@ from SessionWorker import getAllStreamingDaysByStreamer, sessionWorker
 import scanned
 
 # %%
-reloadAndSave()
+#reloadAndSave()
 
 
-#initialize()
+initialize()
 #loadFiledata(DEFAULT_DATA_FILEPATH+'.bak')
 #scanFiles(log=True)
 print("Initialization complete!")
-print(len(scanned.allFilesByVideoId))
+#print(len(scanned.allFilesByVideoId))
 
 # %%
 #pprint(scanned.allFilesByStreamer['BryceMcQuaid'][-2].infoJson)
 #pprint(scanned.allStreamerSessions['BryceMcQuaid'])
-pprint(scanned.allFilesByStreamer['TheOrionSound'])
-pprint(scanned.allFilesByVideoId['v2137233054'].parsedChat.nightbotGroupComments)
-pprint(scanned.allFilesByVideoId['v2137233054'].parsedChat.groups)
+#pprint(scanned.allFilesByStreamer['TheOrionSound'])
+#pprint(scanned.allFilesByVideoId['v2137233054'].parsedChat.nightbotGroupComments)
+#pprint(scanned.allFilesByVideoId['v2137233054'].parsedChat.groups)
 
 # %%
 
-#sessionWorker()
+sessionWorker(
+#    renderConfig=RenderConfig(preciseAlign=True)
+)
+
+CommandWorker.printQueuedJobs()
 
 # %%
 
@@ -54,8 +59,10 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ZeRoyalViking', "2023-06-28", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
+#testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-04')
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-29')  #Raised issue of gaps with no content in them
+
 testStreamer = getConfig('main.monitorStreamers')[0]
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-04')
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()
 while testCommands is None:
@@ -90,7 +97,7 @@ print("\n\n")
         testCommand.insert(-1, '-stats_period')
         testCommand.insert(-1, '30')
         #testCommand.insert(-1, ) """
-#pprint(testCommands)
+pprint(testCommands)
 print('\n\n')
 #testCommandString = formatCommand(testCommand)
 testCommandStrings = [formatCommand(testCommand) for testCommand in testCommands]

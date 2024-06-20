@@ -71,7 +71,10 @@ def extractAudio(target_file: str):
             "-y",
             audioPath,
         ]
-        subprocess.check_call(extractCommand, stderr=subprocess.PIPE, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        subprocess.check_call(extractCommand,
+                              stderr=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL,
+                              stdin=subprocess.DEVNULL)
         audioFiles.add(audioPath)
     return audioPath
 
@@ -163,7 +166,9 @@ def findAudioOffsets(within_file: str,
         macroStride = macroWindowSize #// 2
     if microStride is None:
         microStride = microWindowSize / 2
+    logger.debug(f"Extracting audio from {within_file=}")
     withinAudioFile = extractAudio(within_file)
+    logger.debug(f"Extracting audio from {find_file=}")
     findAudioFile = extractAudio(find_file)
     logger.info(f"{withinAudioFile}, {findAudioFile}")
     logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
@@ -303,7 +308,6 @@ def findPopularAudioOffsets(
         popularOffsets[key] = allOffsets[key]
     return popularOffsets
 
-__CUTOFF_OFFSET = 45
 
 def findAverageAudioOffset(
     within_file: str,
@@ -370,9 +374,13 @@ def findAverageAudioOffset(
     chosenOffset = allOffsets[mostPopularOffset]
     logger.detail(f"{mostPopularOffset}, {chosenOffset}")
     weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
-    assert abs(weightedAverageOffset) <= __CUTOFF_OFFSET, f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
-    if abs(weightedAverageOffset) > __CUTOFF_OFFSET:
-        logger.error(f"Average offset {weightedAverageOffset} outside of normal range!\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}")
+    assert abs(weightedAverageOffset) <= getConfig('internal.audioOffsetCutoff'), f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    if abs(weightedAverageOffset) > getConfig('internal.audioOffsetCutoff'):
+        logger.error(f"Average offset {weightedAverageOffset} outside of normal range! Aligning {find_file} to {within_file}")
+        logger.info(f"Chosen Bucket: {chosenOffset}")
+        logger.detail(f"Reoccurring offsets: {reoccurringOffsets}")
+        logger.info(f"Popular offsets: {popularOffsets}")
+        logger.debug(f"All offsets: {allOffsets}")
         return None
     logger.info(weightedAverageOffset)
     return weightedAverageOffset

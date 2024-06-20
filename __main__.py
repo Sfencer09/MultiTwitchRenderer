@@ -74,7 +74,7 @@ if __name__ == '__main__':
         if COPY_FILES:
             copyThread.start()
         sessionThread = threading.Thread(target=sessionWorker, kwargs={'renderConfig': defaultSessionRenderConfig,
-                                                                       'maxLookback': timedelta(days=MTRConfig.getConfig('main.sessionLookbackDays'))})
+                                                                       'maxLookbackDays': MTRConfig.getConfig('main.sessionLookbackDays')})
         sessionThread.daemon = True
         sessionThread.start()
         if ENABLE_URWID:
@@ -88,7 +88,7 @@ if __name__ == '__main__':
         # devSessionRenderConfig.logLevel = 1
 
         sessionWorker(renderConfig=devSessionRenderConfig,
-                      maxLookback=timedelta(days=14))
+                      maxLookbackDays=14)
         #logging.detail(allStreamersWithVideos)
         # copyWorker()
         # logging.detail(getAllStreamingDaysByStreamer()['ChilledChaos'])
