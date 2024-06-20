@@ -253,15 +253,16 @@ def saveFiledata(filepath: str):
 
 def loadFiledata(filepath: str):  # suppresses all errors
     try:
-        with open(filepath, 'rb') as file:
+        with open(filepath, 'rb') as filedata:
             logger.info("Starting pickle load...")
-            pickleData = pickle.load(file)
+            pickleData = pickle.load(filedata)
             scanned.allFilesByVideoId = pickleData
             scanned.allFilesByStreamer = {}  # string:[SourceFile]
             scanned.allStreamersWithVideos = []
             scanned.allStreamerSessions = {}
             scanned.allScannedFiles = set()
             scanned.filesBySourceVideoPath = {}
+            file: SourceFile
             for file in scanned.allFilesByVideoId.values():
                 scanned.filesBySourceVideoPath[file.videoFile] = file
             for file in sorted(scanned.allFilesByVideoId.values(), key=lambda x: x.startTimestamp):
