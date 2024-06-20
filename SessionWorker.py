@@ -97,11 +97,11 @@ def sessionWorker(monitorStreamers=getConfig('main.monitorStreamers'),
                 sessionLog(
                     f'Current time={str(currentTime)}, latest download time={str(latestDownloadTime)}')
         timeSinceLastDownload = currentTime - latestDownloadTime
-        if changeCount != prevChangeCount:
-            logger.info(f'Time since last download= {str(timeSinceLastDownload)}')
-            if sessionLog is not None:
-                sessionLog(
-                    f'Time since last download= {str(timeSinceLastDownload)}')
+        #if changeCount != prevChangeCount:
+        logger.info(f'Time since last download= {str(timeSinceLastDownload)}')
+        if sessionLog is not None:
+            sessionLog(
+                f'Time since last download= {str(timeSinceLastDownload)}')
         if __debug__ or timeSinceLastDownload > timedelta(hours=getConfig('main.minimumSessionWorkerDelayHours')):
             streamingDays = getAllStreamingDaysByStreamer()
             oldestFirst = getConfig('main.queueOldestFirst')
