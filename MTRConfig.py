@@ -490,6 +490,14 @@ def testHardwareFunctions(ffmpegPath:str, deviceName:str|int, testVideoData:None
     return None
 
 def getHardwareAccelerationDevicesV2(ffmpegPath: str, deviceNames:None|Iterable[str]=None) -> Dict[str, Tuple[str, int]]:
+    if __debug__:
+        #during debugging, fake the devices and abilities present to allow generating commands for non-present hardware
+        return {
+            '0': ('cuvid', 0b1111),
+            #'1': ('cuda', 0b1111),
+            '/dev/dri/renderD128': ('vaapi', 0b1111),
+            '/dev/dri/renderD129': ('qsv', 0b1111)
+        }
     testVideoData = generateTestVideo(ffmpegPath=ffmpegPath)
     deviceIndex = 0
     hwDeviceFunctions:Dict[Tuple[str, int]] = {}
