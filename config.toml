@@ -215,12 +215,6 @@ Zentreya = [
 # Passed to ffmpeg as '-threads' option, default is 0 (optimal)
 threadCount = 0
 
-# File extensions, only change if absolutely necessary
-videoExts = [ ".mp4", ".mkv" ]
-infoExt = '.info.json'
-ytdlpChatExt = '.rechat.twitch-gql-20221228.json'
-renderableChatExts = ['.chat.twitchdownloadercli.json', '.chat.live.twitchdownloadercli.json']
-otherExts = ['.description', '.jpg']
 # Regex of the video id within the filename. Should be exact enough to avoid false positives
 videoIdRegex = "(v?[\\d]{9,11})" #r"(v[\d]+)"
 
@@ -249,3 +243,18 @@ outputBitrates = [  "",
                     "25M",
                     "30M",
                     "40M"]
+
+# File extensions, only change if absolutely necessary
+videoExts = [ ".mp4", ".mkv" ]
+infoExt = '.info.json'
+
+otherExts = ['.description', '.jpg']
+
+[internal.chatFileExtensions]
+# Dictionary of chat file extensions, keys are the file extension (MAKE SURE TO USE QUOTES OR IT WILL NOT BE PARSE PROPERLY)
+#       Each key should have a boolean value 'renderable', indicating whether TwitchDownloaderCLI can render it, and a
+#        string value 'parser' (currently 'yt-dlp' and 'twdcli' are the only valid values) indicating the parser to use
+#        when using the chat for group matching
+'.rechat.twitch-gql-20221228.json' = {renderable = false, parser = 'yt-dlp'}
+'.chat.twitchdownloadercli.json' = {renderable = true, parser = 'twdcli'}
+'.chat.live.twitchdownloadercli.json' = {renderable = true, parser = 'twdcli'}

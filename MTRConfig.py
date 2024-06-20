@@ -143,10 +143,12 @@ configSchema = Schema({
             And([str], lambda x: len(x) >= 2 and all((ext.startswith('.') for ext in x))),
         Optional('infoExt', default= '.info.json'):
             And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')),
-        Optional('ytdlpChatExt', default= '.rechat.twitch-gql-20221228.json'):
-            And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')
-        Optional('renderableChatExts', default=['.chat.twitchdownloadercli.json', '.chat.live.twitchdownloadercli.json']):
-            And([str], lambda x: all(len(ext) >= 6 and ext.startswith('.') and any(ext.endswith(post) for post in ('.json', '.json.gz')) for ext in x)),
+        #Optional('ytdlpChatExt', default= '.rechat.twitch-gql-20221228.json'):
+        #    And(str, lambda x: len(x) >= 2 and x.startswith('.')),# and x.endswith('.json')
+        Optional('chatFileExtensions', default={'.rechat.twitch-gql-20221228.json': {'renderable': False, 'parser': 'yt-dlp'}}):
+            {And(str, lambda key: len(key) >= 6 and key.startswith('.') and any(key.endswith(post) for post in ('.json', '.json.gz'))):
+             {'renderable': bool,
+              'parser': And(str, lambda x: x in ('yt-dlp', 'twdcli'))}},
         Optional('otherExts', default= ['.description', '.jpg']):
             And([str], lambda x: all((len(ext) >= 2 and ext.startswith('.') for ext in x))),
         # Regex of the video id within the filename. Should be exact enough to avoid false positives

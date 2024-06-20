@@ -109,9 +109,7 @@ class SourceFile:
         if self.chatFile == chatFile:
             return
         assert self.chatFile is None, f"Cannot overwrite existing chat file {self.chatFile} with new file {chatFile}"
-        assert (chatFile.endswith(getConfig('internal.ytdlpChatExt')) or
-                any(chatFile.endswith(ext) for ext in getConfig('internal.renderableChatExts'))) and os.path.isfile(
-            chatFile) and os.path.isabs(chatFile)
+        assert any(chatFile.endswith(ext) for ext, _ in getConfig('internal.chatFileExtensions')) and os.path.isfile(chatFile) and os.path.isabs(chatFile)
         self.chatFile = chatFile
         
     def tryParsingChatFile(self) -> bool:
@@ -136,8 +134,8 @@ def scanFiles():
     outputDirectory = getConfig('main.outputDirectory')
     videoExts = getConfig('internal.videoExts')
     videoIdRegex = getConfig('internal.videoIdRegex')
-    ytdlpChatExt = getConfig('internal.ytdlpChatExt')
-    renderChatExts = getConfig('internal.renderableChatExts')
+    chatFileExtensions:Dict[str, Dict[str, bool|str]] = getConfig('internal.chatFileExtensions')
+    #renderChatExts = getConfig('internal.renderableChatExts')
     infoExt = getConfig('internal.infoExt')
     globalAllStreamers = [name for name in os.listdir(basepath) if
                       (name not in ("NA", outputDirectory) and 
@@ -147,7 +145,7 @@ def scanFiles():
         newStreamerFiles:List[SourceFile] = []
         streamerBasePath = os.path.join(basepath, streamer, 'S1')
         count = 0
-        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExts + [infoExt, ytdlpChatExt])))):
+        for filename in (x for x in os.listdir(streamerBasePath) if any((x.endswith(ext) for ext in (videoExts + list(chatFileExtensions.keys()) + [infoExt])))):
             filepath = os.path.join(streamerBasePath, filename)
             if filepath in scanned.allScannedFiles:
                 continue
@@ -166,7 +164,7 @@ def scanFiles():
                 elif filename.endswith(infoExt):
                     file = SourceFile(streamer, videoId, infoFile=filepath)
                 else:
-                    assert filename.endswith(ytdlpChatExt)
+                    assert any(filename.endswith(ext) for ext, _ in chatFileExtensions)
                     file = SourceFile(streamer, videoId, chatFile=filepath)
                 # scanned.allFilesByVideoId[videoId] = file
                 newFilesByVideoId[videoId] = file
@@ -180,7 +178,7 @@ def scanFiles():
                 elif filename.endswith(infoExt):
                     file.setInfoFile(filepath)
                 else:
-                    assert filename.endswith(ytdlpChatExt)
+                    assert any(filename.endswith(ext) for ext in chatFileExtensions.keys())
                     file.setChatFile(filepath)
                     # if streamer in streamersParseChatList:
                     #    file.parsedChat = ParsedChat(filepath)
