@@ -259,7 +259,7 @@ otherExts = ['.description', '.jpg']
 # Dictionary of chat file extensions, keys are the file extension (MAKE SURE TO USE QUOTES OR IT WILL NOT BE PARSE PROPERLY)
 #       Each key should have a boolean value 'renderable', indicating whether TwitchDownloaderCLI can render it, and a
 #        string value 'parser' (currently 'yt-dlp' and 'twdcli' are the only valid values) indicating the parser to use
-#        when using the chat for group matching
+#        when using the chat for group matching. Parsing priority is determined by the order the extensions are listed here
 '.rechat.twitch-gql-20221228.json' = {renderable = false, parser = 'yt-dlp'}
 '.chat.twitchdownloadercli.json' = {renderable = true, parser = 'twdcli'}
 '.chat.live.twitchdownloadercli.json' = {renderable = true, parser = 'twdcli'}
