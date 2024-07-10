@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(parentDir))
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'MultiTwitchRenderer')))
 
 import __main__
-from MultiTwitchRenderer import generateTilingCommandMultiSegment
+from MultiTwitchRenderer import calcResolutions, generateTilingCommandMultiSegment
 from MTRConfig import getConfig
 from ParsedChat import parsePlayersFromGroupMessage
 from RenderConfig import RenderConfig
@@ -46,11 +46,10 @@ print("Initialization complete!")
 
 # %%
 
-sessionWorker(
-#    renderConfig=RenderConfig(preciseAlign=True)
-)
-
-CommandWorker.printQueuedJobs()
+for maxTiles in range(2, 17):
+    for numTiles in range(1, maxTiles+1):
+        print(f"{maxTiles=}, {numTiles=}")
+        print(calcResolutions(numTiles, maxTiles))
 
 # %%
 
@@ -62,7 +61,17 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-04')
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-29')  #Raised issue of gaps with no content in them
 testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2024-07-01") #Raised issue of stretching issue for tiling of 2 video sources in video with more
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2024-06-10") #Comparison for above, stream with only 2 streamers
 
+# %%
+
+sessionWorker(
+#    renderConfig=RenderConfig(preciseAlign=True)
+)
+
+CommandWorker.printQueuedJobs()
+
+# %%
 testStreamer = getConfig('main.monitorStreamers')[0]
 dateIndex = 0
 allStreamingDays = getAllStreamingDaysByStreamer()

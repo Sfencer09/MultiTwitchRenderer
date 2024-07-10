@@ -43,15 +43,16 @@ def calcTileWidth(numTiles):
 
 def calcResolutions(numTiles, maxNumTiles):
     tileWidth = calcTileWidth(numTiles)
-    maxTileWidth = calcTileWidth(maxNumTiles)
+    #maxTileWidth = calcTileWidth(maxNumTiles)
     outputResolutions = getConfig('internal.outputResolutions')
-    maxOutputResolution = outputResolutions[maxTileWidth]
-    scaleFactor = min(
+    maxOutputResolution = outputResolutions[maxNumTiles]
+    scaleFactor = max(
         maxOutputResolution[0] // (16*tileWidth), maxOutputResolution[1] // (9*tileWidth))
     tileX = scaleFactor * 16
     tileY = scaleFactor * 9
-    outputX = tileX * tileWidth
-    outputY = tileY * tileWidth
+    #outputX = tileX * tileWidth
+    #outputY = tileY * tileWidth
+    outputX, outputY = maxOutputResolution
     return (f"{tileX}:{tileY}", f"{outputX}:{outputY}")
 
 
