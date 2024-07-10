@@ -60,7 +60,8 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-04')
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-29')  #Raised issue of gaps with no content in them
+#testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-29')  #Raised issue of gaps with no content in them
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2024-07-01") #Raised issue of stretching issue for tiling of 2 video sources in video with more
 
 testStreamer = getConfig('main.monitorStreamers')[0]
 dateIndex = 0
