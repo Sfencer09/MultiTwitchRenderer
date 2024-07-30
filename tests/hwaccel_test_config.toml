@@ -1,0 +1,260 @@
+[main]
+# Root folder of downloaded livestreams
+basepath = '/mnt/pool2/media/Twitch Downloads/'
+
+# Scratch folder, used for holding intermediate render files, extracted audio
+localBasepath = '/mnt/pool1/media/downloads/'  #localBasepath = '/mnt/scratch1/'
+
+# Name of folder within basepath that output videos will be placed in
+outputDirectory = "Rendered Multiviews"
+
+# List of streamers to automatically queue and run renders for
+monitorStreamers = ['ChilledChaos',]# 'ZeRoyalViking']
+
+# List of streamers who implement a !who and/or !group NightBot command
+streamersParseChatList = ['ChilledChaos', 'ZeRoyalViking']
+
+dataFilepath = './knownFiles.pickle' #r'/home/ubuntu/Documents/MultiTwitchRenderer/allTwitchFiles.pickle'
+
+# When not using chats for stream matching, these game titles will be considered solo streams and will not be matched with other streamers based on matching game
+nongroupGames = ['Just Chatting', "I'm Only Sleeping"]
+
+# Path to ffmpeg to use, will use $PATH if blank
+ffmpegPath = '' #Use PATH #'/home/ubuntu/ffmpeg-cuda/ffmpeg/'
+
+# Time offset of local timezone, days will split at midnight in this timezone
+localTimezone = "-06:00" #CST
+
+# Must be writeable
+statusFilePath = './renderStatuses.pickle'
+logFolder = './logs/'
+
+# If set to true, 
+copyFiles = false
+
+minimumSessionWorkerDelayHours = 3
+
+overwriteIntermediateFiles = true
+# Whether to overwrite existing output files
+overwriteOutputFiles = false
+sessionLookbackDays = 14
+
+#Whether to queue and process the oldest renders first, rather than the newest
+#queueOldestFirst = true
+
+[main.defaultRenderConfig]
+# Render streamer names and audio track index at top of view
+drawLabels = false
+# Valid values are "mainSessionStart" and "allSessionsStart"* (*=experimental)
+startTimeMode = "mainSessionStart"
+# Valid values are "mainSessionEnd" and "allSessionsEnd"* (*=experimental)
+endTimeMode = "mainSessionEnd"
+# How many seconds after a streamer is marked as leaving the session, that they're actually removed at
+sessionTrimLookback = 0
+# How many seconds before a streamer is marked as entering the session, that they're actually added at
+sessionTrimLookahead = 0
+# Deprecated
+sessionTrimLookbackSeconds = 0
+# Deprecated
+sessionTrimLookaheadSeconds = 0 #600
+# If a streamer would exit the video for less than this many seconds, try to fill in the gap with available video
+minGapSize = 0
+# Video codec to use to render output video
+outputCodec = "libx264"
+# FFMpeg encoding preset to use with output codec
+encodingSpeedPreset = "medium"
+# Whether to use hardware acceleration, to be changed soon
+#useHardwareAcceleration = 0
+
+# Max number of simultaneous files to decode on GPU, to be removed soon
+#maxHwaccelFiles = 0
+# Streamers that appear in the video for fewer than this many seconds will be removed
+minimumTimeInVideo = 900
+# Deprecated as "chunked" is the only option still implemented
+cutMode = "chunked"
+# Whether to use chats to more accurately determine who is in a session and when
+useChat = true
+# Whether to use audio cross-correlation to more precisely align videos.
+# Will noticeably increase render times, but process is single-threaded and
+#    can run separately from render thread. In other words, it has a larger impact
+#    on end-to-end latency than total throughput, with the current implementation
+preciseAlign = false
+
+[main.defaultRenderConfig.hardwareAccelDevices]
+# 'mask' is 4-bit bitmask, indicating (from least- to most-significant bit): decoding (1), scaling & padding inputs (2), tiling & scaling/padding final output (4), and encoding (8)
+# priority is highest-values first
+# Example config values:
+"0" = {mask = 15, maxDecodeStreams = 0, priority = 0}
+"/dev/dri/renderD128" = {mask = 9, maxDecodeStreams = 10, priority = 5} # vaapi
+"/dev/dri/renderD129" = {mask = 15, maxDecodeStreams = 10, priority = 5} # qsv
+
+[gameAliases]
+# Keys are the primary names to replace with, values are lists of game titles to replace
+"Among Us" = [ "Town of Us", "TOWN OF US PROXY CHAT | Among Us w/ Friends" ]
+"Tabletop Simulator" = [ "Board Games" ]
+"Suika Game" = [ "Suika" ]
+"Monopoly Plus" = [ "Monopoly" ]
+
+
+
+
+
+[streamerAliases]
+# Keys are the primary names to replace with, values are lists of alternate names that might appear in !who/!group messages
+AphexArcade = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+APlatypus = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+ArtificialActr = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+BonsaiBroz = [
+  "https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm",
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+BryceMcQuaid = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+chibidoki = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy"
+]
+Courtilly = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+CheesyBlueNips = [ "Cheesy" ]
+ChilledChaos = [ "Chilled" ]
+CrashVS = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+DooleyNotedGaming = [ "Jeremy" ]
+ElainaExe = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+emerome = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+Feinberg = ["mcc.live","https://mcc.live"]
+FlanelJoe = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+HeckMuffins = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+Junkyard129 = [
+  "Junkyard",
+  "Junk",
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+KaraCorvus = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  " Kara,",
+  "mcc.live",
+  "https://mcc.live"
+]
+KDoolz = [ "Kat" ]
+Kn0vis = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+Kruzadar = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy"
+]
+KYR_SP33DY = [
+  "https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm",
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy",
+  "Speedy"
+]
+LarryFishburger = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy",
+  "Larry"
+]
+MG4R = [
+  "Greg",
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+MicheleBoyd = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+TheOrionSound = ["mcc.live","https://mcc.live"]
+ozzaworld = [ "ozza" ]
+PastaroniRavioli = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy",
+  "Pasta",
+  "Pastaroni"
+]
+Skadj = [
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy"
+]
+SlackATK = [
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy"
+]
+SideArms4Reason = [
+  "https://schedule.twitchrivals.com/events/party-animals-showdown-ii-presented-by-venus-JgLwm",
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy",
+  "SideArms"
+]
+TayderTot = [
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy"
+]
+TheRealShab = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1",
+  "Shab"
+]
+ToastyFPS = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+TomFawkes = [ "Tom Fawks" ]
+VikramAFC = [
+  "https://twitter.com/ChilledChaos/status/1737167373797413287/photo/1"
+]
+YourNarrator = [ "Your__Narrator" ]
+Zentreya = [
+  "https://clips.twitch.tv/DarlingSeductiveSamosaCharlieBitMe-oItZEhTSQrnUFgMy"
+]
+
+
+
+[internal]
+# Passed to ffmpeg as '-threads' option, default is 0 (optimal)
+threadCount = 0
+
+# File extensions, only change if absolutely necessary
+videoExts = [ ".mp4", ".mkv" ]
+infoExt = '.info.json'
+chatExt = '.rechat.twitch-gql-20221228.json'
+otherExts = ['.description', '.jpg']
+# Regex of the video id within the filename. Should be exact enough to avoid false positives
+videoIdRegex = "(v?[\\d]{9,11})" #r"(v[\d]+)"
+
+# Character replacements for filenames done by yt-dlp
+characterReplacements = {'?'='？', '/'='⧸', '\'='⧹', ':'='：', '<'='＜', '>'='＞'}
+
+# Adds ffmpeg options that attempt to reduce the peak memory usage when rendering, potentially at the cost of a larger output file size
+reducedFfmpegMemory = false
+
+# Not fully implemented, do not enable
+ENABLE_URWID = false
+
+outputResolutions = [[],
+                    [1920,1080],
+                    [3840,1080],
+                    [3840,2160],
+                    [3840,2160],
+                    [3840,2160],
+                    [3840,2160],
+                    [4480,2520]]
+outputBitrates = [  "",
+                    "6M",
+                    "12M",
+                    "20M",
+                    "25M",
+                    "25M",
+                    "30M",
+                    "40M"]
