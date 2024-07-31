@@ -190,6 +190,8 @@ class VideoAccelDevice:
         return hash(self.devicePath)
     
     def __eq__(self, value: object) -> bool:
+        if not isinstance(value, VideoAccelDevice):
+            return False
         return self.devicePath == value.devicePath
 
 def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[VideoAccelDevice]:
@@ -352,12 +354,49 @@ class RenderConfig:
         # need to finish validating output codec and encoding preset, all we know
         #       is that both are sane values, just not necessarily available given
         #       current hardware or matching each other
+        hwAccelDeviceNames = list(self.hardwareAccelDevices.keys())
+        hwAccelTestedDevices = getHardwareAccelerationDevicesV2(getConfig('main.ffmpegPath'), hwAccelDeviceNames)
+        #warn about any device names that did not come out of getHardwareAccelerationDevices
+        for devicePath in sorted(set(hwAccelDeviceNames).difference(set(hwAccelTestedDevices.keys()))):
+            logger.warn(f"Hardware acceleration device '{devicePath}' is not usable, please check config and/or drivers")
+        hwAccelDevices:List[VideoAccelDevice] = []
+                
+        for devicePath, tup in hwAccelTestedDevices.items():
+            brand, validFunctions = tup
+            attributes = self.hardwareAccelDevices[devicePath]
+            desiredFunctions = attributes['mask']
+            maxStreams = attributes['maxDecodeStreams']
+            priority = attributes['priority']
+            usedFunctions = desiredFunctions & validFunctions
+            if usedFunctions != desiredFunctions:
+                missingFunctions = validFunctions ^ desiredFunctions
+                missingFunctionNames = []
+                for bitmask, name in ((HW_DECODE, "decoding"),
+                                      (HW_INPUT_SCALE, "input scaling"),
+                                      (HW_OUTPUT_SCALE, "output scaling"),
+                                      (HW_ENCODE, "encoding")):
+                    if missingFunctions & bitmask != 0:
+                        missingFunctionNames.append(name)
+                logger.warn(f"Unable to enable the following functions on device {devicePath}: {', '.join(missingFunctionNames)}")
+            device = VideoAccelDevice(devicePath, brand, usedFunctions, priority, maxStreams)
+            hwAccelDevices.append(device)
+        hwAccelDevices.sort(key=lambda x: (x.priority,
+                                           1 if (len(HWACCEL_VALUES[x.brand].xstack_filter) > 0) and (
+                                               x.functions & (HW_ENCODE | HW_OUTPUT_SCALE) != 0) else 0,
+                                           x.functions & HW_ENCODE,
+                                           x.functions & HW_DECODE,
+                                           x.maxDecodeStreams,
+                                           x.functions & HW_INPUT_SCALE,
+                                           x.functions & HW_OUTPUT_SCALE),
+                            reverse=True)
+        #self.__originalHardwareAccelDevices = self.hardwareAccelDevices
+        self.hardwareAccelDevices = hwAccelDevices
         
-        encodeDevices:List[dict] = self.getEncodeDevices()
+        encodeDevices:List[VideoAccelDevice] = self.getEncodeDevices()
         #encodeDeviceBrand = None if encodeDevice is None else encodeDevice['brand']
 #        availableCodecs = set(list(HWACCEL_VALUES[encodeDeviceBrand].encode_codecs) +
 #                              list(HWACCEL_VALUES[None].encode_codecs))
-        availableHwBrands = set((device['brand'] for device in encodeDevices))
+        availableHwBrands = set((device.brand for device in encodeDevices))
         availableHardwareCodecOptions = reduce(dict.__or__, (HWACCEL_VALUES[brand].encode_codec_options for brand in availableHwBrands), {})
         #availableCodecOptions = HWACCEL_VALUES[encodeDeviceBrand]encode_codec_options | HWACCEL_VALUES[None].encode_codec_options
         availableCodecOptions = availableHardwareCodecOptions | HWACCEL_VALUES[None].encode_codec_options

@@ -36,7 +36,7 @@ def isDevicePath(path: str):
     try:
         os.stat(path)
     except OSError:
-        return False
+        return __debug__ #False
     return True
 
 def isWriteableDir(prospectiveDir):
@@ -141,7 +141,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         upscale_filter_options="",
         downscale_filter_options=":interp_algo=super",
         scale_input_options= ('-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda', '-extra_hw_frames', '3'),
-        encode_codec_options= MappingProxyType({
+        encode_codec_options= { #MappingProxyType({
             'h264_nvenc': HwAccelCodecValues(
                 validPresets= __nvidiaEncodingPresets,
                 defaultSettings= __h264DefaultOptions,
@@ -152,7 +152,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
                 defaultSettings= __h264DefaultOptions,
                 reducedMemorySettings= __h264DefaultReducedMemoryOptions,
             )
-        })
+        } #)
     ),
     #'AMD': HwAccelBrandValues(
     'vaapi': HwAccelBrandValues(
@@ -170,7 +170,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         upscale_filter_options="",
         downscale_filter_options="",
         scale_input_options= ("-hwaccel_output_format", "vaapi"),
-        encode_codec_options= MappingProxyType({
+        encode_codec_options= { #MappingProxyType({
             'h264_amf': HwAccelCodecValues(
                 validPresets= __amdEncodingPresets,
                 defaultSettings= ("-profile:v", "high",
@@ -199,7 +199,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
                         "-tag:v", "hvc1"
                         ),
             )
-        })
+        } #)
     ),
     #'Intel': HwAccelBrandValues(
     'qsv': HwAccelBrandValues(
@@ -216,7 +216,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         upscale_filter_options="",
         downscale_filter_options="",
         scale_input_options= (),
-        encode_codec_options= MappingProxyType({
+        encode_codec_options= { #MappingProxyType({
             'h264_qsv': HwAccelCodecValues(
                 validPresets= __qsvEncodingPresets,
                 defaultSettings= ("-profile:v", "high",
@@ -246,7 +246,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
                                         "-profile", "main",
                                         "-crf", "30"),
             )
-        })
+        } #)
     ),
     None: HwAccelBrandValues(
         scale_filter= '',
@@ -261,7 +261,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
         downscale_filter_options=":flags=area",
         scale_input_options= (),
         #'encode_codecs': ('libx264', 'libx265'),#'libsvtav1'),  # to be deprecated
-        encode_codec_options= MappingProxyType({
+        encode_codec_options= { #MappingProxyType({
             'libx264': HwAccelCodecValues(
                 validPresets= __softwareEncodingPresets,
                 defaultSettings= __h264DefaultOptions,
@@ -279,7 +279,7 @@ HWACCEL_VALUES:Dict[None|str, HwAccelBrandValues] = MappingProxyType({
                 reducedMemorySettings=  ("-preset", "%(preset)s",
                                            "-crf", "30")
             )
-        })
+        } #)
     )
 })
 HWACCEL_BRAND = None
@@ -324,9 +324,9 @@ renderConfigSchema = {
     #And(Use(int), lambda x: x & 15 == x),
     Optional('hardwareAccelDevices', default={}):
         Or({},
-           hardwareAccelDeviceSchema, 
-           {Or(And(Use(int), lambda x: x>=0),
-               And(str, isDevicePath)):
+           #hardwareAccelDeviceSchema, 
+           {Or(And(str, isDevicePath),
+               And(Use(int), lambda x: x>=0)):
                    hardwareAccelDeviceSchema}),
     # And(Use(int), lambda x: 0 <= x < 16), #bitmask; 0=None, bit 1(1)=decode, bit 2(2)=scale input, bit 3(4)=scale output, bit 4(8)=encode
     Optional('maxHwaccelFiles', default=0): #defaultRenderConfig['maxHwaccelFiles']):
