@@ -89,9 +89,7 @@ outputCodec : Video codec to use to render output video. Default: "libx264"
 
 encodingSpeedPreset : FFMpeg encoding preset to use with output codec. Default: "medium"
 
-useHardwareAcceleration : 4-bit bitmask indicating whether to use hardware acceleration, and for what functions. Will be changed to a more in-depth setting soon. Default: 0
-
-maxHwaccelFiles : Max number of simultaneous files to decode on GPU, or 0 for unlimited. To be removed soon. Default: 0
+hardwareAccelDevices : Details on hardware video acceleration available for the render, one row per device. See config file for row specification. Default: No devices, all CPU processing
 
 minimumTimeInVideo : Streamers that appear in the video for fewer than this many seconds will be removed. Default: 900
 
