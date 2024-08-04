@@ -12,9 +12,11 @@ from schema import Schema, Or, And, Optional, Use
 from MTRLogging import getLogger
 logger = getLogger('RenderConfig')
 
-from MTRConfig import isDevicePath, getHardwareAccelerationDevicesV2, isKnownEncodingPreset, isKnownOutputCodec, trueStrings, getConfig, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema
+from MTRConfig import isDevicePath, getHardwareAccelerationDevicesV2, isKnownEncodingPreset, isKnownOutputCodec, trueStrings, getConfig, HW_DECODE, HW_ENCODE, HW_INPUT_SCALE, HW_OUTPUT_SCALE, HWACCEL_VALUES, hardwareAccelDeviceSchema, MAX_DECODE_STREAMS
 
 defaultRenderConfig = getConfig('main.defaultRenderConfig')
+__default_priority = 100000000000000000000
+
 
 """ def getHasHardwareAceleration():
     SCALING = HW_INPUT_SCALE | HW_OUTPUT_SCALE
@@ -208,8 +210,7 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[Video
     """
     if settings is None:
         return []
-    __default_priority = 100000000000000000000
-    __default_decode_streams = 0
+    
     permittedDevices:List[VideoAccelDevice] = []
     hwAccelDevices = getHardwareAccelerationDevicesV2(getConfig("main.ffmpegPath"), deviceNames=(str(x) for x in settings.keys()))
     for device, info in settings.items():
@@ -224,10 +225,7 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[Video
         #     HW_ACCEL_DEVICES[device] = _testHardwareFunctions(device)
         deviceBrand, functionMask = hwAccelDevices[device]
         permittedMask = info['mask']
-        if 'maxDecodeStreams' in info:
-            maxDecodeStreams = int(info['maxDecodeStrings'])
-        else:
-            maxDecodeStreams = __default_decode_streams
+        maxDecodeStreams = int(info['maxDecodeStrings'])
         if 'priority' in info:
             priority = info['priority']
         else:
@@ -242,8 +240,8 @@ def buildHardwareAccelList(settings:Dict[str, Dict[str, str|int]]) -> List[Video
     for entry in permittedDevices:
         if entry.priority == __default_priority:
             del entry.priority
-        if entry.maxDecodeStreams == __default_decode_streams:
-            del entry.maxDecodeStreams
+        #if entry.maxDecodeStreams == DEFAULT_DECODE_STREAMS:
+        #    del entry.maxDecodeStreams
     
     return permittedDevices
         

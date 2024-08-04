@@ -81,11 +81,12 @@ useChat = true
 preciseAlign = false
 
 [main.defaultRenderConfig.hardwareAccelDevices]
-# Mask is 4-bit bitmask, indicating (from least- to most-significant bit): decoding (1), scaling & padding inputs (2), tiling & scaling/padding final output (4), and encoding (8)
+# 'mask' is 4-bit bitmask, indicating (from least- to most-significant bit): decoding (1), scaling & padding inputs (2), tiling & scaling/padding final output (4), and encoding (8)
+# 'maxDecodeFiles' is the maximum number of streams this card can/should decode. Setting to 0 is equivalent to disabling decoding, but is not recommended.
 # Priority is highest-values first
 # Example config values:
-#"0" = {mask = 15, maxDecodeFiles = 0, priority = 0}
-#"/dev/dri/renderD128" = {mask = 9, maxDecodeFiles = 10, priority = 5}
+#"0" = {mask = 15, maxDecodeStreams = 8, priority = 0}
+#"/dev/dri/renderD128" = {mask = 9, maxDecodeStreams = 10, priority = 5}
 
 [gameAliases]
 # Keys are the primary names to replace with, values are lists of game titles to replace

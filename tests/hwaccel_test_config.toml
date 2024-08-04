@@ -82,9 +82,10 @@ preciseAlign = false
 
 [main.defaultRenderConfig.hardwareAccelDevices]
 # 'mask' is 4-bit bitmask, indicating (from least- to most-significant bit): decoding (1), scaling & padding inputs (2), tiling & scaling/padding final output (4), and encoding (8)
-# priority is highest-values first
+# 'maxDecodeFiles' is the maximum number of streams this card can/should decode. Setting to 0 is equivalent to disabling decoding, but is not recommended.
+# Priority is highest-values first
 # Example config values:
-"0" = {mask = 15, maxDecodeStreams = 0, priority = 0}
+"0" = {mask = 15, maxDecodeStreams = 1, priority = 0}
 "/dev/dri/renderD128" = {mask = 9, maxDecodeStreams = 10, priority = 5} # vaapi
 "/dev/dri/renderD129" = {mask = 15, maxDecodeStreams = 10, priority = 5} # qsv
 

@@ -23,11 +23,12 @@ args = MTRArgParse.getArgs()
 configFilePath = args.configFilePath
 
 trueStrings = ('t', 'y', 'true', 'yes')
+MAX_DECODE_STREAMS = 50  # unless you're using a card with 80GB of RAM, there's no way you'll be decoding more than this many streams per card.
 
 hardwareAccelDeviceSchema = {
     'mask': (lambda x: x & (HW_DECODE | HW_ENCODE | HW_INPUT_SCALE | HW_OUTPUT_SCALE) == x),
     Optional('priority', default=0): int,
-    Optional('maxDecodeStreams', default=0): And(int, lambda x: x >= 0)
+    'maxDecodeStreams': And(int, lambda x: x >= 0 and x <= MAX_DECODE_STREAMS)
 }
 
 def isDevicePath(path: str):
