@@ -65,7 +65,7 @@ def testAudioAlignmentForDate(streamer, day):
     offsets = dict()
     startTime = time.time()
     for file in (scanned.filesBySourceVideoPath[f] for f in sorted(secondaryFiles)):
-        offset = findAverageFileOffset(mainFile, file,
+        offset = findAverageAudioOffsetFromSingleSourceFiles(mainFile, file,
             duration = 7200,
             macroWindowSize = 10*60,
             macroStride = 10*60,

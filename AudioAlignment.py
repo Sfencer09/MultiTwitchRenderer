@@ -1,3 +1,4 @@
+from functools import partial
 from math import ceil
 from threading import Lock
 import time
@@ -80,62 +81,6 @@ def extractAudio(target_file: str):
     return audioPath
 
 
-__DEFAULT_DURATION = None  # 3600
-__DEFAULT_WINDOW = None
-""" 
-import matplotlib.pyplot as plt
-
-def findAudioOffset(
-    within_file: str,
-    find_file: str,
-    offset: float = 0,
-    duration: float | None = __DEFAULT_DURATION,
-    #window: float | None = __DEFAULT_WINDOW,
-    start: float = 0,
-):
-    withinAudioFile = extractAudio(within_file)
-    findAudioFile = extractAudio(find_file)
-    print("Audio extracted, memory tuple:", psutil.virtual_memory())
-    y_within, sr_within = librosa.load(
-        withinAudioFile,
-        sr=None,
-        offset=start + (offset if offset > 0 else 0),
-        duration=duration,
-    )
-    print("First audio loaded, memory tuple:", psutil.virtual_memory())
-    y_find, _ = librosa.load(
-        findAudioFile,
-        sr=sr_within,
-        offset=start - (offset if offset < 0 else 0),
-        #duration=window if window is not None else duration,
-        duration=duration,
-    )
-    print("Second audio loaded, memory tuple:", psutil.virtual_memory())
-    # if window is not None:
-    #    c = signal.correlate(
-    #        y_within, y_find[:sr_within*window], mode='valid', method='fft')
-    # else:
-    c = signal.correlate(y_within, y_find, mode="full", method="fft")
-    print("Signal correlated, memory tuple:", psutil.virtual_memory())
-    peak = np.argmax(c)
-    offset = round(peak / sr_within, 2)
-
-    print(f"Max peak found at {str(offset)}, writing plot")
-    fig, ax = plt.subplots()
-    ax.plot(c)
-    suffix = ""
-    count = 0
-    imagePath = "/mnt/pool2/media/Twitch Downloads/cross-correlation.png"
-    while os.path.isfile(insertSuffix(imagePath, suffix)):
-        suffix = f" ({count})"
-        count += 1
-    finalImagePath = insertSuffix(imagePath, suffix)
-    print(
-        f"Writing plot to {finalImagePath}, memory tuple:", psutil.virtual_memory())
-    fig.savefig(finalImagePath)
-
-    return offset """
-
 def histogramByBucket(arr, bucketSize = 10):
     ...
 
@@ -146,100 +91,63 @@ DEFAULT_MICRO_WINDOW_SIZE: int = 10
 DEFAULT_BUCKET_SIZE: float | int = 1
 DEFAULT_BUCKET_SPILLOVER: int = 1
 
-def findAudioOffsets(within_file: str,
-    find_file: str,
-    initialOffset: float = 0,
-    start: float = 0,
-    duration: float | None = None,
-    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
-    macroStride: int | None = None,
-    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
-    microStride: float | int | None = None,
-    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
-    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
-    ):
-    startTime = time.time()
-    if macroWindowSize < 5 * microWindowSize:
-        raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
-    if macroWindowSize < 60 * 10:
-        raise ValueError("macroWindowSize must be at least 10 minutes")
-    if macroStride is None:
-        macroStride = macroWindowSize #// 2
-    if microStride is None:
-        microStride = microWindowSize / 2
-    logger.debug(f"Extracting audio from {within_file=}")
-    withinAudioFile = extractAudio(within_file)
-    logger.debug(f"Extracting audio from {find_file=}")
-    findAudioFile = extractAudio(find_file)
-    logger.info(f"{withinAudioFile}, {findAudioFile}")
-    logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
-    logger.detail(f"Initial offset = {initialOffset}")
+def loadAudioFile(audioFilePath: str, sr: float | None, start: float, duration: float) -> Tuple[np.ndarray, float]:
     try:
-        y_within, sr_within = librosa.load(
-            withinAudioFile,
+        audioData, sampleRate = librosa.load(
+            audioFilePath,
             sr=None,
-            offset=start + (initialOffset if initialOffset > 0 else 0),
+            offset=start,
             duration=duration,
         )
     except Exception as ex:
-        logger.warning(f"Got {repr(ex)} when trying to load {withinAudioFile}, deleting file and retrying once")
+        logger.warning(f"Got {repr(ex)} when trying to load {audioFilePath}, deleting file and retrying once")
         os.remove(withinAudioFile)
-        withinAudioFile = extractAudio(within_file)
-        y_within, sr_within = librosa.load(
+        withinAudioFile = extractAudio(audioFilePath)
+        audioData, sampleRate = librosa.load(
             withinAudioFile,
             sr=None,
-            offset=start + (initialOffset if initialOffset > 0 else 0),
+            offset=start,
             duration=duration,
         )
-    logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
+    return audioData, sampleRate
+
+
+def _calculateRawAudioOffsets(withinData: np.ndarray,
+                             findData: np.ndarray,
+                             samplerate: float, 
+                             macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
+                             macroStride: int | None = None,
+                             microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+                             microStride: float | int | None = None,
+                             bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+                             bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER):
     startTime = time.time()
-    try:
-        y_find, _ = librosa.load(
-            findAudioFile,
-            sr=sr_within,
-            offset=start - (initialOffset if initialOffset < 0 else 0),
-            # duration=window if window is not None else duration,
-            duration=duration
-        )
-    except Exception as ex:
-        logger.warning(f"Got {repr(ex)} when trying to load {findAudioFile}, deleting file and retrying once")
-        os.remove(findAudioFile)
-        findAudioFile = extractAudio(find_file)
-        y_find, _ = librosa.load(
-            findAudioFile,
-            sr=sr_within,
-            offset=start - (initialOffset if initialOffset < 0 else 0),
-            # duration=window if window is not None else duration,
-            duration=duration
-        )
-    logger.detail(f"Second audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
-    startTime = time.time()
-    withinLength = y_within.shape[0] / sr_within
-    findLength = y_find.shape[0] / sr_within
+    withinLength = withinData.shape[0] / samplerate
+    findLength = findData.shape[0] / samplerate
     overlapLength = min(withinLength, findLength)
     offsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
     threshold = max(150, 5 * microWindowSize) #500
     #allOffsetsFound: Dict[str, List[Tuple[float, float, float]]] = dict()
     allOffsetsFound: List[tuple] = []
     for macroWindowNum in range(int(ceil((overlapLength - macroWindowSize) / macroStride))):
-        macroWindowStart = macroWindowNum * macroStride * sr_within
-        macroWindowEnd = ((macroWindowNum * macroStride) + macroWindowSize) * sr_within
-        logger.trace(f"Macro start: {macroWindowStart/sr_within}, end: {macroWindowEnd/sr_within}")
-        withinSnippet = y_within[macroWindowStart : macroWindowEnd]
+        macroWindowStart = macroWindowNum * macroStride * samplerate
+        macroWindowEnd = ((macroWindowNum * macroStride) + macroWindowSize) * samplerate
+        logger.trace(f"Macro start: {macroWindowStart/samplerate}, end: {macroWindowEnd/samplerate}")
+        withinSnippet = withinData[macroWindowStart : macroWindowEnd]
         for microWindowNum in range(int(ceil((macroWindowSize - microWindowSize) / microStride))):
-            microWindowStart = int(macroWindowStart + (microWindowNum * microStride * sr_within))
-            microWindowEnd = int(macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * sr_within))
-            logger.trace(f"Micro start: {microWindowStart/sr_within}, end: {microWindowEnd/sr_within}")
-            findSnippet = y_find[microWindowStart:microWindowEnd]
+            microWindowStart = int(macroWindowStart + (microWindowNum * microStride * samplerate))
+            microWindowEnd = int(macroWindowStart + (((microWindowNum * microStride) + microWindowSize) * samplerate))
+            logger.trace(f"Micro start: {microWindowStart/samplerate}, end: {microWindowEnd/samplerate}")
+            findSnippet = findData[microWindowStart:microWindowEnd]
             c = signal.correlate(withinSnippet, findSnippet, mode='same', method='fft')
             logger.trace(f"Signal correlated, memory tuple: {psutil.virtual_memory()}")
             peak = np.argmax(c)
             logger.trace(f"within shape = {withinSnippet.shape}, find shape = {findSnippet.shape}, c shape = {c.shape}")
-            foundOffset = round(((peak + macroWindowStart - microWindowStart) / sr_within) - (microWindowSize / 2), 2)
+            foundOffset = round(((peak + macroWindowStart - microWindowStart) / samplerate) - (microWindowSize / 2), 2)
             offsetStr = str(round(foundOffset / bucketSize) * bucketSize)
-            offsetEntry = (foundOffset, c[peak], microWindowStart/sr_within)
+            offsetEntry = (foundOffset, c[peak], microWindowStart/samplerate)
             if c[peak] >= threshold:
-                logger.trace(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/sr_within})")
+                logger.trace(f"Found offset {foundOffset}, putting in bucket {offsetStr} (peakHeight={c[peak]}, threshold={threshold}, peakTimeInternal={peak/samplerate})")
                 if offsetStr in offsetsFound.keys():
                     offsetsFound[offsetStr].append(offsetEntry)
                 else:
@@ -273,7 +181,67 @@ def findAudioOffsets(within_file: str,
     logger.trace(spilledOffsets)
     return spilledOffsets
 
-def findPopularAudioOffsets(
+def findRawAudioOffsetsFromSingleAudioFiles(withinAudiofile: str,
+    findAudioFile: str,
+    initialOffset: float = 0,
+    start: float = 0,
+    duration: float | None = None,
+    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
+    macroStride: int | None = None,
+    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+    microStride: float | int | None = None,
+    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
+    ):
+    startTime = time.time()
+    y_within, sr_within = loadAudioFile(withinAudiofile, None, start + (initialOffset if initialOffset > 0 else 0), duration)
+    logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
+    startTime = time.time()
+    y_find, _ = loadAudioFile(findAudioFile, None, start - (initialOffset if initialOffset < 0 else 0), duration)
+    logger.detail(f"Second audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
+    return _calculateRawAudioOffsets(y_within, y_find, sr_within, macroWindowSize, macroStride, microWindowSize, microStride, bucketSize, bucketSpillover)
+
+def findRawAudioOffsetsFromSingleVideoFiles(within_video_file: str,
+    find_video_file: str,
+    initialOffset: float = 0,
+    start: float = 0,
+    duration: float | None = None,
+    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
+    macroStride: int | None = None,
+    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+    microStride: float | int | None = None,
+    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
+    ) -> Dict[str, List[Tuple[float, float, float]]]:
+    startTime = time.time()
+    if macroWindowSize < 5 * microWindowSize:
+        raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
+    if macroWindowSize < 60 * 10:
+        raise ValueError("macroWindowSize must be at least 10 minutes")
+    if macroStride is None:
+        macroStride = macroWindowSize #// 2
+    if microStride is None:
+        microStride = microWindowSize / 2
+    logger.debug(f"Extracting audio from {within_video_file=}")
+    withinAudioFile = extractAudio(within_video_file)
+    logger.debug(f"Extracting audio from {find_video_file=}")
+    findAudioFile = extractAudio(find_video_file)
+    logger.info(f"{withinAudioFile}, {findAudioFile}")
+    logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
+    logger.detail(f"Initial offset = {initialOffset}")
+    return findRawAudioOffsetsFromSingleAudioFiles(withinAudioFile,
+                                               findAudioFile,
+                                               initialOffset,
+                                               start,
+                                               duration,
+                                               macroWindowSize,
+                                               macroStride,
+                                               microWindowSize,
+                                               microStride,
+                                               bucketSize,
+                                               bucketSpillover)
+
+def findPopularAudioOffsetsFromSingleVideoFiles(
     within_file: str,
     find_file: str,
     initialOffset: float = 0,
@@ -287,18 +255,17 @@ def findPopularAudioOffsets(
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     popularThreshold: int = 1, 
 ):
-    allOffsets = findAudioOffsets(within_file=within_file,
-                                      find_file=find_file,
-                                      initialOffset=initialOffset,
-                                      start=start,
-                                      duration=duration,
-                                      macroWindowSize=macroWindowSize,
-                                      macroStride=macroStride,
-                                      microWindowSize=microWindowSize,
-                                      microStride=microStride,
-                                      bucketSize=bucketSize,
-                                      bucketSpillover=bucketSpillover,
-                                      )
+    allOffsets = findRawAudioOffsetsFromSingleVideoFiles(within_video_file=within_file,
+                                                         find_video_file=find_file,
+                                                         initialOffset=initialOffset,
+                                                         start=start,
+                                                         duration=duration,
+                                                         macroWindowSize=macroWindowSize,
+                                                         macroStride=macroStride,
+                                                         microWindowSize=microWindowSize,
+                                                         microStride=microStride,
+                                                         bucketSize=bucketSize,
+                                                         bucketSpillover=bucketSpillover)
     offsetsByFrequency = sorted(allOffsets.keys(), key=lambda x: -len(allOffsets[x]))
     if len(offsetsByFrequency) == 0:
         return {}
@@ -309,8 +276,72 @@ def findPopularAudioOffsets(
         popularOffsets[key] = allOffsets[key]
     return popularOffsets
 
+# TODO: First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
+# Need to build a way to group offsets by time efficiently
+def findPopularAudioOffsetsFromSingleSourceFiles(file1: SourceFile,
+                       file2: SourceFile,
+                       **kwargs):
+    file1Start = file1.infoJson["timestamp"]
+    file2Start = file2.infoJson["timestamp"]
+    offset = file2Start - file1Start
+    file1Path = file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
+    file2Path = file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
+    return findPopularAudioOffsetsFromSingleVideoFiles(file1Path, file2Path, initialOffset=offset, **kwargs)
 
-def findAverageAudioOffset(
+
+def calculateWeightedAverageAudioOffset(rawOffsets: Dict[str, List[Tuple[float, float, float]]], bucketSize: float) -> float | None:
+    if rawOffsets is None or len(rawOffsets) == 0:
+        return None
+    offsetsByFrequency = sorted(rawOffsets.keys(), key=lambda x: -len(rawOffsets[x]))
+    logger.trace(f"offsetsByFrequency {offsetsByFrequency}")
+    logger.detail(f"offset lengths: {[(key, len(rawOffsets[key])) for key in offsetsByFrequency]}")
+    reoccurringOffsets = [offset for offset in offsetsByFrequency if len(rawOffsets[offset]) > 1]
+    logger.debug(f"reoccurringOffsets {reoccurringOffsets}")
+    if len(reoccurringOffsets) > 1:
+        occurrenceCounts = np.zeros(len(reoccurringOffsets))
+        for i in range(len(reoccurringOffsets)):
+            occurrenceCounts[i] = len(rawOffsets[reoccurringOffsets[i]])
+        avg = np.average(occurrenceCounts)
+        stddev = np.std(occurrenceCounts)
+        logger.debug(f"avg {avg}, stddev {stddev}")
+        popularOffsets = [offset for offset in offsetsByFrequency if len(rawOffsets[offset]) >= avg+stddev]
+        if len(popularOffsets) == 0:
+            return None
+        logger.debug(f"popularOffsets {popularOffsets}")
+        mostPopularOffset = popularOffsets[0]
+        if len(popularOffsets) > 1:
+            secondMostPopularOffset = popularOffsets[1]
+            if len(rawOffsets[secondMostPopularOffset]) == len(rawOffsets[mostPopularOffset]):
+                if abs(float(mostPopularOffset) - float(secondMostPopularOffset)) > bucketSize:
+                    return None
+                else:
+                    raise NotImplementedError
+                    assert len(popularOffsets) == 2 or len(rawOffsets[popularOffsets[2]]) < len(rawOffsets[mostPopularOffset])
+                    return None
+            totalPopOffsetCount = sum((len(rawOffsets[x]) for x in popularOffsets))
+            if len(rawOffsets[mostPopularOffset]) < totalPopOffsetCount * 0.4:
+                return None
+        #assert len(popularOffsets) <= 1 or len(allOffsets[popularOffsets[1]]) != len(allOffsets[mostPopularOffset])
+    elif len(reoccurringOffsets) == 0:
+        return None
+    else:
+        popularOffsets = []
+        mostPopularOffset = reoccurringOffsets[0]
+    chosenOffset = rawOffsets[mostPopularOffset]
+    logger.detail(f"{mostPopularOffset}, {chosenOffset}")
+    weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
+    assert abs(weightedAverageOffset) <= getConfig('internal.audioOffsetCutoff'), f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {rawOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
+    if abs(weightedAverageOffset) > getConfig('internal.audioOffsetCutoff'):
+        logger.error(f"Average offset {weightedAverageOffset} outside of normal range!")
+        logger.info(f"Chosen Bucket: {chosenOffset}")
+        logger.detail(f"Reoccurring offsets: {reoccurringOffsets}")
+        logger.info(f"Popular offsets: {popularOffsets}")
+        logger.debug(f"All offsets: {rawOffsets}")
+        return None
+    logger.info(weightedAverageOffset)
+    return weightedAverageOffset
+
+def findAverageAudioOffsetFromSingleVideoFiles(
     within_file: str,
     find_file: str,
     initialOffset: float = 0,
@@ -323,8 +354,8 @@ def findAverageAudioOffset(
     bucketSize: float | int = DEFAULT_BUCKET_SIZE,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
 ) -> None | float:
-    allOffsets = findAudioOffsets(within_file=within_file,
-                                      find_file=find_file,
+    allOffsets = findRawAudioOffsetsFromSingleVideoFiles(within_video_file=within_file,
+                                      find_video_file=find_file,
                                       initialOffset=initialOffset,
                                       start=start,
                                       duration=duration,
@@ -335,60 +366,13 @@ def findAverageAudioOffset(
                                       bucketSize=bucketSize,
                                       bucketSpillover=bucketSpillover,
                                       )
-    if allOffsets is None or len(allOffsets) == 0:
-        return None
-    offsetsByFrequency = sorted(allOffsets.keys(), key=lambda x: -len(allOffsets[x]))
-    logger.trace(f"offsetsByFrequency {offsetsByFrequency}")
-    logger.detail(f"offset lengths: {[(key, len(allOffsets[key])) for key in offsetsByFrequency]}")
-    reoccurringOffsets = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) > 1]
-    logger.debug(f"reoccurringOffsets {reoccurringOffsets}")
-    if len(reoccurringOffsets) > 1:
-        occurrenceCounts = np.zeros(len(reoccurringOffsets))
-        for i in range(len(reoccurringOffsets)):
-            occurrenceCounts[i] = len(allOffsets[reoccurringOffsets[i]])
-        avg = np.average(occurrenceCounts)
-        stddev = np.std(occurrenceCounts)
-        logger.debug(f"avg {avg}, stddev {stddev}")
-        popularOffsets = [offset for offset in offsetsByFrequency if len(allOffsets[offset]) >= avg+stddev]
-        if len(popularOffsets) == 0:
-            return None
-        logger.debug(f"popularOffsets {popularOffsets}")
-        mostPopularOffset = popularOffsets[0]
-        if len(popularOffsets) > 1:
-            secondMostPopularOffset = popularOffsets[1]
-            if len(allOffsets[secondMostPopularOffset]) == len(allOffsets[mostPopularOffset]):
-                if abs(float(mostPopularOffset) - float(secondMostPopularOffset)) > bucketSize:
-                    return None
-                else:
-                    raise NotImplementedError
-                    assert len(popularOffsets) == 2 or len(allOffsets[popularOffsets[2]]) < len(allOffsets[mostPopularOffset])
-                    return None
-            totalPopOffsetCount = sum((len(allOffsets[x]) for x in popularOffsets))
-            if len(allOffsets[mostPopularOffset]) < totalPopOffsetCount * 0.4:
-                return None
-        #assert len(popularOffsets) <= 1 or len(allOffsets[popularOffsets[1]]) != len(allOffsets[mostPopularOffset])
-    elif len(reoccurringOffsets) == 0:
-        return None
-    else:
-        popularOffsets = []
-        mostPopularOffset = reoccurringOffsets[0]
-    chosenOffset = allOffsets[mostPopularOffset]
-    logger.detail(f"{mostPopularOffset}, {chosenOffset}")
-    weightedAverageOffset = sum((offset*weight for offset, weight, _ in chosenOffset)) / sum((weight for _, weight, _ in chosenOffset))
-    assert abs(weightedAverageOffset) <= getConfig('internal.audioOffsetCutoff'), f"Average offset {weightedAverageOffset} outside of normal range.\nChosen Bucket: {chosenOffset}\nAll offsets: {allOffsets}\nReoccurring offsets: {reoccurringOffsets}\nPopular offsets: {popularOffsets}"
-    if abs(weightedAverageOffset) > getConfig('internal.audioOffsetCutoff'):
-        logger.error(f"Average offset {weightedAverageOffset} outside of normal range! Aligning {find_file} to {within_file}")
-        logger.info(f"Chosen Bucket: {chosenOffset}")
-        logger.detail(f"Reoccurring offsets: {reoccurringOffsets}")
-        logger.info(f"Popular offsets: {popularOffsets}")
-        logger.debug(f"All offsets: {allOffsets}")
-        return None
-    logger.info(weightedAverageOffset)
-    return weightedAverageOffset
-    #return sum((offset for offset, _, _ in allOffsets[mostPopularOffset])) / len(allOffsets[mostPopularOffset])
+    averageOffset = calculateWeightedAverageAudioOffset(allOffsets, bucketSize)
+    if averageOffset is None:
+        logger.info(f"Unable to align {find_file} to {within_file}")
+    return averageOffset
     
 
-def findAverageFileOffset(
+def findAverageAudioOffsetFromSingleSourceFiles(
     file1: SourceFile,
     file2: SourceFile,
     **kwargs
@@ -402,7 +386,7 @@ def findAverageFileOffset(
     file2Path = (
         file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
     )
-    return findAverageAudioOffset(file1Path, file2Path, offset, **kwargs)
+    return findAverageAudioOffsetFromSingleVideoFiles(file1Path, file2Path, offset, **kwargs)
 
 processPoolLock = Lock()
 
@@ -412,7 +396,7 @@ def concurrentOffsetWorker(mainAudioFile, cmpAudioFile, offset, **kwargs):
         oom_score_adjust.write("1000")  # https://unix.stackexchange.com/a/153586
     
 
-def findMultipleAverageFileOffsets(
+def findAverageAudioOffsetsFromMultipleSourceFiles(
     mainFile: SourceFile,
     *cmpFiles: SourceFile,
     **kwargs
@@ -429,15 +413,3 @@ def findMultipleAverageFileOffsets(
         processPoolProcessCount = min(processPoolProcessCount, len(cmpFiles))
     
     return allFileOffsets
-
-# TODO: First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
-# Need to build a way to group offsets by time efficiently
-def findAllFileOffsets(file1: SourceFile,
-                       file2: SourceFile,
-                       **kwargs):
-    file1Start = file1.infoJson["timestamp"]
-    file2Start = file2.infoJson["timestamp"]
-    offset = file2Start - file1Start
-    file1Path = file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
-    file2Path = file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
-    return findPopularAudioOffsets(file1Path, file2Path, initialOffset=offset, **kwargs)

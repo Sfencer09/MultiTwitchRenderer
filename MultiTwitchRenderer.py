@@ -199,7 +199,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                     startOffset, endOffset = searchOffsets
                     streamOffset = scanned.filesBySourceVideoPath[secondaryFilePath].startTimestamp - \
                         scanned.filesBySourceVideoPath[primaryFilePath].startTimestamp
-                    audioOffset = AudioAlignment.findAverageAudioOffset(primaryFilePath,
+                    audioOffset = AudioAlignment.findAverageAudioOffsetFromSingleVideoFiles(primaryFilePath,
                                                                         secondaryFilePath,
                                                                         initialOffset=streamOffset,
                                                                         start=startOffset,
