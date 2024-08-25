@@ -1,4 +1,5 @@
 from math import ceil
+from threading import Lock
 import time
 from typing import Dict, List, Tuple
 import librosa
@@ -321,7 +322,7 @@ def findAverageAudioOffset(
     microStride: float | int | None = None,
     bucketSize: float | int = DEFAULT_BUCKET_SIZE,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
-):
+) -> None | float:
     allOffsets = findAudioOffsets(within_file=within_file,
                                       find_file=find_file,
                                       initialOffset=initialOffset,
@@ -391,7 +392,7 @@ def findAverageFileOffset(
     file1: SourceFile,
     file2: SourceFile,
     **kwargs
-) -> List[float | Tuple[float, float]]:
+) -> None | float:# | Tuple[float, float]:
     file1Start = file1.infoJson["timestamp"]
     file2Start = file2.infoJson["timestamp"]
     offset = file2Start - file1Start
@@ -402,6 +403,32 @@ def findAverageFileOffset(
         file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
     )
     return findAverageAudioOffset(file1Path, file2Path, offset, **kwargs)
+
+processPoolLock = Lock()
+
+def concurrentOffsetWorker(mainAudioFile, cmpAudioFile, offset, **kwargs):
+    processId = os.getpid()
+    with open(f"/proc/{processId}/oom_score_adj", "w") as oom_score_adjust:
+        oom_score_adjust.write("1000")  # https://unix.stackexchange.com/a/153586
+    
+
+def findMultipleAverageFileOffsets(
+    mainFile: SourceFile,
+    *cmpFiles: SourceFile,
+    **kwargs
+) -> Dict[str, float]:
+    allFileOffsets = {}
+    mainFilePath = mainFile.videoFile if mainFile.localVideoFile is None else mainFile.localVideoFile
+    cmpFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
+    cmpFileOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
+    from concurrent.futures import ProcessPoolExecutor, BrokenProcessPool
+    with processPoolLock:
+        processPoolProcessCount = os.cpu_count()
+        if processPoolProcessCount is None:
+            processPoolProcessCount = 1
+        processPoolProcessCount = min(processPoolProcessCount, len(cmpFiles))
+    
+    return allFileOffsets
 
 # TODO: First element of return value will be initial offset, all other elements will be a tuple of the start time and time difference for a later offset
 # Need to build a way to group offsets by time efficiently
