@@ -1,5 +1,6 @@
 from functools import partial
 from math import ceil
+from random import randrange
 from threading import Lock
 import time
 from typing import Dict, List, Tuple
@@ -11,6 +12,8 @@ import sys
 import psutil
 import subprocess
 import warnings
+from concurrent.futures import ProcessPoolExecutor, BrokenProcessPool
+from multiprocessing.shared_memory import SharedMemory
 warnings.filterwarnings('ignore')
 
 import MTRLogging
@@ -91,7 +94,7 @@ DEFAULT_MICRO_WINDOW_SIZE: int = 10
 DEFAULT_BUCKET_SIZE: float | int = 1
 DEFAULT_BUCKET_SPILLOVER: int = 1
 
-def loadAudioFile(audioFilePath: str, sr: float | None, start: float, duration: float) -> Tuple[np.ndarray, float]:
+def loadAudioFile(audioFilePath: str, sr: float | None, start: float, duration: float|None) -> Tuple[np.ndarray, float]:
     try:
         audioData, sampleRate = librosa.load(
             audioFilePath,
@@ -194,10 +197,12 @@ def findRawAudioOffsetsFromSingleAudioFiles(withinAudiofile: str,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     ):
     startTime = time.time()
-    y_within, sr_within = loadAudioFile(withinAudiofile, None, start + (initialOffset if initialOffset > 0 else 0), duration)
+    #y_within, sr_within = loadAudioFile(withinAudiofile, None, start + (initialOffset if initialOffset > 0 else 0), duration)
+    y_within, sr_within = loadAudioFile(withinAudiofile, None, start + max(initialOffset, 0), duration)
     logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     startTime = time.time()
-    y_find, _ = loadAudioFile(findAudioFile, None, start - (initialOffset if initialOffset < 0 else 0), duration)
+    #y_find, _ = loadAudioFile(findAudioFile, None, start - (initialOffset if initialOffset < 0 else 0), duration)
+    y_find, _ = loadAudioFile(findAudioFile, None, start - min(initialOffset, 0), duration)
     logger.detail(f"Second audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     return _calculateRawAudioOffsets(y_within, y_find, sr_within, macroWindowSize, macroStride, microWindowSize, microStride, bucketSize, bucketSpillover)
 
@@ -230,16 +235,16 @@ def findRawAudioOffsetsFromSingleVideoFiles(within_video_file: str,
     logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
     logger.detail(f"Initial offset = {initialOffset}")
     return findRawAudioOffsetsFromSingleAudioFiles(withinAudioFile,
-                                               findAudioFile,
-                                               initialOffset,
-                                               start,
-                                               duration,
-                                               macroWindowSize,
-                                               macroStride,
-                                               microWindowSize,
-                                               microStride,
-                                               bucketSize,
-                                               bucketSpillover)
+                                                   findAudioFile,
+                                                   initialOffset,
+                                                   start,
+                                                   duration,
+                                                   macroWindowSize,
+                                                   macroStride,
+                                                   microWindowSize,
+                                                   microStride,
+                                                   bucketSize,
+                                                   bucketSpillover)
 
 def findPopularAudioOffsetsFromSingleVideoFiles(
     within_file: str,
@@ -289,7 +294,7 @@ def findPopularAudioOffsetsFromSingleSourceFiles(file1: SourceFile,
     return findPopularAudioOffsetsFromSingleVideoFiles(file1Path, file2Path, initialOffset=offset, **kwargs)
 
 
-def calculateWeightedAverageAudioOffset(rawOffsets: Dict[str, List[Tuple[float, float, float]]], bucketSize: float) -> float | None:
+def _calculateWeightedAverageAudioOffset(rawOffsets: Dict[str, List[Tuple[float, float, float]]], bucketSize: float) -> float | None:
     if rawOffsets is None or len(rawOffsets) == 0:
         return None
     offsetsByFrequency = sorted(rawOffsets.keys(), key=lambda x: -len(rawOffsets[x]))
@@ -366,7 +371,7 @@ def findAverageAudioOffsetFromSingleVideoFiles(
                                       bucketSize=bucketSize,
                                       bucketSpillover=bucketSpillover,
                                       )
-    averageOffset = calculateWeightedAverageAudioOffset(allOffsets, bucketSize)
+    averageOffset = _calculateWeightedAverageAudioOffset(allOffsets, bucketSize)
     if averageOffset is None:
         logger.info(f"Unable to align {find_file} to {within_file}")
     return averageOffset
@@ -390,26 +395,97 @@ def findAverageAudioOffsetFromSingleSourceFiles(
 
 processPoolLock = Lock()
 
-def concurrentOffsetWorker(mainAudioFile, cmpAudioFile, offset, **kwargs):
-    processId = os.getpid()
-    with open(f"/proc/{processId}/oom_score_adj", "w") as oom_score_adjust:
+sharedMemoryPrefix = "sharedAudioMemory"
+
+def __concurrentOffsetWorker(mainAudioFile:str,
+                             mainAudioSamplerate: float,
+                             cmpAudioFileInfo: list|tuple,
+                             macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
+                             macroStride: int | None = None,
+                             microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+                             microStride: float | int | None = None,
+                             bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+                             bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER) -> float | None:
+    cmpAudioFile, offset, start, duration = cmpAudioFileInfo
+    
+    with open(f"/proc/{os.getpid()}/oom_score_adj", "w") as oom_score_adjust:
         oom_score_adjust.write("1000")  # https://unix.stackexchange.com/a/153586
     
+    try:
+        sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFile)
+        mainSampleCount = sharedMemoryBlock.size / 4
+        mainAudioFileData = np.ndarray((mainSampleCount, ), dtype=np.float32, buffer=sharedMemoryBlock.buf)
+    except FileNotFoundError:
+        logger.info(f"Unable to load audio data in shared memory for {mainAudioFile}, it will be loaded once per worker process")
+        time.sleep(randrange(300)) # avoid hammering the filesystem all at once on start
+        mainAudioFileData, _sr = loadAudioFile(mainAudioFile, None, start + max(offset, 0), duration)
+        assert _sr == mainAudioSamplerate
+        del _sr
+    
+    cmpAudioData, _ = loadAudioFile(cmpAudioFile, mainAudioSamplerate, start - min(offset, 0), duration)
+    
+    rawOffsets = _calculateRawAudioOffsets(mainAudioFileData,
+                                           cmpAudioData,
+                                           mainAudioSamplerate,
+                                           macroWindowSize,
+                                           macroStride,
+                                           microWindowSize,
+                                           microStride,
+                                           bucketSize,
+                                           bucketSpillover)
+    weightedAverageOffset = _calculateWeightedAverageAudioOffset(rawOffsets, bucketSize)
+    return weightedAverageOffset
 
 def findAverageAudioOffsetsFromMultipleSourceFiles(
     mainFile: SourceFile,
-    *cmpFiles: SourceFile,
+    cmpFiles: List[SourceFile],
+    cmpFileStartPoints: List[float | int] | None = None,
+    cmpFileDurations: List[float | int] | None = None,
     **kwargs
 ) -> Dict[str, float]:
     allFileOffsets = {}
-    mainFilePath = mainFile.videoFile if mainFile.localVideoFile is None else mainFile.localVideoFile
-    cmpFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
-    cmpFileOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
-    from concurrent.futures import ProcessPoolExecutor, BrokenProcessPool
+    if cmpFileDurations is not None and len(cmpFileDurations) != len(cmpFiles):
+        raise ValueError(f"List of file durations must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpFiles)})")
+    if cmpFileStartPoints is not None and len(cmpFileStartPoints) != len(cmpFiles):
+        raise ValueError(f"List of file starting points must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpFiles)})")
+    mainVideoFilePath = mainFile.videoFile if mainFile.localVideoFile is None else mainFile.localVideoFile
+    cmpVideoFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
+    cmpInitialOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
+    if cmpFileDurations is None:
+        cmpFileDurations = [None] * len(cmpFiles)
+    if cmpFileStartPoints is None:
+        cmpFileStartPoints = [0] * len(cmpFiles)
+    mainAudioFilePath = extractAudio(mainVideoFilePath)
+    cmpAudioFilePaths = map(lambda x: extractAudio(x), cmpVideoFilePaths)
+    mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, None)
+    assert mainAudioData.dtype == np.float32
+    sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath)
+    sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
+    np.copyto(sharedMainAudioData, mainAudioData, 'no')
+    
     with processPoolLock:
         processPoolProcessCount = os.cpu_count()
         if processPoolProcessCount is None:
             processPoolProcessCount = 1
         processPoolProcessCount = min(processPoolProcessCount, len(cmpFiles))
+        completedAllAlignments = False # completed does not necessarily imply success, just that an attempt at audio alignment has finished
+        while not completedAllAlignments and processPoolProcessCount > 1:
+            with ProcessPoolExecutor(processPoolProcessCount) as executor:
+                try:
+                    # TODO: it might be possible to get results one at a time, and potentially save ones that complete before an exception occurs
+                    for cmpFile, offset in zip(cmpFiles, executor.map(partial(__concurrentOffsetWorker, mainAudioFilePath, mainAudioSamplerate, **kwargs),
+                                                                      zip(cmpAudioFilePaths, cmpInitialOffsets, cmpFileStartPoints, cmpFileDurations))):
+                        assert isinstance(cmpFile, SourceFile)
+                        if offset is not None:
+                            allFileOffsets[cmpFile.videoFile] = offset
+                    completedAllAlignments = True
+                    break
+                except BrokenProcessPool as bpp:
+                    logger.debug(bpp, exc_info=1)
+                    processPoolProcessCount = int(ceil(processPoolProcessCount / 2))
+                    continue
+        if not completedAllAlignments:
+            assert processPoolProcessCount == 1
+            
     
     return allFileOffsets
