@@ -312,17 +312,22 @@ loadedConfig:dict|None = None
 
 def loadConfigFile(path:str):
     global loadedConfig
-    if loadedConfig is not None:
-        raise Exception("Configuration already loaded!")
+    #global HW_ACCEL_DEVICES
+    #if loadedConfig is not None:
+    #    raise Exception("Configuration already loaded!")
     with open(path, 'rb') as configFile:
         tempConfig = tomllib.load(configFile)
-        if "main" in tempConfig.keys():
-            ffmpegPath = tempConfig['main']['ffmpegPath'] if 'ffmpegPath' in tempConfig['main'] else ""
-            if ffmpegPath != "":
-                loadHardwareAcceleration(ffmpegPath)
-        loadedConfig = configSchema.validate(tempConfig)
-        if os.path.samefile(loadedConfig['main']['basepath'], loadedConfig['main']['localBasepath']):
+        # if "main" in tempConfig.keys():
+        #     ffmpegPath = tempConfig['main']['ffmpegPath'] if 'ffmpegPath' in tempConfig['main'] else ""
+        #     if ffmpegPath != "":
+        #         loadHardwareAcceleration(ffmpegPath)
+        validatedConfig = configSchema.validate(tempConfig)
+        if os.path.samefile(validatedConfig['main']['basepath'], validatedConfig['main']['localBasepath']):
             raise Exception("Values for 'basepath' and 'localBasepath' must be different directories")
+        loadedConfig = validatedConfig
+        #configFfmpegPath = loadedConfig['main']['ffmpegPath']
+        #if configFfmpegPath != "":
+        #    HW_ACCEL_DEVICES = getHardwareAccelerationDevicesV2(configFfmpegPath)
         
 def getConfig(configPath:str):
     pathParts = configPath.split('.')
