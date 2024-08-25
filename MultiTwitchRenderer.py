@@ -233,21 +233,33 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
         for device in decodeDevices:
             if hasattr(device, 'maxDecodeStreams'):
                 deviceStreams = device.maxDecodeStreams
-                if deviceStreams == 0 or deviceStreams > fileIndex:
+                #if deviceStreams == 0 or deviceStreams > fileIndex:
+                if deviceStreams > fileIndex:
                     return device
                 fileIndex -= deviceStreams
             else:
                 return device
         return None
     
+    def isSameDevice(dev1:None|VideoAccelDevice, dev2:None|VideoAccelDevice) -> bool:
+        if dev1 is None:
+            return dev2 is None
+        if dev2 is None:
+            return False
+        return dev1 == dev2
     
     #uploadFilter = "hwupload" + ACTIVE_HWACCEL_VALUES['upload_filter']
     uploadFilter = "hwupload"
+    encodeScaleDevice = None
     if encodeDevice is not None:
-        uploadFilter += HWACCEL_VALUES[encodeDevice['brand']].upload_filter
-    downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
-
-
+        uploadFilter += HWACCEL_VALUES[encodeDevice.brand].upload_filter
+        if encodeDevice.functions & HW_OUTPUT_SCALE != 0:
+            encodeScaleDevice = encodeDevice
+    #downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
+    downloadCpuFilter = "hwdownload,format=pix_fmts=yuv420p"
+    downloadGpuFilter = "hwdownload"
+    gpuXstack = encodeDevice is not None and encodeDevice.functions == (HW_DECODE | HW_ENCODE | HW_INPUT_SCALE | HW_OUTPUT_SCALE) and len(HWACCEL_VALUES[encodeDevice.brand].xstack_filter) > 0
+    xstackDevice = encodeDevice if gpuXstack else None
 
     # 12. Build a sorted array of unique filepaths from #8 - these will become the input stream indexes
     inputFilesSorted:List[SourceFile] = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
@@ -448,11 +460,12 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                 fpsRaw = videoStreamInfo['avg_frame_rate'].split('/')
                 fpsActual = float(fpsRaw[0]) / float(fpsRaw[1])
             
-                hwDecodeDevice = getHwDecodeInfoForFile(rowInputFileCount)
+                decodeDevice = getHwDecodeInfoForFile(rowInputFileCount)
+                decodeScaleDevice = None
                 useHwInputScaleAccel = False
-                decodeHwBrand = hwDecodeDevice.brand if hwDecodeDevice is not None else None
-                if hwDecodeDevice is not None:
-                    optionArgs = deviceArgsByPath[hwDecodeDevice.devicePath]
+                decodeHwBrand = decodeDevice.brand if decodeDevice is not None else None
+                if decodeDevice is not None:
+                    optionArgs = deviceArgsByPath[decodeDevice.devicePath]
                     useHwDecodeAccel = True
                 else:
                     optionArgs = {}
@@ -461,7 +474,9 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                     rowInputOptions.extend([option % optionArgs for option in HWACCEL_VALUES[decodeHwBrand].decode_multigpu_input_options])
                 else:
                     rowInputOptions.extend([option % optionArgs for option in HWACCEL_VALUES[decodeHwBrand].decode_input_options])
-                if useHwDecodeAccel and hwDecodeDevice.functions & HW_INPUT_SCALE != 0 and needToScale:
+                if useHwDecodeAccel and (decodeDevice.functions & HW_INPUT_SCALE != 0 or not needToScale):
+                    decodeScaleDevice = decodeDevice
+                if useHwDecodeAccel and decodeDevice.functions & HW_INPUT_SCALE != 0 and needToScale:
                     rowInputOptions.extend(HWACCEL_VALUES[decodeHwBrand].scale_input_options)
                     useHwInputScaleAccel = True
                 
@@ -479,14 +494,14 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                 scaleAlgo = getScaleAlgorithm(
                         height, tileHeight, decodeHwBrand)
                 decodeUploadFilter = "hwupload"
-                if useHwInputScaleAccel:
-                    scaleSuffix = HWACCEL_VALUES[decodeHwBrand].scale_filter
-                    padSuffix = HWACCEL_VALUES[decodeHwBrand].pad_filter
-                    decodeUploadFilter += HWACCEL_VALUES[decodeHwBrand].upload_filter
-                else:
-                    scaleSuffix = ''
-                    padSuffix = ''
-                downloadFilter = "hwdownload,format=pix_fmts=yuv420p"
+                
+                #if useHwInputScaleAccel:
+                scaleSuffix = HWACCEL_VALUES[decodeHwBrand].scale_filter
+                padSuffix = HWACCEL_VALUES[decodeHwBrand].pad_filter
+                decodeUploadFilter += HWACCEL_VALUES[decodeHwBrand].upload_filter
+                #else:
+                #    scaleSuffix = ''
+                #    padSuffix = ''
                 scaleFilter = f"scale{scaleSuffix}={tileResolution}:force_original_aspect_ratio=decrease:{'format=yuv420p:' if useHwInputScaleAccel else ''}eval=frame{scaleAlgo}" if needToScale else ''
                 padFilter = f"pad{padSuffix}={tileResolution}:-1:-1:color=black" if not isSixteenByNine else ''
                 fpsFilter = f"fps=fps=60:round=near" if fpsActual != 60 else ''
@@ -508,8 +523,6 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                     elif useHwDecodeAccel and useHwInputScaleAccel:
                         filtergraphBody = [
                             scaleFilter, padFilter, downloadFilter, fpsFilter, trimFilter, timeFilter, labelFilter]
-                    # elif useHardwareAcceleration >= 4:
-                    #    raise Exception("Not implemented yet")
                 if filtergraphBody is None:
                     filtergraphBody = [
                         trimFilter, timeFilter, fpsFilter, scaleFilter, padFilter, labelFilter]
@@ -542,22 +555,22 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
             segmentRes = [int(x) for x in segmentResolution.split(':')]
             #useHwOutscaleAccel = hwAccelDevices & HW_OUTPUT_SCALE != 0
             if encodeDevice is not None:
-                decodeHwBrand = encodeDevice.brand
+                encodeHwBrand = encodeDevice.brand
                 useHwOutscaleAccel = encodeDevice.functions & HW_OUTPUT_SCALE != 0
-                scaleSuffix = HWACCEL_VALUES[decodeHwBrand].scale_filter if useHwOutscaleAccel else ''
-                padSuffix = HWACCEL_VALUES[decodeHwBrand].pad_filter if useHwOutscaleAccel else ''
             else:
-                scaleSuffix = ''
-                padSuffix = ''
                 useHwOutscaleAccel = False
+                encodeHwBrand = None
+            scaleSuffix = HWACCEL_VALUES[encodeHwBrand].scale_filter if useHwOutscaleAccel else ''
+            padSuffix = HWACCEL_VALUES[encodeHwBrand].pad_filter if useHwOutscaleAccel else ''
+            xstackSuffix = HWACCEL_VALUES[encodeHwBrand].xstack_filter if useHwOutscaleAccel else ''
             scaleToFitFilter = f"scale{scaleSuffix}={outputResolutionStr}:force_original_aspect_ratio=decrease:eval=frame" if segmentResolution != outputResolutionStr else ''
             padFilter = f"pad{padSuffix}={outputResolutionStr}:-1:-1:color=black" if numRowSegments <= rowTileWidth*(
                 rowTileWidth-1) else ''
-            xstackFilter = f"xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}"
+            xstackFilter = f"xstack{xstackSuffix}=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}"
             # xstackString = f"[{']['.join(rowVideoSegmentNames)}] xstack=inputs={numRowSegments}:{generateLayout(numRowSegments)}{':fill=black' if rowTileWidth**2!=numRowSegments else ''}{scaleToFitFilter}{padFilter}{uploadFilter if useHardwareAcceleration&HW_ENCODE!=0 else ''} [vseg{segIndex}]"
             #if hwAccelDevices & HW_ENCODE != 0:
             if encodeDevice is not None:
-                encodeUploadFilter = HWACCEL_VALUES[encodeDevice.brand].upload_filter
+                encodeUploadFilter = "hwupload" + HWACCEL_VALUES[encodeHwBrand].upload_filter
                 if useHwOutscaleAccel:
                     xstackBody = [xstackFilter, encodeUploadFilter,
                                     scaleToFitFilter, padFilter]
