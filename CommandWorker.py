@@ -1,6 +1,7 @@
 
 from functools import partial
 import os
+import traceback
 from typing import List
 from thefuzz import process as fuzzproc
 import time as ttime #avoid name conflict with import in config file
@@ -509,6 +510,7 @@ commandArray.append(Command(editQueue, 'Edit queue(s)'))
 
 
 def commandWorker():
+    errorCount = 0
     while True:
         for _ in range(5):
             print()
@@ -529,7 +531,14 @@ def commandWorker():
             print("Please try again")
         try:
             commandArray[optionNum].targetFunc()
+            errorCount = max(0, errorCount-1)
         except KeyboardInterrupt as ki:
             print(
                 "Detected keyboard interrupt, returning to main menu. Press Ctrl-C again to exit program")
+        except Exception as ex:
+            traceback.print_exception(ex)
+            errorCount += 1
+            if errorCount >= 5:
+                print("Error threshold exceeded, exiting!")
+                RenderWorker.endRendersAndExit()
         # raise Exception("Not implemented yet")
