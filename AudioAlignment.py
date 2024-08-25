@@ -416,6 +416,7 @@ def __concurrentOffsetWorker(mainAudioFile:str,
         mainSampleCount = sharedMemoryBlock.size / 4
         mainAudioFileData = np.ndarray((mainSampleCount, ), dtype=np.float32, buffer=sharedMemoryBlock.buf)
     except FileNotFoundError:
+        sharedMemoryBlock = None
         logger.info(f"Unable to load audio data in shared memory for {mainAudioFile}, it will be loaded once per worker process")
         time.sleep(randrange(300)) # avoid hammering the filesystem all at once on start
         mainAudioFileData, _sr = loadAudioFile(mainAudioFile, None, start + max(offset, 0), duration)
@@ -433,6 +434,8 @@ def __concurrentOffsetWorker(mainAudioFile:str,
                                            microStride,
                                            bucketSize,
                                            bucketSpillover)
+    if sharedMemoryBlock is not None:
+        sharedMemoryBlock.close()
     weightedAverageOffset = _calculateWeightedAverageAudioOffset(rawOffsets, bucketSize)
     return weightedAverageOffset
 
@@ -459,7 +462,8 @@ def findAverageAudioOffsetsFromMultipleSourceFiles(
     cmpAudioFilePaths = map(lambda x: extractAudio(x), cmpVideoFilePaths)
     mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, None)
     assert mainAudioData.dtype == np.float32
-    sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath)
+    assert mainAudioData.nbytes == mainAudioData.shape[0] * 4
+    sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath, create=True, size=mainAudioData.nbytes)
     sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
     np.copyto(sharedMainAudioData, mainAudioData, 'no')
     
@@ -487,5 +491,5 @@ def findAverageAudioOffsetsFromMultipleSourceFiles(
         if not completedAllAlignments:
             assert processPoolProcessCount == 1
             
-    
+    sharedMemoryBlock.unlink()
     return allFileOffsets
