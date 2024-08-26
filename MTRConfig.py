@@ -160,6 +160,8 @@ configSchema = Schema({
             bool,
         Optional('ENABLE_URWID', default=False):
             And(bool, False),
+        Optional('multicoreAudioAlignment', default=True):
+            bool,
         Optional('outputResolutions', default=[[],
                     [1920,1080],
                     [3840,1080],

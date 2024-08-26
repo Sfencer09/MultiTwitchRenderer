@@ -231,6 +231,9 @@ videoIdRegex = "(v?[\\d]{9,11})" #r"(v[\d]+)"
 # Character replacements for filenames done by yt-dlp
 characterReplacements = {'?'='？', '/'='⧸', '\'='⧹', ':'='：', '<'='＜', '>'='＞'}
 
+# Whether to use multiprocessing for audio alignment. If false, alignment will only use a single thread
+multicoreAudioAlignment = true
+
 # Adds ffmpeg options that attempt to reduce the peak memory usage when rendering, potentially at the cost of a larger output file size
 reducedFfmpegMemory = false
 

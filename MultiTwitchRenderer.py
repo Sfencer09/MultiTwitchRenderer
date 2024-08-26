@@ -194,22 +194,47 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
             if primaryFilePath not in fileOffsets:
                 fileOffsets[primaryFilePath] = {}
             currentFileOffsets = fileOffsets[primaryFilePath]
-            for secondaryFilePath, searchOffsets in secondaryFilePaths.items():
-                if secondaryFilePath not in currentFileOffsets:
-                    startOffset, endOffset = searchOffsets
-                    streamOffset = scanned.filesBySourceVideoPath[secondaryFilePath].startTimestamp - \
-                        scanned.filesBySourceVideoPath[primaryFilePath].startTimestamp
-                    audioOffset = AudioAlignment.findAverageAudioOffsetFromSingleVideoFiles(primaryFilePath,
-                                                                        secondaryFilePath,
-                                                                        initialOffset=streamOffset,
-                                                                        start=startOffset,
-                                                                        duration = min(AudioAlignment.MAX_LOAD_DURATION, endOffset - startOffset),
-                                                                        macroWindowSize = 10*60,
-                                                                        macroStride = 10*60,
-                                                                        microWindowSize = 10)
-                    if audioOffset is not None:
-                        currentFileOffsets[secondaryFilePath] = audioOffset
-                    saveAudioCache()
+            if getConfig('internal.multicoreAudioAlignment'):
+                secondaryVideoPaths = []
+                secondaryOffsets = []
+                secondaryStartPoints = []
+                secondaryDurations = []
+                for secondaryFilePath, searchOffsets in secondaryFilePaths.items():
+                    if secondaryFilePath not in currentFileOffsets:
+                        startOffset, endOffset = searchOffsets
+                        streamOffset = scanned.filesBySourceVideoPath[secondaryFilePath].startTimestamp - \
+                            scanned.filesBySourceVideoPath[primaryFilePath].startTimestamp
+                        secondaryVideoPaths.append(secondaryFilePath)
+                        secondaryOffsets.append(streamOffset)
+                        secondaryStartPoints.append(startOffset)
+                        secondaryDurations.append(min(AudioAlignment.MAX_LOAD_DURATION, endOffset - startOffset))
+                audioOffsets = AudioAlignment.findAverageAudioOffsetsFromMultipleVideoFiles(primaryFilePath,
+                                                                                            secondaryVideoPaths,
+                                                                                            secondaryOffsets,
+                                                                                            secondaryStartPoints,
+                                                                                            secondaryDurations,
+                                                                                            macroWindowSize = 10*60,
+                                                                                            macroStride = 10*60,
+                                                                                            microWindowSize = 10)
+                currentFileOffsets |= audioOffsets
+                saveAudioCache()
+            else:
+                for secondaryFilePath, searchOffsets in secondaryFilePaths.items():
+                    if secondaryFilePath not in currentFileOffsets:
+                        startOffset, endOffset = searchOffsets
+                        streamOffset = scanned.filesBySourceVideoPath[secondaryFilePath].startTimestamp - \
+                            scanned.filesBySourceVideoPath[primaryFilePath].startTimestamp
+                        audioOffset = AudioAlignment.findAverageAudioOffsetFromSingleVideoFiles(primaryFilePath,
+                                                                            secondaryFilePath,
+                                                                            initialOffset=streamOffset,
+                                                                            start=startOffset,
+                                                                            duration = min(AudioAlignment.MAX_LOAD_DURATION, endOffset - startOffset),
+                                                                            macroWindowSize = 10*60,
+                                                                            macroStride = 10*60,
+                                                                            microWindowSize = 10)
+                        if audioOffset is not None:
+                            currentFileOffsets[secondaryFilePath] = audioOffset
+                        saveAudioCache()
     segmentTileCounts = [len(list(filter(lambda x: x is not None, row)))
                          for row in segmentFileMatrix]
     maxSegmentTiles = max(segmentTileCounts)

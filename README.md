@@ -125,6 +125,8 @@ videoIdRegex : Regex of the video id within the filename. Should be exact enough
 
 characterReplacements : Character replacements for filenames done by yt-dlp. Default (may not render properly on all setups): {'?'='？', '/'='⧸', '\'='⧹', ':'='：', '<'='＜', '>'='＞'}
 
+multicoreAudioAlignment : Whether to use multiprocessing for audio alignment. If false, alignment will only use a single thread. Default: True
+
 reducedFfmpegMemory : Adds ffmpeg options that attempt to reduce the peak memory usage when rendering, potentially at the cost of a larger output file size. Not recommended. Default: False
 
 ~~ENABLE_URWID~~ : Not fully implemented, do not enable outside of development environment. Default: False
