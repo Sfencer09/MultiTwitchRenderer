@@ -540,7 +540,7 @@ def findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath: str,
                                                   cmpFileDurations: List[float | int] | None = None,
                                                   **kwargs) -> Dict[str, float]:
     mainAudioFilePath = extractAudio(mainVideoFilePath)
-    cmpAudioFilePaths = map(lambda x: extractAudio(x), cmpVideoFilePaths)
+    cmpAudioFilePaths = list(map(lambda x: extractAudio(x), cmpVideoFilePaths))
     cmpAudioFilePathIndexes = {key:value for value, key in enumerate(cmpAudioFilePaths)}
     offsetsByAudioFile = findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath,
                                                          cmpAudioFilePaths,
@@ -563,8 +563,8 @@ def findAverageAudioOffsetsFromMultipleSourceFiles(
     
     mainVideoFilePath = mainFile.videoFile #if mainFile.localVideoFile is None else mainFile.localVideoFile
     #cmpLocalVideoFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
-    cmpLocalVideoFilePaths = map(lambda x: x.videoFile, cmpFiles)
-    cmpInitialOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
+    cmpLocalVideoFilePaths = list(map(lambda x: x.videoFile, cmpFiles))
+    cmpInitialOffsets = list(map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles))
     cmpLocalVideoFilePathIndexes = {key:value for value, key in enumerate(cmpLocalVideoFilePaths)}
     
     offsetsByLocalVideoFile = findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath,
