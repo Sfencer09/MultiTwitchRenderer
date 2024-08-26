@@ -162,6 +162,8 @@ configSchema = Schema({
             And(bool, False),
         Optional('multicoreAudioAlignment', default=True):
             bool,
+        Optional('multicoreAudioAlignmentSharedMemory', default=False):
+            bool,
         Optional('outputResolutions', default=[[],
                     [1920,1080],
                     [3840,1080],

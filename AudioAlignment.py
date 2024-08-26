@@ -446,7 +446,8 @@ def __concurrentOffsetWorker(mainAudioFile:str,
         mainAudioFileData = mainAudioFileFullData[startSampleIndex:endSampleIndex]
     except FileNotFoundError:
         sharedMemoryBlock = None
-        logger.info(f"Unable to load audio data in shared memory for {mainAudioFile}, it will be loaded once per worker process")
+        if not getConfig("internal.multicoreAudioAlignmentSharedMemory"):
+            logger.info(f"Unable to load audio data in shared memory for {mainAudioFile}, loading again from filesystem for pid {os.getpid()}")
         time.sleep(randrange(300)) # avoid hammering the filesystem all at once on start
         mainAudioFileData, _sr = loadAudioFile(mainAudioFile, None, start + max(offset, 0), duration)
         assert _sr == mainAudioSamplerate
@@ -486,13 +487,14 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
     if cmpFileStartPoints is None:
         cmpFileStartPoints = [0] * len(cmpAudioFilePaths)
     allFileOffsets = {}
-    mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, None)
-    assert mainAudioData.dtype == np.float32
-    assert mainAudioData.nbytes == mainAudioData.shape[0] * 4
-    sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath, create=True, size=mainAudioData.nbytes)
-    sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
-    np.copyto(sharedMainAudioData, mainAudioData, 'no')
-    del mainAudioData
+    if getConfig("internal.multicoreAudioAlignmentSharedMemory"):
+        mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, None)
+        assert mainAudioData.dtype == np.float32
+        assert mainAudioData.nbytes == mainAudioData.shape[0] * 4
+        sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath, create=True, size=mainAudioData.nbytes)
+        sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
+        np.copyto(sharedMainAudioData, mainAudioData, 'no')
+        del mainAudioData
     
     with processPoolLock:
         processPoolProcessCount = os.cpu_count()

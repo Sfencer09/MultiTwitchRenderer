@@ -234,6 +234,9 @@ characterReplacements = {'?'='？', '/'='⧸', '\'='⧹', ':'='：', '<'='＜', 
 # Whether to use multiprocessing for audio alignment. If false, alignment will only use a single thread
 multicoreAudioAlignment = true
 
+# Whether to use shared memory for multicore audio alignment. Can use more memory, since it requires loading the full primary file's audio
+multicoreAudioAlignmentSharedMemory = false
+
 # Adds ffmpeg options that attempt to reduce the peak memory usage when rendering, potentially at the cost of a larger output file size
 reducedFfmpegMemory = false
 
