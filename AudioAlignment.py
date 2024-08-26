@@ -197,6 +197,14 @@ def findRawAudioOffsetsFromSingleAudioFiles(withinAudiofile: str,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     ):
     startTime = time.time()
+    if macroWindowSize < 5 * microWindowSize:
+        raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
+    if macroWindowSize < 60 * 10:
+        raise ValueError("macroWindowSize must be at least 10 minutes")
+    if macroStride is None:
+        macroStride = macroWindowSize #// 2
+    if microStride is None:
+        microStride = microWindowSize / 2
     #y_within, sr_within = loadAudioFile(withinAudiofile, None, start + (initialOffset if initialOffset > 0 else 0), duration)
     y_within, sr_within = loadAudioFile(withinAudiofile, None, start + max(initialOffset, 0), duration)
     logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
@@ -219,14 +227,6 @@ def findRawAudioOffsetsFromSingleVideoFiles(within_video_file: str,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     ) -> Dict[str, List[Tuple[float, float, float]]]:
     startTime = time.time()
-    if macroWindowSize < 5 * microWindowSize:
-        raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
-    if macroWindowSize < 60 * 10:
-        raise ValueError("macroWindowSize must be at least 10 minutes")
-    if macroStride is None:
-        macroStride = macroWindowSize #// 2
-    if microStride is None:
-        microStride = microWindowSize / 2
     logger.debug(f"Extracting audio from {within_video_file=}")
     withinAudioFile = extractAudio(within_video_file)
     logger.debug(f"Extracting audio from {find_video_file=}")
@@ -294,7 +294,8 @@ def findPopularAudioOffsetsFromSingleSourceFiles(file1: SourceFile,
     return findPopularAudioOffsetsFromSingleVideoFiles(file1Path, file2Path, initialOffset=offset, **kwargs)
 
 
-def _calculateWeightedAverageAudioOffset(rawOffsets: Dict[str, List[Tuple[float, float, float]]], bucketSize: float) -> float | None:
+def _calculateWeightedAverageAudioOffset(rawOffsets: Dict[str, List[Tuple[float, float, float]]],
+                                         bucketSize: float) -> float | None:
     if rawOffsets is None or len(rawOffsets) == 0:
         return None
     offsetsByFrequency = sorted(rawOffsets.keys(), key=lambda x: -len(rawOffsets[x]))
@@ -346,9 +347,36 @@ def _calculateWeightedAverageAudioOffset(rawOffsets: Dict[str, List[Tuple[float,
     logger.info(weightedAverageOffset)
     return weightedAverageOffset
 
+def findAverageAudioOffsetFromSingleAudioFiles(
+    withinAudioFile: str,
+    findAudioFile: str,
+    initialOffset: float = 0,
+    start: float = 0,
+    duration: float | None = None,
+    macroWindowSize: int = DEFAULT_MACRO_WINDOW_SIZE,
+    macroStride: int | None = None,
+    microWindowSize: int = DEFAULT_MICRO_WINDOW_SIZE,
+    microStride: float | int | None = None,
+    bucketSize: float | int = DEFAULT_BUCKET_SIZE,
+    bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER) -> None | float:
+    allOffsets = findRawAudioOffsetsFromSingleAudioFiles(withinAudioFile, findAudioFile, 
+                                                         initialOffset=initialOffset,
+                                                        start=start,
+                                                        duration=duration,
+                                                        macroWindowSize=macroWindowSize,
+                                                        macroStride=macroStride,
+                                                        microWindowSize=microWindowSize,
+                                                        microStride=microStride,
+                                                        bucketSize=bucketSize,
+                                                        bucketSpillover=bucketSpillover)
+    averageOffset = _calculateWeightedAverageAudioOffset(allOffsets, bucketSize)
+    if averageOffset is None:
+        logger.info(f"Unable to align {findAudioFile} to {withinAudioFile}")
+    return averageOffset
+
 def findAverageAudioOffsetFromSingleVideoFiles(
-    within_file: str,
-    find_file: str,
+    within_video_file: str,
+    find_video_file: str,
     initialOffset: float = 0,
     start: float = 0,
     duration: float | None = None,
@@ -359,29 +387,30 @@ def findAverageAudioOffsetFromSingleVideoFiles(
     bucketSize: float | int = DEFAULT_BUCKET_SIZE,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
 ) -> None | float:
-    allOffsets = findRawAudioOffsetsFromSingleVideoFiles(within_video_file=within_file,
-                                      find_video_file=find_file,
-                                      initialOffset=initialOffset,
-                                      start=start,
-                                      duration=duration,
-                                      macroWindowSize=macroWindowSize,
-                                      macroStride=macroStride,
-                                      microWindowSize=microWindowSize,
-                                      microStride=microStride,
-                                      bucketSize=bucketSize,
-                                      bucketSpillover=bucketSpillover,
-                                      )
-    averageOffset = _calculateWeightedAverageAudioOffset(allOffsets, bucketSize)
-    if averageOffset is None:
-        logger.info(f"Unable to align {find_file} to {within_file}")
-    return averageOffset
-    
+    startTime = time.time()
+    logger.debug(f"Extracting audio from {within_video_file=}")
+    withinAudioFile = extractAudio(within_video_file)
+    logger.debug(f"Extracting audio from {find_video_file=}")
+    findAudioFile = extractAudio(find_video_file)
+    logger.info(f"{withinAudioFile}, {findAudioFile}")
+    logger.debug(f"Audio extracted in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
+    logger.detail(f"Initial offset = {initialOffset}")
+    return findAverageAudioOffsetFromSingleAudioFiles(withinAudioFile,
+                                                        findAudioFile,
+                                                        initialOffset=initialOffset,
+                                                        start=start,
+                                                        duration=duration,
+                                                        macroWindowSize=macroWindowSize,
+                                                        macroStride=macroStride,
+                                                        microWindowSize=microWindowSize,
+                                                        microStride=microStride,
+                                                        bucketSize=bucketSize,
+                                                        bucketSpillover=bucketSpillover)
 
 def findAverageAudioOffsetFromSingleSourceFiles(
     file1: SourceFile,
     file2: SourceFile,
-    **kwargs
-) -> None | float:# | Tuple[float, float]:
+    **kwargs) -> None | float:# | Tuple[float, float]:
     file1Start = file1.infoJson["timestamp"]
     file2Start = file2.infoJson["timestamp"]
     offset = file2Start - file1Start
@@ -444,6 +473,7 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
                                                   cmpInitialOffsets: List[str],
                                                   cmpFileStartPoints: List[float | int] | None = None,
                                                   cmpFileDurations: List[float | int] | None = None,
+                                                  bucketSize: float | int = DEFAULT_BUCKET_SIZE,
                                                   **kwargs) -> Dict[str, float]:
     if len(cmpAudioFilePaths) != len(cmpInitialOffsets):
         raise ValueError(f"List of file offsets must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpAudioFilePaths)})")
@@ -462,6 +492,7 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
     sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath, create=True, size=mainAudioData.nbytes)
     sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
     np.copyto(sharedMainAudioData, mainAudioData, 'no')
+    del mainAudioData
     
     with processPoolLock:
         processPoolProcessCount = os.cpu_count()
@@ -470,23 +501,35 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
         processPoolProcessCount = min(processPoolProcessCount, len(cmpAudioFilePaths))
         completedAllAlignments = False # completed does not necessarily imply success, just that an attempt at audio alignment has finished
         while not completedAllAlignments and processPoolProcessCount > 1:
-            with ProcessPoolExecutor(processPoolProcessCount) as executor:
+            with ProcessPoolExecutor(max_workers=processPoolProcessCount) as executor:
                 try:
                     # TODO: it might be possible to get results one at a time, and potentially save ones that complete before an exception occurs
                     for cmpFile, offset in zip(cmpAudioFilePaths, executor.map(partial(__concurrentOffsetWorker, mainAudioFilePath, mainAudioSamplerate, **kwargs),
                                                                       zip(cmpAudioFilePaths, cmpInitialOffsets, cmpFileStartPoints, cmpFileDurations))):
-                        assert isinstance(cmpFile, SourceFile)
                         if offset is not None:
-                            allFileOffsets[cmpFile.videoFile] = offset
+                            allFileOffsets[cmpFile] = offset
                     completedAllAlignments = True
                     break
                 except BrokenProcessPool as bpp:
                     logger.debug(bpp, exc_info=1)
-                    processPoolProcessCount = int(ceil(processPoolProcessCount / 2))
+                    #processPoolProcessCount = int(ceil(processPoolProcessCount / 2))
+                    processPoolProcessCount = max(1, processPoolProcessCount - 2)
                     continue
         if not completedAllAlignments:
             assert processPoolProcessCount == 1
-            
+            for index, cmpAudioFilePath in enumerate(cmpAudioFilePaths):
+                initialOffset = cmpInitialOffsets[index]
+                start = cmpFileStartPoints[index]
+                duration = cmpFileDurations[index]
+                cmpAudioData, _ = loadAudioFile(cmpAudioFilePath, mainAudioSamplerate, start - min(initialOffset, 0), duration)
+                rawOffsets = _calculateRawAudioOffsets(sharedMainAudioData,
+                                                       cmpAudioData,
+                                                       mainAudioSamplerate,
+                                                       bucketSize=bucketSize,
+                                                       **kwargs)
+                weightedAverageOffset = _calculateWeightedAverageAudioOffset(rawOffsets, bucketSize)
+                if weightedAverageOffset is not None:
+                    allFileOffsets[cmpAudioFilePath] = weightedAverageOffset
     sharedMemoryBlock.unlink()
     return allFileOffsets
 
@@ -498,12 +541,18 @@ def findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath: str,
                                                   **kwargs) -> Dict[str, float]:
     mainAudioFilePath = extractAudio(mainVideoFilePath)
     cmpAudioFilePaths = map(lambda x: extractAudio(x), cmpVideoFilePaths)
-    return findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath,
+    cmpAudioFilePathIndexes = {key:value for value, key in enumerate(cmpAudioFilePaths)}
+    offsetsByAudioFile = findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath,
                                                          cmpAudioFilePaths,
                                                          cmpInitialOffsets,
                                                          cmpFileStartPoints,
                                                          cmpFileDurations,
                                                          **kwargs)
+    offsetsByVideoFile = {}
+    for audioFilePath, offset in offsetsByAudioFile.items():
+        index = cmpAudioFilePathIndexes[audioFilePath]
+        offsetsByVideoFile[cmpVideoFilePaths[index]] = offset
+    return offsetsByVideoFile
 
 def findAverageAudioOffsetsFromMultipleSourceFiles(
     mainFile: SourceFile,
@@ -512,13 +561,20 @@ def findAverageAudioOffsetsFromMultipleSourceFiles(
     cmpFileDurations: List[float | int] | None = None,
     **kwargs) -> Dict[str, float]:
     
-    mainVideoFilePath = mainFile.videoFile if mainFile.localVideoFile is None else mainFile.localVideoFile
-    cmpVideoFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
+    mainVideoFilePath = mainFile.videoFile #if mainFile.localVideoFile is None else mainFile.localVideoFile
+    #cmpLocalVideoFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
+    cmpLocalVideoFilePaths = map(lambda x: x.videoFile, cmpFiles)
     cmpInitialOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
+    cmpLocalVideoFilePathIndexes = {key:value for value, key in enumerate(cmpLocalVideoFilePaths)}
     
-    return findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath,
-                                                         cmpVideoFilePaths,
+    offsetsByLocalVideoFile = findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath,
+                                                         cmpLocalVideoFilePaths,
                                                          cmpInitialOffsets,
                                                          cmpFileStartPoints,
                                                          cmpFileDurations,
                                                          **kwargs)
+    offsetsByVideoFile = {}
+    for audioFilePath, offset in offsetsByLocalVideoFile.items():
+        index = cmpLocalVideoFilePathIndexes[audioFilePath]
+        offsetsByVideoFile[cmpFiles[index].videoFile] = offset
+    return offsetsByVideoFile
