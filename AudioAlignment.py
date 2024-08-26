@@ -289,8 +289,8 @@ def findPopularAudioOffsetsFromSingleSourceFiles(file1: SourceFile,
     file1Start = file1.infoJson["timestamp"]
     file2Start = file2.infoJson["timestamp"]
     offset = file2Start - file1Start
-    file1Path = file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
-    file2Path = file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
+    file1Path = file1.videoFile #if file1.localVideoFile is None else file1.localVideoFile
+    file2Path = file2.videoFile #if file2.localVideoFile is None else file2.localVideoFile
     return findPopularAudioOffsetsFromSingleVideoFiles(file1Path, file2Path, initialOffset=offset, **kwargs)
 
 
@@ -414,12 +414,8 @@ def findAverageAudioOffsetFromSingleSourceFiles(
     file1Start = file1.infoJson["timestamp"]
     file2Start = file2.infoJson["timestamp"]
     offset = file2Start - file1Start
-    file1Path = (
-        file1.localVideoFile if file1.localVideoFile is not None else file1.videoFile
-    )
-    file2Path = (
-        file2.localVideoFile if file2.localVideoFile is not None else file2.videoFile
-    )
+    file1Path = file1.videoFile #if file1.localVideoFile is None else file1.localVideoFile
+    file2Path = file2.videoFile #if file2.localVideoFile is None else file2.localVideoFile
     return findAverageAudioOffsetFromSingleVideoFiles(file1Path, file2Path, offset, **kwargs)
 
 processPoolLock = Lock()

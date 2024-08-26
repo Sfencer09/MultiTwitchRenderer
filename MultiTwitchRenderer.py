@@ -168,7 +168,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
             primaryFile = row[0]
             if primaryFile is None:
                 continue
-            primaryVideoPath = primaryFile.localVideoFile if primaryFile.localVideoFile is not None else primaryFile.videoFile
+            primaryVideoPath = primaryFile.videoFile #if primaryFile.localVideoFile is None else primaryFile.localVideoFile
             if primaryVideoPath not in measurements:
                 measurements[primaryVideoPath] = {}
             currentMeasurements = measurements[primaryVideoPath]
@@ -177,7 +177,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
             segmentDuration = segmentEndTime - segmentStartTime
             for f in row[1:]:
                 if f is not None:
-                    secondaryVideoPath = f.localVideoFile if f.localVideoFile is not None else f.videoFile
+                    secondaryVideoPath = f.videoFile #if f.localVideoFile is None else f.localVideoFile
                     if primaryVideoPath in fileOffsets and secondaryVideoPath in fileOffsets[primaryVideoPath]:
                         continue
                     streamOverlapStart = max(f.startTimestamp, primaryFile.startTimestamp)
