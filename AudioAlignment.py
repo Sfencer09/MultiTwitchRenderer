@@ -12,7 +12,8 @@ import sys
 import psutil
 import subprocess
 import warnings
-from concurrent.futures import ProcessPoolExecutor, BrokenProcessPool
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.shared_memory import SharedMemory
 warnings.filterwarnings('ignore')
 
