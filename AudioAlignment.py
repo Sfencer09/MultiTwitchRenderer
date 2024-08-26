@@ -440,7 +440,10 @@ def __concurrentOffsetWorker(mainAudioFile:str,
     try:
         sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFile)
         mainSampleCount = sharedMemoryBlock.size / 4
-        mainAudioFileData = np.ndarray((mainSampleCount, ), dtype=np.float32, buffer=sharedMemoryBlock.buf)
+        mainAudioFileFullData = np.ndarray((mainSampleCount, ), dtype=np.float32, buffer=sharedMemoryBlock.buf)
+        startSampleIndex = int(mainAudioSamplerate * (start + max(offset, 0)))
+        endSampleIndex = startSampleIndex + int(mainAudioSamplerate * duration)
+        mainAudioFileData = mainAudioFileFullData[startSampleIndex:endSampleIndex]
     except FileNotFoundError:
         sharedMemoryBlock = None
         logger.info(f"Unable to load audio data in shared memory for {mainAudioFile}, it will be loaded once per worker process")
