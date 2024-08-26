@@ -439,27 +439,23 @@ def __concurrentOffsetWorker(mainAudioFile:str,
     weightedAverageOffset = _calculateWeightedAverageAudioOffset(rawOffsets, bucketSize)
     return weightedAverageOffset
 
-def findAverageAudioOffsetsFromMultipleSourceFiles(
-    mainFile: SourceFile,
-    cmpFiles: List[SourceFile],
-    cmpFileStartPoints: List[float | int] | None = None,
-    cmpFileDurations: List[float | int] | None = None,
-    **kwargs
-) -> Dict[str, float]:
-    allFileOffsets = {}
-    if cmpFileDurations is not None and len(cmpFileDurations) != len(cmpFiles):
-        raise ValueError(f"List of file durations must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpFiles)})")
-    if cmpFileStartPoints is not None and len(cmpFileStartPoints) != len(cmpFiles):
-        raise ValueError(f"List of file starting points must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpFiles)})")
-    mainVideoFilePath = mainFile.videoFile if mainFile.localVideoFile is None else mainFile.localVideoFile
-    cmpVideoFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
-    cmpInitialOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
+def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
+                                                  cmpAudioFilePaths: List[str],
+                                                  cmpInitialOffsets: List[str],
+                                                  cmpFileStartPoints: List[float | int] | None = None,
+                                                  cmpFileDurations: List[float | int] | None = None,
+                                                  **kwargs) -> Dict[str, float]:
+    if len(cmpAudioFilePaths) != len(cmpInitialOffsets):
+        raise ValueError(f"List of file offsets must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpAudioFilePaths)})")
+    if cmpFileDurations is not None and len(cmpFileDurations) != len(cmpAudioFilePaths):
+        raise ValueError(f"List of file durations must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpAudioFilePaths)})")
+    if cmpFileStartPoints is not None and len(cmpFileStartPoints) != len(cmpAudioFilePaths):
+        raise ValueError(f"List of file starting points must be of equal length to the list of files ({len(cmpFileDurations)} != {len(cmpAudioFilePaths)})")
     if cmpFileDurations is None:
-        cmpFileDurations = [None] * len(cmpFiles)
+        cmpFileDurations = [None] * len(cmpAudioFilePaths)
     if cmpFileStartPoints is None:
-        cmpFileStartPoints = [0] * len(cmpFiles)
-    mainAudioFilePath = extractAudio(mainVideoFilePath)
-    cmpAudioFilePaths = map(lambda x: extractAudio(x), cmpVideoFilePaths)
+        cmpFileStartPoints = [0] * len(cmpAudioFilePaths)
+    allFileOffsets = {}
     mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, None)
     assert mainAudioData.dtype == np.float32
     assert mainAudioData.nbytes == mainAudioData.shape[0] * 4
@@ -471,13 +467,13 @@ def findAverageAudioOffsetsFromMultipleSourceFiles(
         processPoolProcessCount = os.cpu_count()
         if processPoolProcessCount is None:
             processPoolProcessCount = 1
-        processPoolProcessCount = min(processPoolProcessCount, len(cmpFiles))
+        processPoolProcessCount = min(processPoolProcessCount, len(cmpAudioFilePaths))
         completedAllAlignments = False # completed does not necessarily imply success, just that an attempt at audio alignment has finished
         while not completedAllAlignments and processPoolProcessCount > 1:
             with ProcessPoolExecutor(processPoolProcessCount) as executor:
                 try:
                     # TODO: it might be possible to get results one at a time, and potentially save ones that complete before an exception occurs
-                    for cmpFile, offset in zip(cmpFiles, executor.map(partial(__concurrentOffsetWorker, mainAudioFilePath, mainAudioSamplerate, **kwargs),
+                    for cmpFile, offset in zip(cmpAudioFilePaths, executor.map(partial(__concurrentOffsetWorker, mainAudioFilePath, mainAudioSamplerate, **kwargs),
                                                                       zip(cmpAudioFilePaths, cmpInitialOffsets, cmpFileStartPoints, cmpFileDurations))):
                         assert isinstance(cmpFile, SourceFile)
                         if offset is not None:
@@ -493,3 +489,36 @@ def findAverageAudioOffsetsFromMultipleSourceFiles(
             
     sharedMemoryBlock.unlink()
     return allFileOffsets
+
+def findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath: str,
+                                                  cmpVideoFilePaths: List[str],
+                                                  cmpInitialOffsets: List[str],
+                                                  cmpFileStartPoints: List[float | int] | None = None,
+                                                  cmpFileDurations: List[float | int] | None = None,
+                                                  **kwargs) -> Dict[str, float]:
+    mainAudioFilePath = extractAudio(mainVideoFilePath)
+    cmpAudioFilePaths = map(lambda x: extractAudio(x), cmpVideoFilePaths)
+    return findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath,
+                                                         cmpAudioFilePaths,
+                                                         cmpInitialOffsets,
+                                                         cmpFileStartPoints,
+                                                         cmpFileDurations,
+                                                         **kwargs)
+
+def findAverageAudioOffsetsFromMultipleSourceFiles(
+    mainFile: SourceFile,
+    cmpFiles: List[SourceFile],
+    cmpFileStartPoints: List[float | int] | None = None,
+    cmpFileDurations: List[float | int] | None = None,
+    **kwargs) -> Dict[str, float]:
+    
+    mainVideoFilePath = mainFile.videoFile if mainFile.localVideoFile is None else mainFile.localVideoFile
+    cmpVideoFilePaths = map(lambda x: x.videoFile if x.localVideoFile is None else x.localVideoFile, cmpFiles)
+    cmpInitialOffsets = map(lambda x: x.infoJson["timestamp"] - mainFile.infoJson["timestamp"], cmpFiles)
+    
+    return findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath,
+                                                         cmpVideoFilePaths,
+                                                         cmpInitialOffsets,
+                                                         cmpFileStartPoints,
+                                                         cmpFileDurations,
+                                                         **kwargs)
