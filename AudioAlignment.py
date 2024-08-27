@@ -495,6 +495,11 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
         sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
         np.copyto(sharedMainAudioData, mainAudioData, 'no')
         del mainAudioData
+    else:
+        mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, 1)
+        assert mainAudioData.dtype == np.float32
+        assert mainAudioData.nbytes == mainAudioData.shape[0] * 4
+        del mainAudioData
     
     with processPoolLock:
         processPoolProcessCount = os.cpu_count()
