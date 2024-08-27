@@ -15,8 +15,10 @@ import warnings
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.shared_memory import SharedMemory
+from hashlib import sha1
 warnings.filterwarnings('ignore')
 
+import logging
 import MTRLogging
 logger = MTRLogging.getLogger('AudioAlignment')
 
@@ -69,11 +71,12 @@ def extractAudio(target_file: str):
         os.makedirs(os.path.dirname(audioPath), exist_ok=True)
         extractCommand = [
             getConfig('main.ffmpegPath') + "ffmpeg",
-            "-i",
-            target_file,
+            "-i", target_file,
             "-vn",
-            "-acodec",
-            "copy",
+            #"-acodec",
+            #"copy",
+            # https://trac.ffmpeg.org/wiki/AudioChannelManipulation - "The following filtergraph can be used to bring out of phase stereo in phase prior to downmixing:"
+            "-af", "asplit[a],aphasemeter=video=0,ametadata=select:key=lavfi.aphasemeter.phase:value=-0.005:function=less,pan=1c|c0=c0,aresample=async=1:first_pts=0,[a]amix",
             "-y",
             audioPath,
         ]
@@ -126,6 +129,14 @@ def _calculateRawAudioOffsets(withinData: np.ndarray,
                              bucketSize: float | int = DEFAULT_BUCKET_SIZE,
                              bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER):
     startTime = time.time()
+    if macroWindowSize < 5 * microWindowSize:
+        raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
+    if macroWindowSize < 60 * 10:
+        raise ValueError("macroWindowSize must be at least 10 minutes")
+    if macroStride is None:
+        macroStride = macroWindowSize #// 2
+    if microStride is None:
+        microStride = microWindowSize / 2
     withinLength = withinData.shape[0] / samplerate
     findLength = findData.shape[0] / samplerate
     overlapLength = min(withinLength, findLength)
@@ -198,14 +209,6 @@ def findRawAudioOffsetsFromSingleAudioFiles(withinAudiofile: str,
     bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER,
     ):
     startTime = time.time()
-    if macroWindowSize < 5 * microWindowSize:
-        raise ValueError("macroWindowSize should be at least five times microWindowSize for good results")
-    if macroWindowSize < 60 * 10:
-        raise ValueError("macroWindowSize must be at least 10 minutes")
-    if macroStride is None:
-        macroStride = macroWindowSize #// 2
-    if microStride is None:
-        microStride = microWindowSize / 2
     #y_within, sr_within = loadAudioFile(withinAudiofile, None, start + (initialOffset if initialOffset > 0 else 0), duration)
     y_within, sr_within = loadAudioFile(withinAudiofile, None, start + max(initialOffset, 0), duration)
     logger.detail(f"First audio loaded in {round(time.time()-startTime, 2)} seconds, memory tuple: {psutil.virtual_memory()}")
@@ -421,7 +424,7 @@ def findAverageAudioOffsetFromSingleSourceFiles(
 
 processPoolLock = Lock()
 
-sharedMemoryPrefix = "sharedAudioMemory"
+#sharedMemoryPrefix = "sharedAudioMemory"
 
 def __concurrentOffsetWorker(mainAudioFile:str,
                              mainAudioSamplerate: float,
@@ -432,13 +435,14 @@ def __concurrentOffsetWorker(mainAudioFile:str,
                              microStride: float | int | None = None,
                              bucketSize: float | int = DEFAULT_BUCKET_SIZE,
                              bucketSpillover: int = DEFAULT_BUCKET_SPILLOVER) -> float | None:
+    
     cmpAudioFile, offset, start, duration = cmpAudioFileInfo
     
     with open(f"/proc/{os.getpid()}/oom_score_adj", "w") as oom_score_adjust:
-        oom_score_adjust.write("1000")  # https://unix.stackexchange.com/a/153586
+        oom_score_adjust.write("100")  # https://unix.stackexchange.com/a/153586
     
     try:
-        sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFile)
+        sharedMemoryBlock = SharedMemory(sha1(mainAudioFile.encode(), usedforsecurity=False).hexdigest())
         mainSampleCount = sharedMemoryBlock.size / 4
         mainAudioFileFullData = np.ndarray((mainSampleCount, ), dtype=np.float32, buffer=sharedMemoryBlock.buf)
         startSampleIndex = int(mainAudioSamplerate * (start + max(offset, 0)))
@@ -446,9 +450,17 @@ def __concurrentOffsetWorker(mainAudioFile:str,
         mainAudioFileData = mainAudioFileFullData[startSampleIndex:endSampleIndex]
     except FileNotFoundError:
         sharedMemoryBlock = None
-        if not getConfig("internal.multicoreAudioAlignmentSharedMemory"):
+        if getConfig("internal.multicoreAudioAlignmentSharedMemory"):
             logger.info(f"Unable to load audio data in shared memory for {mainAudioFile}, loading again from filesystem for pid {os.getpid()}")
-        time.sleep(randrange(300)) # avoid hammering the filesystem all at once on start
+        time.sleep(randrange(60)) # Ensure some scattering so that the subprocesses aren't all testing together, thinking it's clear, then all going at once
+        cpuCount = os.cpu_count()
+        
+        for _ in range(10 + randrange(20)):
+            cpuUsage = psutil.cpu_percent(interval=2)
+            memUsageStats = psutil.virtual_memory()
+            if cpuUsage < 70 and memUsageStats.available > 6 * (2**30): #skip
+                break
+            time.sleep(30)
         mainAudioFileData, _sr = loadAudioFile(mainAudioFile, None, start + max(offset, 0), duration)
         assert _sr == mainAudioSamplerate
         del _sr
@@ -491,7 +503,7 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
         mainAudioData, mainAudioSamplerate = loadAudioFile(mainAudioFilePath, None, 0, None)
         assert mainAudioData.dtype == np.float32
         assert mainAudioData.nbytes == mainAudioData.shape[0] * 4
-        sharedMemoryBlock = SharedMemory(sharedMemoryPrefix + mainAudioFilePath, create=True, size=mainAudioData.nbytes)
+        sharedMemoryBlock = SharedMemory(sha1(mainAudioFilePath.encode(), usedforsecurity=False).hexdigest(), create=True, size=mainAudioData.nbytes)
         sharedMainAudioData = np.ndarray(mainAudioData.shape, dtype=np.float32, buffer=sharedMemoryBlock.buf)
         np.copyto(sharedMainAudioData, mainAudioData, 'no')
         del mainAudioData
@@ -511,8 +523,18 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
             with ProcessPoolExecutor(max_workers=processPoolProcessCount) as executor:
                 try:
                     # TODO: it might be possible to get results one at a time, and potentially save ones that complete before an exception occurs
-                    for cmpFile, offset in zip(cmpAudioFilePaths, executor.map(partial(__concurrentOffsetWorker, mainAudioFilePath, mainAudioSamplerate, **kwargs),
-                                                                      zip(cmpAudioFilePaths, cmpInitialOffsets, cmpFileStartPoints, cmpFileDurations))):
+                    partialFunction = partial(__concurrentOffsetWorker,
+                                              mainAudioFilePath,
+                                              mainAudioSamplerate,
+                                              **kwargs)
+                    functionArgsList = list(zip(cmpAudioFilePaths,
+                                           cmpInitialOffsets,
+                                           cmpFileStartPoints,
+                                           cmpFileDurations))
+                    for cmpFile, offset in zip(cmpAudioFilePaths,
+                                               executor.map(partialFunction,
+                                               #map(partialFunction,
+                                                            functionArgsList)):
                         if offset is not None:
                             allFileOffsets[cmpFile] = offset
                     completedAllAlignments = True
@@ -520,7 +542,8 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
                 except BrokenProcessPool as bpp:
                     logger.debug(bpp, exc_info=1)
                     #processPoolProcessCount = int(ceil(processPoolProcessCount / 2))
-                    processPoolProcessCount = max(1, processPoolProcessCount - 2)
+                    #processPoolProcessCount = max(1, processPoolProcessCount - 2)
+                    processPoolProcessCount -= 1
                     continue
         if not completedAllAlignments:
             assert processPoolProcessCount == 1
@@ -537,7 +560,8 @@ def findAverageAudioOffsetsFromMultipleAudioFiles(mainAudioFilePath: str,
                 weightedAverageOffset = _calculateWeightedAverageAudioOffset(rawOffsets, bucketSize)
                 if weightedAverageOffset is not None:
                     allFileOffsets[cmpAudioFilePath] = weightedAverageOffset
-    sharedMemoryBlock.unlink()
+    if sharedMemoryBlock is not None:
+        sharedMemoryBlock.unlink()
     return allFileOffsets
 
 def findAverageAudioOffsetsFromMultipleVideoFiles(mainVideoFilePath: str,
