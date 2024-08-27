@@ -237,6 +237,9 @@ multicoreAudioAlignment = true
 # Whether to use shared memory for multicore audio alignment. Can use more memory, since it requires loading the full primary file's audio
 multicoreAudioAlignmentSharedMemory = false
 
+# If true, conversion to mono will be done during audio extraction using an ffmpeg audio filtergraph designed to work on potentially out-of-phase stereo channels
+audioAlignmentEnhancedExtract = false
+
 # Adds ffmpeg options that attempt to reduce the peak memory usage when rendering, potentially at the cost of a larger output file size
 reducedFfmpegMemory = false
 

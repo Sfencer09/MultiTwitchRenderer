@@ -72,14 +72,18 @@ def extractAudio(target_file: str):
         extractCommand = [
             getConfig('main.ffmpegPath') + "ffmpeg",
             "-i", target_file,
-            "-vn",
-            #"-acodec",
-            #"copy",
+            "-vn"]
+        if getConfig('internal.audioAlignmentEnhancedExtract'):
+            extractCommand.extend((
             # https://trac.ffmpeg.org/wiki/AudioChannelManipulation - "The following filtergraph can be used to bring out of phase stereo in phase prior to downmixing:"
-            "-af", "asplit[a],aphasemeter=video=0,ametadata=select:key=lavfi.aphasemeter.phase:value=-0.005:function=less,pan=1c|c0=c0,aresample=async=1:first_pts=0,[a]amix",
-            "-y",
-            audioPath,
-        ]
+            "-af",
+            "asplit[a],aphasemeter=video=0,ametadata=select:key=lavfi.aphasemeter.phase:value=-0.005:function=less,pan=1c|c0=c0,aresample=async=1:first_pts=0,[a]amix"))
+        else:
+            extractCommand.extend(("-acodec", "copy"))
+        extractCommand.extend(
+            ("-y",
+            audioPath)
+        )
         subprocess.check_call(extractCommand,
                               stderr=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL,
