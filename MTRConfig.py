@@ -160,6 +160,8 @@ configSchema = Schema({
             bool,
         Optional('ENABLE_URWID', default=False):
             And(bool, False),
+        Optional('outputResolution', default=[3840, 2160]):
+            And([int], lambda res: len(res) == 2 and all((dim > 100 for dim in res)) and res[0] * 9 == res[1] * 16),
         Optional('outputResolutions', default=[[],
                     [1920,1080],
                     [3840,1080],
