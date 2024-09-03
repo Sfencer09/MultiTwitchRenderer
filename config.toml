@@ -237,9 +237,12 @@ reducedFfmpegMemory = false
 # Not fully implemented, do not enable
 ENABLE_URWID = false
 
+outputResolution = [3840, 2160]
+
+# currently unused, but will be reused at some point
 outputResolutions = [[],
                     [1920,1080],
-                    [3840,1080],
+                    [3840,2160],
                     [3840,2160],
                     [3840,2160],
                     [3840,2160],

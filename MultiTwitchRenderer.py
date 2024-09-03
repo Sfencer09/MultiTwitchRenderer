@@ -43,11 +43,12 @@ def calcTileWidth(numTiles):
 
 def calcResolutions(numTiles, maxNumTiles):
     tileWidth = calcTileWidth(numTiles)
-    maxTileWidth = calcTileWidth(maxNumTiles)
-    outputResolutions = getConfig('internal.outputResolutions')
-    maxOutputResolution = outputResolutions[maxTileWidth]
+    #maxTileWidth = calcTileWidth(maxNumTiles)
+    #outputResolutions = getConfig('internal.outputResolutions')
+    #maxOutputResolution = outputResolutions[maxTileWidth]
+    outputResolution = getConfig('internal.outputResolution')
     scaleFactor = min(
-        maxOutputResolution[0] // (16*tileWidth), maxOutputResolution[1] // (9*tileWidth))
+        outputResolution[0] // (16*tileWidth), outputResolution[1] // (9*tileWidth))
     tileX = scaleFactor * 16
     tileY = scaleFactor * 9
     outputX = tileX * tileWidth
@@ -145,7 +146,8 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
     cutMode = renderConfig.cutMode
     preciseAlign = renderConfig.preciseAlign
     threadCount = getConfig('internal.threadCount')
-    outputResolutions = getConfig('internal.outputResolutions')
+    #outputResolutions = getConfig('internal.outputResolutions')
+    outputResolution = getConfig('internal.outputResolution')
     REDUCED_MEMORY = getConfig('internal.reducedFfmpegMemory')
     ffmpegPath = getConfig('main.ffmpegPath')
     localBasepath = getConfig('main.localBasepath')
@@ -214,8 +216,8 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                          for row in segmentFileMatrix]
     maxSegmentTiles = max(segmentTileCounts)
     
-    maxTileWidth = calcTileWidth(maxSegmentTiles)
-    outputResolution = outputResolutions[maxTileWidth]
+    #maxTileWidth = calcTileWidth(maxSegmentTiles)
+    #outputResolution = outputResolutions[maxTileWidth]
     outputResolutionStr = f"{str(outputResolution[0])}:{str(outputResolution[1])}"
     inputFilesSorted:List[SourceFile] = sorted(set([item for sublist in segmentFileMatrix for item in sublist if item is not None]),
                               key=lambda x: allInputStreamers.index(x.streamer))
