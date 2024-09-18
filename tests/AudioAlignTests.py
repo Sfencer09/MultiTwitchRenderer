@@ -77,16 +77,16 @@ def testAudioAlignmentForDate(streamer, day):
     #print(offsets)
     return offsets
 
-#print(testAudioAlignmentForDate(testStreamer, testDay))
-outputs = {}
-#for i in range(1, 10):
-    #in allStreamingDays[testStreamer]:
-    #date = allStreamingDays[testStreamer][i]
-    #outputs[date] = testAudioAlignmentForDate(testStreamer, date)
-    
-#print(outputs)
-
 def testGenerateWithPrecision(streamer, day):
     commands = generateTilingCommandMultiSegment(streamer, day, renderConfig=RenderConfig(preciseAlign = True))
     print(commands)
+
+#print(testAudioAlignmentForDate(testStreamer, testDay))
+outputs = {}
 testGenerateWithPrecision(testStreamer, testDay)
+
+for i in range(1, 10):
+    #in allStreamingDays[testStreamer]:
+    date = allStreamingDays[testStreamer][i]
+    outputs[date] = testGenerateWithPrecision(testStreamer, date)
+print(outputs)
