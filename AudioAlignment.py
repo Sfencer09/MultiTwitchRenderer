@@ -357,11 +357,18 @@ def findAverageAudioOffset(
             secondMostPopularOffset = popularOffsets[1]
             if len(allOffsets[secondMostPopularOffset]) == len(allOffsets[mostPopularOffset]):
                 if abs(float(mostPopularOffset) - float(secondMostPopularOffset)) > bucketSize:
+                    logger.info(f"Separated peak offsets! {within_file=}, {find_file=}, {popularOffsets=}\n{allOffsets=}")
                     return None
-                else:
-                    raise NotImplementedError
+                else: # |mostPopularOffset-secondMostPopularOffset|
+                    #raise NotImplementedError(f"Adjacent equal peak offsets! {within_file=}, {find_file=}, {popularOffsets=}\n\n{allOffsets}")
+                    logger.info(f"Adjacent peak offsets! {within_file=}, {find_file=}, {popularOffsets=}\n{allOffsets=}")
+                    assert float(mostPopularOffset) - float(secondMostPopularOffset) <= bucketSize
                     assert len(popularOffsets) == 2 or len(allOffsets[popularOffsets[2]]) < len(allOffsets[mostPopularOffset])
-                    return None
+                    if len(popularOffsets) != 2 and len(allOffsets[popularOffsets[2]]) == len(allOffsets[mostPopularOffset]):
+                        logger.info("Found third offset with equal frequency, cannot determine true offset!")
+                        # Plus, if we have three with equal occurrences then we can't meet the 40% minimum
+                        return None
+                    #return None
             totalPopOffsetCount = sum((len(allOffsets[x]) for x in popularOffsets))
             if len(allOffsets[mostPopularOffset]) < totalPopOffsetCount * 0.4:
                 return None
