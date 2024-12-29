@@ -729,8 +729,51 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                                 session)
                             logger.debug(f"{segmentSessionMatrix[segIndex][streamerIndex]}")
                             assert segmentFileMatrix[segIndex][streamerIndex] is session.file
+        else:
+            assert segIndex != 0
+            # Missing main streamer section, but the fact that we're not done yet means we have a small gap.
+            # Naively xtend previous segment's sessions to fill gap
+            for streamerIndex in range(1, len(allInputStreamers)):
+                streamerPrevFile = segmentFileMatrix[segIndex-1][streamerIndex]
+                if streamerPrevFile is not None:
+                    # Streamer was present in last segment, try to extend into this segment
+                    if streamerPrevFile.endTimestamp >= segmentEndTime:
+                        segmentFileMatrix[segIndex][streamerIndex] = streamerPrevFile
+                        segmentSessionMatrix[segIndex][streamerIndex] = []
+                        for session in inputSessionsByStreamer[allInputStreamers[streamerIndex]]:
+                            if session.startTimestamp < segmentEndTime and session.endTimestamp > segmentStartTime:
+                                segmentSessionMatrix[segIndex][streamerIndex].append(session)
+                        assert len(segmentSessionMatrix[segIndex][streamerIndex]) != 0
+                    else:
+                        #have to split this gap in two to accomodate partial file
+                        ...
+            
     logger.info(f"Step 8: {allInputStreamers}")
     logger.trace(pformat(segmentFileMatrix))
+    
+    def logSegmentMatrix(level: int, showGameChanges=True):
+        for i in range(len(segmentSessionMatrix)):
+            if showGameChanges and i > 0:
+                if segmentSessionMatrix[i-1][0] is not None:
+                    prevRowGames = [
+                        session.game for session in segmentSessionMatrix[i-1][0]]
+                else:
+                    prevRowGames = []
+                if segmentSessionMatrix[i][0] is not None:
+                    currRowGames = [
+                        session.game for session in segmentSessionMatrix[i][0]]
+                else:
+                    currRowGames = []
+                # if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
+                if any((game not in currRowGames for game in prevRowGames)):
+                    logger.log(level, '-'*(2*len(allInputStreamers)+1))
+            row = f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}] {i} "
+            row += f"{convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i])} "
+            row += f"{convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0])} "
+            row += f"{str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6]} "
+            row += f"{str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6]}"
+            logger.log(level, row)
+    logSegmentMatrix(logging.INFO, showGameChanges=True)
     
     # Detect if there are any complete gaps, and only keep the largest segment.
     # used when there are stray segments from previous or next days
@@ -741,22 +784,44 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
         logger.info("Found major gap!")
         segmentGroups:List[Tuple[int]] = []  # [start, end)   - (math notation)
         segmentLengths:List[int|float] = [0]
+        segmentGaps:List[int] = []
+        gapLengths:List[int|float] = []
         segmentStart = -1
         for i in range(len(segmentFileMatrix)):
+            currentSegmentLength = uniqueTimestampsSorted[i+1] - uniqueTimestampsSorted[i]
             if all(item is None for item in segmentFileMatrix[i]):
+                assert i != 0
+                assert len(segmentGaps) == 0 or i - segmentGaps[-1] > 1
+                segmentGaps.append(i)
+                gapLengths.append(currentSegmentLength)
                 if segmentStart != -1:
                     segmentGroups.append((segmentStart, i))
                     segmentLengths.append(0)
                     segmentStart = -1
             else:
-                segmentLengths[-1] += uniqueTimestampsSorted[i+1] - uniqueTimestampsSorted[i]
+                segmentLengths[-1] += currentSegmentLength
                 if segmentStart == -1:
                     segmentStart = i
         assert segmentStart != -1
         segmentGroups.append((segmentStart, len(segmentFileMatrix)))
         logger.info(f"{segmentGroups=}")
         logger.info(f"{segmentLengths=}")
+        logger.info(f"{segmentGaps=}")
+        logger.info(f"{gapLengths=}")
         
+        splittingGapsIndices = []
+        nonsplittingGapsIndices = []
+        segmentGroupClusters:List[List[int]] = [[0]]
+        
+        for index, gapLength in enumerate(gapLengths):
+            if gapLength > 3600:
+                splittingGapsIndices.append(index)
+            else:
+                nonsplittingGapsIndices.append(index)
+        
+        logger.info(f"{splittingGapsIndices=}")
+        logger.info(f"{nonsplittingGapsIndices=}")
+
         largestSegmentIndex = np.argmax(segmentLengths)
         keepStart, keepEnd = segmentGroups[largestSegmentIndex]
         def removeSession(sess:Session):
@@ -776,7 +841,7 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
                 except ValueError:
                     pass
                 break
-            assert foundInputSessionByStreamer
+            assert foundInputSessionByStreamer, f"Could not find session to remove: {sess}"
             try:
                 secondarySessionsArray.remove(sess)
             except:
@@ -812,29 +877,6 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
 
     logger.info("Step 9:")
 
-    def logSegmentMatrix(level: int, showGameChanges=True):
-        for i in range(len(segmentSessionMatrix)):
-            if showGameChanges and i > 0:
-                if segmentSessionMatrix[i-1][0] is not None:
-                    prevRowGames = [
-                        session.game for session in segmentSessionMatrix[i-1][0]]
-                else:
-                    prevRowGames = []
-                if segmentSessionMatrix[i][0] is not None:
-                    currRowGames = [
-                        session.game for session in segmentSessionMatrix[i][0]]
-                else:
-                    currRowGames = []
-                # if segmentSessionMatrix[i][0] != segmentSessionMatrix[i-1][0]:
-                if any((game not in currRowGames for game in prevRowGames)):
-                    logger.log(level, '-'*(2*len(allInputStreamers)+1))
-            row = f"[{' '.join(['x' if item is not None else ' ' for item in segmentSessionMatrix[i]])}] {i} "
-            row += f"{convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[i])} "
-            row += f"{convertToDatetime(uniqueTimestampsSorted[i+1])-convertToDatetime(uniqueTimestampsSorted[0])} "
-            row += f"{str(convertToDatetime(uniqueTimestampsSorted[i]))[:-6]} "
-            row += f"{str(convertToDatetime(uniqueTimestampsSorted[i+1]))[:-6]}"
-            logger.log(level, row)
-    logSegmentMatrix(logging.INFO, showGameChanges=True)
     # for i in range(len(segmentFileMatrix)):
     #    if segmentSessionMatrix[i][0] is None:
     #        tempMainGames = set()
@@ -1103,9 +1145,9 @@ def generateTilingCommandMultiSegment(mainStreamer, targetDate, renderConfig=Ren
             inputVideoInfo.append(file.getVideoFileInfo())
     # nullAudioIndex = len(inputFilesSorted)
     logger.info(f"Step 12: {inputOptions}")
-    forceKeyframeTimes = [toFfmpegTimestamp(
+    """ forceKeyframeTimes = [toFfmpegTimestamp(
         uniqueTimestampsSorted[i]-allSessionsStartTime) for i in range(1, numSegments)]
-    """ keyframeOptions = ['-force_key_frames', ','.join(forceKeyframeTimes)]
+    keyframeOptions = ['-force_key_frames', ','.join(forceKeyframeTimes)]
     #streamerAudioSampleRates = [None for i in range(len(allInputStreamers))]
     audioSampleRatesByStreamer = {streamer:None for streamer in allInputStreamers}
     for i in range(len(inputFilesSorted)):

@@ -125,3 +125,6 @@ class Session:
 
     def __repr__(self):
         return f"Session(game=\"{self.game}\", startTimestamp={self.startTimestamp}, endTimestamp={self.endTimestamp}, file=\"{self.file}\")"
+    
+    def __str__(self):
+        return f"Session(game=\"{self.game}\", startTimestamp={self.startTimestamp}, endTimestamp={self.endTimestamp}, filename=\"{self.file.videoFile}\")"

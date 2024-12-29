@@ -26,7 +26,7 @@ def scanForExistingVideos() -> None:
     for file in (f for f in os.listdir(os.path.join(basepath, outputDirectory, "S1")) if f.endswith('.mkv') and not f.endswith('.temp.mkv')):
         fullpath = os.path.join(basepath, outputDirectory, "S1")
         nameparts = file.split(' - ')
-        assert len(nameparts) == 3  # and nameparts[0] == outputDirectory
+        assert len(nameparts) == 3, f"Invalid name parts: {nameparts}"  # and nameparts[0] == outputDirectory
         date = nameparts[1]
         streamerAndExt = nameparts[2]
         parts = streamerAndExt.split('.')

@@ -46,11 +46,11 @@ print("Initialization complete!")
 
 # %%
 
-sessionWorker(
-#    renderConfig=RenderConfig(preciseAlign=True)
-)
+# sessionWorker(
+# #    renderConfig=RenderConfig(preciseAlign=True)
+# )
 
-CommandWorker.printQueuedJobs()
+# CommandWorker.printQueuedJobs()
 
 # %%
 
@@ -60,7 +60,8 @@ testCommands = None
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', "2023-12-29", 
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-01-25',
 #testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-04')
-testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-29')  #Raised issue of gaps with no content in them
+#testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-05-29')  #Raised issue of gaps with no content in them
+testCommands = generateTilingCommandMultiSegment('ChilledChaos', '2024-12-22', RenderConfig(logLevel=3))
 
 testStreamer = getConfig('main.monitorStreamers')[0]
 dateIndex = 0
