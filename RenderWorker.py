@@ -104,6 +104,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
         hasError = False
         gc.collect()
         tempFiles = []
+        doneSkipping = False
         for i in range(len(taskCommands)):
             activeRenderTaskSubindex = i
             # TODO: add preemptive scheduling
@@ -112,7 +113,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                 trueOutpath = None
                 #if 'ffmpeg' in currentCommand[0]:
                 if currentCommand[0].endswith('ffmpeg'):
-                    if not overwrite_intermediate:
+                    if not overwrite_intermediate and not doneSkipping:
                         trueOutpath = currentCommand[-1]
                         if trueOutpath != finalOutpath:
                             assert trueOutpath.startswith(localBasepath)
@@ -120,15 +121,25 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                         if os.path.isfile(trueOutpath):
                             shouldSkip = True
                             try:
-                                # compare 
+                                # compare expected duration to actual duration
                                 videoInfo = getVideoInfo(trueOutpath)
-                                duration = int(
+                                fileDuration = round(
                                     float(videoInfo['format']['duration']))
-                                # if duration !=
+                                filtergraph = currentCommand[currentCommand.index("-filter_complex")+1]
+                                trimStr = "trim=duration="
+                                trimIndex  = filtergraph.index(trimStr)
+                                commaIndex = filtergraph.index(",", trimIndex)
+                                renderDurationStr = filtergraph[trimIndex+len(trimStr):commaIndex]
+                                renderDuration = int(renderDurationStr)
+                                logger.info(f"{fileDuration=} {renderDuration=}")
+                                shouldSkip = (renderDuration == fileDuration)
+                                if not shouldSkip:
+                                    doneSkipping = True
                             except Exception as ex:
                                 logger.detail(str(ex))
                                 if renderLog is not None:
                                     renderLog(str(ex))
+                                shouldSkip = False
                             if shouldSkip:
                                 logger.info(f"Skipping render to file {trueOutpath}, file already exists")
                                 if renderLog is not None:
@@ -137,6 +148,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                         else:
                             currentCommand[-1] = insertSuffix(
                                 trueOutpath, '.temp')
+                            doneSkipping = True
                     else:  # overwrite_intermediate
                         currentOutpath = currentCommand[-1]
                         if currentOutpath.startswith(localBasepath):
