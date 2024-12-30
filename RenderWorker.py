@@ -123,16 +123,15 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                             try:
                                 # compare expected duration to actual duration
                                 videoInfo = getVideoInfo(trueOutpath)
-                                fileDuration = round(
-                                    float(videoInfo['format']['duration']))
+                                fileDuration = float(videoInfo['format']['duration'])
                                 filtergraph = currentCommand[currentCommand.index("-filter_complex")+1]
                                 trimStr = "trim=duration="
                                 trimIndex  = filtergraph.index(trimStr)
                                 commaIndex = filtergraph.index(",", trimIndex)
                                 renderDurationStr = filtergraph[trimIndex+len(trimStr):commaIndex]
-                                renderDuration = int(renderDurationStr)
+                                renderDuration = float(renderDurationStr)
                                 logger.info(f"{fileDuration=} {renderDuration=}")
-                                shouldSkip = (renderDuration == fileDuration)
+                                shouldSkip = abs(renderDuration - fileDuration) < 1
                                 if not shouldSkip:
                                     doneSkipping = True
                             except Exception as ex:
