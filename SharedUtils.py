@@ -45,7 +45,8 @@ def getVideoOutputPath(streamer:str, date:str, gameList:None|List[str]=None):
     if gameList is None:
         filename = f"{outputDirectory} - {date} - {streamer}.mkv"
     else:
-        filename = f"{outputDirectory} - {date} - {streamer} ({', '.join(gameList)}).mkv"
+        gamesListStr = ', '.join((game.replace('/', '_').replace('\\', '_') for game in gameList))
+        filename = f"{outputDirectory} - {date} - {streamer} ({gamesListStr}).mkv"
     return os.path.join(basepath, outputDirectory, "S1", filename)
 
 
