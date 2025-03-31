@@ -387,7 +387,7 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                     #    rowInputOptions.extend(('-threads', str(threadCount//2)))
                 if startOffset != 0:
                     rowInputOptions.extend(('-ss', str(startOffset)))
-                rowInputOptions.extend(('-i', fileVideoPath))
+                rowInputOptions.extend(('-fflags', 'discardcorrupt', '-i', fileVideoPath))
                 useHwFilterAccel = useHardwareAcceleration & HW_INPUT_SCALE != 0 and (
                     maxHwaccelFiles == 0 or inputIndex < maxHwaccelFiles)
                 # print(file.videoFile, fpsRaw, fpsActual, fpsActual==60)
@@ -486,7 +486,8 @@ def filtergraphChunkedVersion(*, segmentFileMatrix: List[List[None|SourceFile]],
                                                     ]),
                                                     # outputMetadataOptions,
                                                     codecOptions,
-                                                    ["-movflags", "faststart", intermediateFilepaths[segIndex]]]))
+                                                    ["-movflags", "faststart",
+                                                     intermediateFilepaths[segIndex]]]))
     # 15. Build concat statement of intermediate video and audio segments
     outputMetadataOptions = []
     for streamerIndex in range(len(allInputStreamers)):

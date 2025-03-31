@@ -88,6 +88,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                 count += 1
             renderCommands[-1][-1] = insertSuffix(outpath, suffix)
         finalOutpath = renderCommands[-1][-1]
+        logger.info(f"Final render path: {finalOutpath}")
         # shutil.move(tempOutpath, insertSuffix(outpath, suffix))
         # print(renderCommands)
         # pathSplitIndex = outpath.rindex('.')
@@ -145,6 +146,7 @@ def renderWorker(stats_period=30,  # 30 seconds between encoding stats printing
                                     renderLog(f"Skipping render to file {trueOutpath}, file already exists")
                                 continue
                         else:
+                            logger.info(f"Command {i} output path: {trueOutpath}")
                             currentCommand[-1] = insertSuffix(
                                 trueOutpath, '.temp')
                             doneSkipping = True
